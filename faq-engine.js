@@ -144,11 +144,31 @@ class FAQEngine {
       if (taskResult) {
         // 如果成功提取了信息、完成了任务、取消了任务、或要求重问，直接用任务回复
         if (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask) {
-          response = {
-            intent_code: `task:${taskResult.taskState.taskCode}`,
-            confidence: 1,
-            source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
-            answer: taskResult.reply,
+          if (taskResult.question && taskResult.questionText) {
+            // 边答边问：先 FAQ 回答问题，再接任务进度提示
+            console.log('[TASK] 检测到边答边问，FAQ 回答:', taskResult.questionText)
+            const faqResponse = await this._handleRecognize(taskResult.questionText, context)
+            if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+              response = {
+                ...faqResponse,
+                answer: faqResponse.answer + '\n' + taskResult.reply,
+                source: 'task_faq',
+              }
+            } else {
+              response = {
+                intent_code: `task:${taskResult.taskState.taskCode}`,
+                confidence: 1,
+                source: 'task_progress',
+                answer: taskResult.reply,
+              }
+            }
+          } else {
+            response = {
+              intent_code: `task:${taskResult.taskState.taskCode}`,
+              confidence: 1,
+              source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
+              answer: taskResult.reply,
+            }
           }
         } else {
           // 提取失败（用户输入不匹配任何槽位）
@@ -185,7 +205,7 @@ class FAQEngine {
     }
     // 2. 如果没有活跃任务，检查是否触发新任务
     else if (this.taskEngine) {
-      const matchedTask = this.taskEngine.matchTask(text)
+      const matchedTask = await this.taskEngine.matchTask(text)
       if (matchedTask) {
         console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
         const taskState = this.taskEngine.startTask(sessionId, matchedTask)

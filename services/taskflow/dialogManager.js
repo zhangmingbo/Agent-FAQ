@@ -28,9 +28,11 @@ const CORRECT_PATTERNS = ['修改', '改成', '换成', '改为', '变更', '改
 class DialogManager {
   /**
    * @param {import('./taskDefs.js').default} defs - 任务定义加载器
+   * @param {import('./llm.js').default} llm - LLM 客户端（未配置时自动降级规则）
    */
-  constructor(defs) {
+  constructor(defs, llm) {
     this.defs = defs
+    this.llm = llm || null
   }
 
   /**
@@ -99,9 +101,12 @@ class DialogManager {
     let extracted = false
     let alreadyExtracted = false
     let textUsed = false
+    let anchorStep = null
+    let anchorPrompt = ''
+    let probing = false
     let stepsWalked = 0
 
-    while (stepsWalked < 8) {
+    while (stepsWalked < 10) {
       const step = this._currentStep(state)
       if (!step) {
         // 流程结束（无下一步）
@@ -124,7 +129,22 @@ class DialogManager {
           break
         }
         case 'confirm': {
-          // 进入确认态，重新请求用户确认
+          // 仍有必填槽位未填（如一轮多槽提取不完整）→ 回到第一个未填槽位提问
+          const unfilled = this._firstUnfilledRequired(state)
+          if (unfilled) {
+            const s = this._findStepBySlot(state, unfilled[0])
+            state.currentStep = s?.key
+            const p = s ? (this._slotDef(state, s)?.prompt || s.prompt) : `请提供${unfilled[1].label}`
+            return this._withQuestion(text, state, {
+              reply: (reply || '') + p,
+              isComplete: false,
+              extracted: alreadyExtracted || extracted,
+              reask: false,
+              cancelled: false,
+              taskState: state,
+            })
+          }
+          // 全部必填已填 → 进入确认态
           state.status = TaskState.CONFIRMING
           state.confirmAsked = true
           return this._renderConfirm(state, reply)
@@ -140,7 +160,7 @@ class DialogManager {
         case 'collect':
         default: {
           const canText = !(textUsed && step.extract?.method === 'text')
-          const outcome = await this._tryFillSlot(state, step, text, canText)
+          const outcome = await this._tryFillSlot(state, step, text, canText, probing)
           if (outcome.extracted) {
             reply += outcome.note || ''
             extracted = true
@@ -158,17 +178,29 @@ class DialogManager {
               taskState: state,
             }
           } else {
-            // 未提取到 → 无进展（引擎回退 FAQ）；若本轮已有进展则正常追问
+            // 未提取：记住第一个未填锚点，继续探测后续步骤（支持"地址是X，电话是Y"一轮多槽）
+            if (!anchorStep) {
+              anchorStep = step.key
+              anchorPrompt = this._buildPrompt(state, step)
+            }
+            const nextUnfilled = this._nextUnfilledCollectStep(state, state.currentStep)
+            if (nextUnfilled) {
+              probing = true
+              state.currentStep = nextUnfilled
+              state.skipCount = (state.skipCount || 0) + 1
+              break // 继续循环探测
+            }
+            // 探测完毕：回到锚点提问
+            state.currentStep = anchorStep
             state.skipCount = (state.skipCount || 0) + 1
-            const prompt = this._buildPrompt(state, step)
-            return {
-              reply: (reply || '') + prompt,
+            return this._withQuestion(text, state, {
+              reply: (reply || '') + (anchorPrompt || ''),
               isComplete: false,
               extracted: alreadyExtracted,
               reask: false,
               cancelled: false,
               taskState: state,
-            }
+            })
           }
         }
       }
@@ -186,7 +218,7 @@ class DialogManager {
   }
 
   /** 尝试从用户输入填充当前槽位 */
-  async _tryFillSlot(state, step, text, canText) {
+  async _tryFillSlot(state, step, text, canText, probing = false) {
     const slotDef = this._slotDef(state, step)
     if (!slotDef) {
       return { extracted: false, reask: '步骤配置错误：槽位不存在。' }
@@ -197,21 +229,45 @@ class DialogManager {
       return { extracted: true, note: '' }
     }
 
-    // 首轮且为纯文本提取：跳过（避免把触发句当槽位值，等用户直接回答）
+    // 纯文本提取在两种情况下受限：首轮（避免触发句误填）、本轮已用过文本提取
+    // 受限时仍允许显式标签提取（"地址是X"）
     const method = slotDef.extract?.method || 'text'
     const isFirstTurn = state.turnCount <= 1
-    if (isFirstTurn && method === 'text') {
-      return { extracted: false, reask: '' }
-    }
-    // 本轮已用过文本提取：不再用同一段文本填后续文本槽位
-    if (method === 'text' && !canText) {
-      return { extracted: false, reask: '' }
+    const textBlocked = method === 'text' && (isFirstTurn || !canText)
+
+    let value = await extractor.extract(text, slotDef, { taskCode: state.taskCode, state }, { labelOnly: textBlocked })
+
+    // 规则未提取到 → LLM 兜底（配置启用时）：一次性抽取所有未填槽位
+    if (value === null && this.llm?.enabled) {
+      const all = await this._llmExtractAll(state, text)
+      if (all && Object.keys(all).length > 0) {
+        let llmFilledAny = false
+        for (const [k, v] of Object.entries(all)) {
+          const s = state.slots[k]
+          if (!s || s.filled || !v) continue
+          const sDef = this._slotDefByKey(state, k)
+          const check = sDef ? validateSlot(sDef, v) : { ok: true }
+          if (check.ok) {
+            s.value = String(v)
+            s.filled = true
+            llmFilledAny = true
+            console.log(`[TaskFlow] LLM提取槽位 ${k} = "${v}"`)
+          }
+        }
+        if (llmFilledAny) {
+          const filled = state.slots[slotDef.key]
+          if (filled?.filled) {
+            return { extracted: true, note: '' }
+          }
+          return { extracted: false, reask: '' }
+        }
+      }
     }
 
-    const value = await extractor.extract(text, slotDef, { taskCode: state.taskCode, state })
     if (value === null) {
       // 结构化槽位（regex/number/enum）：输入非空且不像闲聊 → 视为格式错误，直接重问
-      if (method !== 'text' && text.trim().length > 0 && !extractor.isQuestion(text)) {
+      // 探测模式下不重问（避免"地址X，电话Y"场景下地址被问成电话）
+      if (!probing && method !== 'text' && text.trim().length > 0 && !extractor.isQuestion(text)) {
         return { extracted: false, reask: slotDef.validate?.reask || `请提供有效的${slotDef.label || ''}` }
       }
       return { extracted: false, reask: '' }
@@ -231,6 +287,97 @@ class DialogManager {
     }
     console.log(`[TaskFlow] 已填槽位 ${slotDef.key} = "${value}"`)
     return { extracted: true, note: `已记录：${slotDef.label || slotDef.key}。\n` }
+  }
+
+  // ========== 智能辅助 ==========
+
+  /**
+   * 边答边问：提取槽位后若剩余文本含疑问 → 标记 question，交给引擎 FAQ 回答
+   */
+  _withQuestion(text, state, envelope) {
+    const q = this._detectQuestion(text, state)
+    if (q) {
+      envelope.question = true
+      envelope.questionText = q
+    }
+    return envelope
+  }
+
+  /** 检测剩余文本中的疑问（去掉已填槽位的标签片段后） */
+  _detectQuestion(text, state) {
+    const remainder = this._stripFilledFragments(text, state)
+    if (remainder.length < 2) return ''
+    const q = remainder.trim()
+    if (q.includes('？') || q.includes('?') || /(怎么|如何|怎样|什么|哪里|哪儿|多少|几个|为什么|能不能|可以吗|是否|有没有|多久|几时|请问|怎么办|好不好|行不行|是不是|呢|吗)/.test(q)) {
+      return q
+    }
+    return ''
+  }
+
+  /** 去掉已填槽位的"标签+值"片段（如"地址是幸福小区3栋502，") */
+  _stripFilledFragments(text, state) {
+    let t = text
+    for (const [key, slot] of Object.entries(state.slots)) {
+      if (!slot.filled) continue
+      const names = [slot.label, ...(slot.aliases || [])].filter(Boolean)
+      for (const name of names) {
+        if (!name) continue
+        try {
+          t = t.replace(new RegExp(`${name}[是为]?[:：\\s]*[^，。；;！？!?]*`, 'g'), '')
+        } catch { /* ignore */ }
+      }
+    }
+    return t.replace(/^[，,、\s]+|[，,、\s]+$/g, '')
+  }
+
+  /** 下一个未填槽位的 collect 步骤（用于一轮多槽探测） */
+  _nextUnfilledCollectStep(state, fromKey) {
+    const task = this.defs.get(state.taskCode)
+    const steps = (task?.steps || []).filter(s => s.type === 'collect')
+    const startIdx = steps.findIndex(s => s.key === fromKey)
+    for (let i = startIdx + 1; i < steps.length; i++) {
+      const s = steps[i]
+      if (!state.slots[s.slot_key]?.filled) return s.key
+    }
+    return null
+  }
+
+  /** 第一个未填的必填槽位 */
+  _firstUnfilledRequired(state) {
+    return Object.entries(state.slots).find(([_, s]) => s.required && !s.filled) || null
+  }
+
+  /** 按槽位 key 查找其步骤定义（含 extract/validate） */
+  _slotDefByKey(state, slotKey) {
+    const task = this.defs.get(state.taskCode)
+    const step = (task?.steps || []).find(s => s.type === 'collect' && s.slot_key === slotKey)
+    if (!step) return null
+    return this._slotDef(state, step)
+  }
+
+  /** LLM 一次性抽取所有未填槽位 */
+  async _llmExtractAll(state, text) {
+    if (!this.llm?.enabled) return null
+    const task = this.defs.get(state.taskCode)
+    if (!task) return null
+    const unfilled = Object.entries(state.slots).filter(([_, s]) => !s.filled)
+    if (unfilled.length === 0) return null
+    const slotsSpec = {}
+    for (const [key, s] of unfilled) {
+      const sDef = this._slotDefByKey(state, key)
+      slotsSpec[key] = {
+        label: s.label,
+        type: sDef?.extract?.method || 'text',
+        rule: sDef?.extract?.rule || '',
+        required: s.required,
+      }
+    }
+    try {
+      return await this.llm.extractSlots(text, task, slotsSpec, state)
+    } catch (e) {
+      console.error('[TaskFlow] LLM 槽位抽取失败:', e.message)
+      return null
+    }
   }
 
   /** 构建当前步骤的提问话术（含进度提示） */

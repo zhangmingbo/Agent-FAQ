@@ -29,7 +29,7 @@ function check(name, ok, extra = '') {
 }
 
 await taskEngine.initialize({ storeDriver: 'memory' })
-const def = taskEngine.matchTask('我要报修燃气表')
+const def = await taskEngine.matchTask('我要报修燃气表')
 check('触发匹配 repair_order', def?.code === 'repair_order', `| code=${def?.code}`)
 check('v2 DSL 步骤已生效（含 confirm 与 action）',
   def.steps.some(s => s.type === 'confirm') && def.steps.some(s => s.type === 'action'))
@@ -150,6 +150,41 @@ check('疑问句不提取+任务仍活跃', r.extracted === false && taskEngine.
 r = await taskEngine.processInput('t-suspend', '阳光花园7号')
 check('恢复后继续填槽', r.taskState.slots.address.filled)
 await taskEngine.processInput('t-suspend', '取消')
+
+// ===== 智能增强：近义扩展触发（口语化） =====
+{
+  const hit1 = await taskEngine.matchTask('师傅，我家煤气表好像出问题了，麻烦来修一下')
+  check('口语化触发（出问题）', hit1?.code === 'repair_order', `| code=${hit1?.code}`)
+  const hit2 = await taskEngine.matchTask('燃气表不动了，能不能来个人看看')
+  check('口语化触发（不动了）', hit2?.code === 'repair_order', `| code=${hit2?.code}`)
+  const hit3 = await taskEngine.matchTask('我的表走字不准')
+  check('口语化触发（不准）', hit3?.code === 'repair_order', `| code=${hit3?.code}`)
+  const neg1 = await taskEngine.matchTask('你好')
+  check('问候不触发任务', neg1 === null, `| code=${neg1?.code || 'null'}`)
+  const neg2 = await taskEngine.matchTask('燃气表没坏，我就是问问怎么查余额')
+  check('否定句不触发任务', neg2 === null, `| code=${neg2?.code || 'null'}`)
+}
+
+// ===== 智能增强：首轮显式标签提取 =====
+taskEngine.startTask('t-smart1', def)
+r = await taskEngine.processInput('t-smart1', '我要报修，地址是幸福小区3栋502')
+check('首轮标签提取地址', r.taskState.slots.address.filled && r.taskState.slots.address.value === '幸福小区3栋502', `| value=${r.taskState.slots.address.value}`)
+await taskEngine.processInput('t-smart1', '取消')
+
+// ===== 智能增强：一轮多槽（标签锚点） =====
+taskEngine.startTask('t-smart2', def)
+r = await taskEngine.processInput('t-smart2', '我要报修，地址是幸福小区3栋502，燃气表不走了，电话13800138000')
+check('一轮填地址+电话', r.taskState.slots.address.filled && r.taskState.slots.phone.filled && !r.taskState.slots.fault.filled,
+  `| address=${r.taskState.slots.address.value} phone=${r.taskState.slots.phone.value}`)
+check('剩余槽位被追问', r.reply.includes('故障') || r.reply.includes('描述'), `| reply=${r.reply.slice(0, 40)}`)
+await taskEngine.processInput('t-smart2', '取消')
+
+// ===== 智能增强：边答边问 =====
+taskEngine.startTask('t-smart3', def)
+await taskEngine.processInput('t-smart3', '我要报修')
+r = await taskEngine.processInput('t-smart3', '地址是幸福小区3栋502，你们多久能到？')
+check('提取地址且标记疑问', r.taskState.slots.address.filled && r.question === true, `| question=${r.questionText}`)
+await taskEngine.processInput('t-smart3', '取消')
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`)
 await taskEngine.stop()

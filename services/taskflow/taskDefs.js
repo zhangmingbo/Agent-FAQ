@@ -23,6 +23,26 @@
 
 import pool from '../../db/pool.js'
 
+/**
+ * 触发词近义扩展表（确定性模糊匹配，覆盖口语化表达）
+ * 规则：触发词命中 key（或其包含关系）时，加入 value 中的全部表达
+ */
+const SYNONYM_EXPANSION = {
+  '报修': ['报修', '维修', '修理', '修一下', '坏了', '故障', '出问题', '出毛病', '异常', '失灵', '不工作', '有问题', '报修单'],
+  '维修': ['维修', '修理', '修一下', '报修', '坏了', '故障', '出问题', '出毛病', '异常', '失灵', '不工作', '找人修', '来修'],
+  '坏了': ['坏了', '故障', '出问题', '出毛病', '异常', '失灵', '不工作', '不动了', '不走', '不准', '有问题', '坏了'],
+  '故障': ['故障', '坏了', '出问题', '出毛病', '异常', '失灵', '不工作', '有问题', '故障'],
+  '修': ['修', '维修', '修理', '修一下', '找人修', '来修', '维修一下'],
+  '安装': ['安装', '装', '预约', '上门', '约时间', '装机', '装一下'],
+  '预约': ['预约', '约', '预约上门', '上门', '约个时间'],
+  '上门': ['上门', '上门服务', '到家里', '来家里'],
+  '开通': ['开通', '开户', '新装', '办新'],
+  '注销': ['注销', '销户', '停用', '拆除'],
+  '查询': ['查询', '查一下', '看看', '帮我查'],
+  '缴费': ['缴费', '交费', '充值', '付款', '付费'],
+  '报装': ['报装', '申请安装', '预约安装'],
+}
+
 class TaskDefs {
   constructor() {
     /** @type {Map<string, Object>} code -> taskDef（含规范化后的 steps） */
@@ -64,7 +84,7 @@ class TaskDefs {
     return this.defs.size
   }
 
-  /** 规范化任务定义：解析 JSON 字段、迁移 v1 slots → v2 steps */
+  /** 规范化任务定义：解析 JSON 字段、迁移 v1 slots → v2 steps、扩展触发词 */
   _normalize(row) {
     const triggerKeywords = _parseJson(row.trigger_keywords, [])
     const slots = _parseJson(row.slots, [])
@@ -79,6 +99,8 @@ class TaskDefs {
       name: row.name,
       description: row.description || '',
       trigger_keywords: triggerKeywords,
+      // 近义扩展后的触发表达（匹配用，不覆盖原始定义）
+      _triggerExpanded: this._expandTriggers(triggerKeywords),
       slots,
       steps,
       completion_message: row.completion_message || '',
@@ -86,6 +108,24 @@ class TaskDefs {
       status: row.status ?? 1,
     }
     return def
+  }
+
+  /** 触发词近义扩展：命中同义词表则并入相关表达（确定性模糊匹配） */
+  _expandTriggers(keywords) {
+    const expanded = new Set()
+    for (const kw of (keywords || [])) {
+      if (typeof kw !== 'string') {
+        expanded.add(kw) // regex 对象原样保留
+        continue
+      }
+      expanded.add(kw)
+      for (const [key, syns] of Object.entries(SYNONYM_EXPANSION)) {
+        if (kw.includes(key) || key.includes(kw)) {
+          for (const s of syns) expanded.add(s)
+        }
+      }
+    }
+    return [...expanded]
   }
 
   /** v1 slots → v2 steps 自动迁移 */

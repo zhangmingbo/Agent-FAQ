@@ -147,6 +147,8 @@ async function start() {
   // 初始化任务引擎
   console.log('   📋 正在加载任务流程...')
   await taskEngine.initialize()
+  // 接入共享 NLP 引擎（复用 FAQ 识别器已加载的向量模型，支持语义触发）
+  taskEngine.setNlpEngine(engine.recognizer.nlpEngine)
   engine.taskEngine = taskEngine
   console.log(`   ✅ 任务加载完成，共 ${taskEngine.taskDefs.size} 个`)
 

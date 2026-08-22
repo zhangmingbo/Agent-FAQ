@@ -17,7 +17,10 @@
 import { getStore, closeStore } from './store.js'
 import TaskDefs from './taskDefs.js'
 import DialogManager from './dialogManager.js'
+import llmClient from './llm.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
+import { cosineSimilarity } from '../../src/similarity.js'
+import * as configRepo from '../../repositories/configRepo.js'
 
 const SESSION_TTL = 30 * 60 * 1000 // 30 分钟
 
@@ -29,11 +32,33 @@ class TaskFlowEngine {
     /** 任务定义（code → def），委托 taskDefs 单例 */
     this.taskDefs = TaskDefs.defs
 
-    this.dialog = new DialogManager(TaskDefs)
+    this.dialog = new DialogManager(TaskDefs, llmClient)
 
     /** @type {import('./store.js').MemoryStore|import('./store.js').RedisStore|null} */
     this.store = null
     this.sessionTtl = SESSION_TTL
+
+    // 语义触发（向量匹配，兜底层级）
+    this.nlpEngine = null
+    this.vectorThreshold = 0.45
+    this._triggerVectors = new Map() // code -> [vector]
+    this._vectorDirty = true
+
+    // LLM 智能层
+    this.llm = llmClient
+  }
+
+  /** 注入共享 NLP 引擎（复用 FAQ 识别器已加载的模型，避免二次加载） */
+  setNlpEngine(nlpEngine) {
+    this.nlpEngine = nlpEngine
+    this._vectorDirty = true
+    console.log('[TaskFlow] 已接入语义触发（向量匹配）')
+  }
+
+  /** 运行时更新 LLM 配置（管理后台保存后调用） */
+  setLlmConfig(cfg) {
+    this.llm.configure(cfg)
+    return this.llm.enabled
   }
 
   async initialize(options = {}) {
@@ -48,6 +73,7 @@ class TaskFlowEngine {
 
     // 2) 加载任务定义（含 v1 → v2 迁移）
     const count = await TaskDefs.loadTasks()
+    this._vectorDirty = true
     console.log(`[TaskFlow] 已加载 ${count} 个任务定义`)
 
     // 3) 初始化持久化存储
@@ -57,7 +83,20 @@ class TaskFlowEngine {
       ttl: this.sessionTtl,
     })
 
-    // 4) 恢复未完成任务（Redis 场景：重启后继续）
+    // 4) 加载 LLM 配置（sys_config，未配置自动降级规则）
+    try {
+      const dbConfig = await configRepo.getAll()
+      this.llm.configure({
+        enabled: dbConfig.llm_enabled === 'true',
+        apiUrl: dbConfig.llm_api_url || '',
+        apiKey: dbConfig.llm_api_key || '',
+        model: dbConfig.llm_model || 'deepseek-chat',
+      })
+    } catch (e) {
+      console.warn('[TaskFlow] LLM 配置读取失败，使用规则模式:', e.message)
+    }
+
+    // 5) 恢复未完成任务（Redis 场景：重启后继续）
     if (this.store && typeof this.store.keys === 'function') {
       try {
         const keys = await this.store.keys('taskflow:session:*')
@@ -82,16 +121,19 @@ class TaskFlowEngine {
   // ========== 触发与开始 ==========
 
   /**
-   * 匹配任务触发条件
+   * 匹配任务触发条件（关键词+近义扩展 → 向量语义兜底 → LLM 判定，逐级兜底）
    * @param {string} text
-   * @returns {Object|null} 任务定义
+   * @returns {Promise<Object|null>} 任务定义
    */
-  matchTask(text) {
+  async matchTask(text) {
     if (!text) return null
     const lowerText = text.trim().toLowerCase()
+
+    // 1) 关键词精确匹配（含近义扩展表，覆盖口语化表达）
     for (const [code, task] of this.taskDefs) {
       if (task.status !== 1) continue
-      for (const kw of (task.trigger_keywords || [])) {
+      const triggers = task._triggerExpanded || task.trigger_keywords || []
+      for (const kw of triggers) {
         if (typeof kw === 'string') {
           if (lowerText.includes(kw.toLowerCase())) return task
         } else if (kw.regex) {
@@ -102,7 +144,74 @@ class TaskFlowEngine {
         }
       }
     }
+
+    // 2) 向量语义近似（兜底；仅对较长句子生效，否定句不触发）
+    if (this.nlpEngine && text.trim().length >= 5 && !this._hasNegation(text)) {
+      const hit = await this._matchByVector(text)
+      if (hit) return hit
+    }
+
+    // 3) LLM 意图判定（配置启用时）
+    if (this.llm.enabled) {
+      try {
+        const enabledTasks = [...this.taskDefs.values()].filter(t => t.status === 1)
+        const code = await this.llm.judgeTrigger(text, enabledTasks)
+        if (code) return this.taskDefs.get(code) || null
+      } catch (e) {
+        console.error('[TaskFlow] LLM 触发判定失败:', e.message)
+      }
+    }
+
     return null
+  }
+
+  /** 向量语义匹配（任务触发词编码为向量，与用户输入算余弦相似度） */
+  async _matchByVector(text) {
+    await this._ensureTriggerVectors()
+    if (this._triggerVectors.size === 0) return null
+    let qv
+    try {
+      qv = await this.nlpEngine.encodeQuery(text)
+    } catch (e) {
+      console.error('[TaskFlow] 查询编码失败:', e.message)
+      return null
+    }
+    let best = null
+    for (const [code, samples] of this._triggerVectors) {
+      if (this.taskDefs.get(code)?.status !== 1) continue
+      for (const vec of samples) {
+        const sim = cosineSimilarity(qv, vec)
+        if (!best || sim > best.sim) best = { code, sim }
+      }
+    }
+    if (best && best.sim >= this.vectorThreshold) {
+      console.log(`[TaskFlow] 语义触发: ${best.code} (sim=${best.sim.toFixed(3)})`)
+      return this.taskDefs.get(best.code) || null
+    }
+    return null
+  }
+
+  /** 构建任务触发词向量缓存（定义变更后重建） */
+  async _ensureTriggerVectors() {
+    if (!this.nlpEngine || (!this._vectorDirty && this._triggerVectors.size > 0)) return
+    this._triggerVectors.clear()
+    for (const [code, task] of this.taskDefs) {
+      const kws = (task.trigger_keywords || []).filter(k => typeof k === 'string')
+      if (kws.length === 0) continue
+      try {
+        const vecs = await this.nlpEngine.encodeTexts(kws)
+        this._triggerVectors.set(code, vecs)
+      } catch (e) {
+        console.error(`[TaskFlow] 触发词编码失败 ${code}:`, e.message)
+      }
+    }
+    this._vectorDirty = false
+    console.log(`[TaskFlow] 语义触发向量就绪: ${this._triggerVectors.size} 个任务`)
+  }
+
+  /** 否定句防护：避免"没坏/不用修"被语义触发 */
+  _hasNegation(text) {
+    return /没(有)?(坏|问题|故障|事|毛病)|不(是|用|要|想)(报修|维修|修)|没(有)?必要/.test(text)
   }
 
   /**
@@ -226,15 +335,21 @@ class TaskFlowEngine {
       err.statusCode = 400
       throw err
     }
-    return TaskDefs.save(def)
+    const result = await TaskDefs.save(def)
+    this._vectorDirty = true
+    return result
   }
 
   async remove(code) {
-    return TaskDefs.remove(code)
+    const result = await TaskDefs.remove(code)
+    this._vectorDirty = true
+    return result
   }
 
   async toggleStatus(code, status) {
-    return TaskDefs.toggleStatus(code, status)
+    const result = await TaskDefs.toggleStatus(code, status)
+    this._vectorDirty = true
+    return result
   }
 }
 

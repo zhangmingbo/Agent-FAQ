@@ -25,21 +25,23 @@ class Extractor {
    * @param {string} text - 用户输入
    * @param {Object} slot - 槽位定义
    * @param {Object} ctx - 上下文（可选）
+   * @param {Object} opts - 选项
+   * @param {boolean} opts.labelOnly - 仅做显式标签提取（首轮/文本已被占用时）
    * @returns {Promise<string|null>}
    */
-  async extract(text, slot, ctx = {}) {
+  async extract(text, slot, ctx = {}, opts = {}) {
     if (!text || !slot) return null
 
     const method = slot.extract?.method || 'text'
     let value = null
 
     // 1) 关键词/标签显式提供优先（如"地址是XX""电话 138..."）
-    if (slot.label) {
+    if (slot.label || (slot.aliases && slot.aliases.length)) {
       value = this._extractByLabel(text, slot)
     }
 
-    // 2) 结构化提取
-    if (value === null) {
+    // 2) 结构化提取（labelOnly 模式下跳过）
+    if (value === null && !opts.labelOnly) {
       switch (method) {
         case 'regex':
           value = this._extractRegex(text, slot.extract?.rule)
@@ -57,7 +59,7 @@ class Extractor {
     }
 
     // 3) LLM 兜底（可选）
-    if (value === null && this.llmExtractor) {
+    if (value === null && !opts.labelOnly && this.llmExtractor) {
       try {
         value = await this.llmExtractor(text, slot, ctx)
       } catch (e) {
@@ -68,23 +70,24 @@ class Extractor {
     return value
   }
 
-  /** 显式标签提供：识别"地址是XX""地址改成XX""电话 138..." */
+  /** 显式标签提供：识别"地址是XX""地址改成XX""电话 138..."（含别名） */
   _extractByLabel(text, slot) {
-    const label = slot.label
-    if (!label) return null
-    // 模式：标签 + 是/为/改成/换成 + 值，或 标签 + 分隔符 + 值
-    const patterns = [
-      new RegExp(`${label}[是为]?[:：\\s]+(.+?)$`),
-      new RegExp(`(?:修改|改成|换成|改为|变更|改一下)${label}[是为]?[:：\\s]*(.+?)$`),
-    ]
-    for (const re of patterns) {
-      const m = text.match(re)
-      if (m && m[1] && m[1].trim()) {
-        const v = m[1].trim().replace(/[。！!？?]$/, '')
-        if (v.length >= 1) return v
+    const names = [slot.label, ...(slot.aliases || [])].filter(Boolean)
+    if (names.length === 0) return null
+    for (const name of names) {
+      // 模式1："地址是X"/"地址：X"/"地址 X"（是/为后可不带分隔符，值截断到标点）
+      const patterns = [
+        new RegExp(`${name}(?:[是为][:：\\s]*|[:：\\s]+)([^，。；;！？!?]+)`),
+        new RegExp(`(?:修改|改成|换成|改为|变更|改一下)${name}[是为]?[:：\\s]*([^，。；;！？!?]+)`),
+      ]
+      for (const re of patterns) {
+        const m = text.match(re)
+        if (m && m[1] && m[1].trim()) {
+          const v = m[1].trim().replace(/[。！!？?，,]$/, '')
+          if (v.length >= 1) return v
+        }
       }
     }
-    // 模式：值是纯数字（电话/数量）且输入就是数字
     return null
   }
 
