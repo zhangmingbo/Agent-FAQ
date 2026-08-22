@@ -17,7 +17,6 @@
  */
 
 import extractor from './extractor.js'
-import { validateSlot } from './validator.js'
 import { runAction } from './actionRegistry.js'
 import { TaskState } from './stateMachine.js'
 import dialogueRules from '../../rules/dialogueRules.js'
@@ -28,11 +27,11 @@ const CORRECT_PATTERNS = ['修改', '改成', '换成', '改为', '变更', '改
 class DialogManager {
   /**
    * @param {import('./taskDefs.js').default} defs - 任务定义加载器
-   * @param {import('./llm.js').default} llm - LLM 客户端（未配置时自动降级规则）
+   * @param {import('./nlu.js').default} nlu - 理解层（意图判定/槽位提取，可插拔模式）
    */
-  constructor(defs, llm) {
+  constructor(defs, nlu) {
     this.defs = defs
-    this.llm = llm || null
+    this.nlu = nlu
   }
 
   /**
@@ -235,10 +234,15 @@ class DialogManager {
     const isFirstTurn = state.turnCount <= 1
     const textBlocked = method === 'text' && (isFirstTurn || !canText)
 
-    let value = await extractor.extract(text, slotDef, { taskCode: state.taskCode, state }, { labelOnly: textBlocked })
+    const task = this.defs.get(state.taskCode)
+    const { value } = await this.nlu.extractSlotValue(
+      text, slotDef,
+      { taskCode: state.taskCode, task, state },
+      { labelOnly: textBlocked }
+    )
 
-    // 规则未提取到 → LLM 兜底（配置启用时）：一次性抽取所有未填槽位
-    if (value === null && this.llm?.enabled) {
+    // 规则/单槽未提取到 → LLM 批量兜底（一次性抽取所有未填槽位）
+    if (value === null && this.nlu.mode !== 'rule') {
       const all = await this._llmExtractAll(state, text)
       if (all && Object.keys(all).length > 0) {
         let llmFilledAny = false
@@ -246,12 +250,12 @@ class DialogManager {
           const s = state.slots[k]
           if (!s || s.filled || !v) continue
           const sDef = this._slotDefByKey(state, k)
-          const check = sDef ? validateSlot(sDef, v) : { ok: true }
+          const check = sDef ? this.nlu.validate(sDef, v) : { ok: true }
           if (check.ok) {
             s.value = String(v)
             s.filled = true
             llmFilledAny = true
-            console.log(`[TaskFlow] LLM提取槽位 ${k} = "${v}"`)
+            console.log(`[TaskNLU] LLM提取槽位 ${k} = "${v}"`)
           }
         }
         if (llmFilledAny) {
@@ -273,7 +277,7 @@ class DialogManager {
       return { extracted: false, reask: '' }
     }
 
-    const check = validateSlot(slotDef, value)
+    const check = this.nlu.validate(slotDef, value)
     if (!check.ok) {
       return { extracted: false, reask: check.message }
     }
@@ -355,9 +359,8 @@ class DialogManager {
     return this._slotDef(state, step)
   }
 
-  /** LLM 一次性抽取所有未填槽位 */
+  /** LLM 一次性抽取所有未填槽位（委托理解层） */
   async _llmExtractAll(state, text) {
-    if (!this.llm?.enabled) return null
     const task = this.defs.get(state.taskCode)
     if (!task) return null
     const unfilled = Object.entries(state.slots).filter(([_, s]) => !s.filled)
@@ -372,12 +375,7 @@ class DialogManager {
         required: s.required,
       }
     }
-    try {
-      return await this.llm.extractSlots(text, task, slotsSpec, state)
-    } catch (e) {
-      console.error('[TaskFlow] LLM 槽位抽取失败:', e.message)
-      return null
-    }
+    return this.nlu.extractSlotsBatch(text, task, slotsSpec, state)
   }
 
   /** 构建当前步骤的提问话术（含进度提示） */

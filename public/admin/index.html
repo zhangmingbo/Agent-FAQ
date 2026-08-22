@@ -607,6 +607,11 @@
           '<div id="tf-keywords">' + buildKeywordTags(isEdit ? task.trigger_keywords : []) + '</div>' +
           '<input id="tf-kw-input" placeholder="输入关键词后回车" style="margin-top:6px">' +
         '</div>' +
+        '<div class="form-group"><label>意图例句（NLU 理解用，回车添加）</label>' +
+          '<div id="tf-examples">' + buildExampleTags(isEdit ? (task.intent_examples || []) : []) + '</div>' +
+          '<input id="tf-example-input" placeholder="用户可能怎么说，如：燃气表坏了需要维修" style="margin-top:6px">' +
+          '<div style="color:#999;font-size:12px;margin-top:4px">例句帮助 AI 理解该任务的业务场景，新增业务只需写好例句</div>' +
+        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -654,6 +659,23 @@
       }
     });
 
+    // 意图例句输入
+    var exInput = overlay.querySelector('#tf-example-input');
+    if (exInput) exInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && exInput.value.trim()) {
+        e.preventDefault();
+        var ex = exInput.value.trim();
+        var container = overlay.querySelector('#tf-examples');
+        var tag = document.createElement('span');
+        tag.className = 'keyword-tag';
+        tag.innerHTML = esc(ex) + '<span class="remove">&times;</span>';
+        tag.setAttribute('data-value', ex);
+        tag.querySelector('.remove').onclick = function(){ tag.remove(); };
+        container.appendChild(tag);
+        exInput.value = '';
+      }
+    });
+
     // 添加槽位
     overlay.querySelector('#tf-add-slot').onclick = function() {
       var container = overlay.querySelector('#tf-slots');
@@ -693,6 +715,11 @@
       overlay.querySelectorAll('#tf-keywords .keyword-tag').forEach(function(tag) {
         keywords.push(tag.getAttribute('data-value'));
       });
+      // 收集意图例句
+      var examples = [];
+      overlay.querySelectorAll('#tf-examples .keyword-tag').forEach(function(tag) {
+        examples.push(tag.getAttribute('data-value'));
+      });
       // 收集槽位
       var slots = [];
       overlay.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
@@ -716,6 +743,7 @@
         trigger_keywords: keywords,
         slots: slots,
         steps: steps.length ? steps : undefined,
+        intent_examples: examples.length ? examples : undefined,
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: overlay.querySelector('#tf-action').value || '',
         status: 1,
@@ -736,6 +764,13 @@
     return keywords.map(function(k) {
       var val = typeof k === 'string' ? k : (k.regex || '');
       return '<span class="keyword-tag" data-value="' + esc(val) + '">' + esc(val) + '<span class="remove">&times;</span></span>';
+    }).join('');
+  }
+
+  function buildExampleTags(examples) {
+    if (!examples || !examples.length) return '<span style="color:#999;font-size:12px">暂无例句（将自动使用触发词）</span>';
+    return examples.map(function(e) {
+      return '<span class="keyword-tag" data-value="' + esc(e) + '">' + esc(e) + '<span class="remove">&times;</span></span>';
     }).join('');
   }
 

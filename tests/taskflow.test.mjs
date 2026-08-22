@@ -186,6 +186,24 @@ r = await taskEngine.processInput('t-smart3', '地址是幸福小区3栋502，�
 check('提取地址且标记疑问', r.taskState.slots.address.filled && r.question === true, `| question=${r.questionText}`)
 await taskEngine.processInput('t-smart3', '取消')
 
+// ===== NLU 理解层 =====
+check('nlu 模式设置', taskEngine.setNluMode('rule') === true && taskEngine.setNluMode('bad') === false)
+taskEngine.setNluMode('hybrid')
+check('matchTask 排除当前任务', (await taskEngine.matchTask('我要报修', 'repair_order')) === null, `| code=${(await taskEngine.matchTask('我要报修', 'repair_order'))?.code || 'null'}`)
+
+// intent_examples 保存往返（写入真实 DB，测完清理）
+await taskEngine.save({
+  code: 'nlu_test', name: 'NLU测试任务', trigger_keywords: ['测试'],
+  slots: [],
+  steps: [{ key: 'done', type: 'action', action: 'complete_message', done_message: '完成' }],
+  intent_examples: ['我要测试一下', '帮我跑个测试'],
+})
+const saved = taskEngine.taskDefs.get('nlu_test')
+check('intent_examples 持久化', Array.isArray(saved.intent_examples) && saved.intent_examples.length === 2, `| ${saved.intent_examples?.length}`)
+check('例句向量源就绪', Array.isArray(saved._vectorSources) && saved._vectorSources.length === 2)
+await taskEngine.remove('nlu_test')
+check('测试任务已清理', taskEngine.taskDefs.get('nlu_test') === undefined)
+
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`)
 await taskEngine.stop()
 process.exit(fail > 0 ? 1 : 0)

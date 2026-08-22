@@ -49,7 +49,7 @@ class TaskDefs {
     this.defs = new Map()
   }
 
-  /** 确保表结构存在（含 v2 的 steps 列） */
+  /** 确保表结构存在（含 v2 的 steps 列与 intent_examples 意图例句） */
   async ensureTable() {
     await pool.execute(
       `CREATE TABLE IF NOT EXISTS task (
@@ -60,6 +60,7 @@ class TaskDefs {
         trigger_keywords JSON COMMENT '触发关键词列表',
         slots JSON COMMENT '槽位定义列表（v1 兼容）',
         steps JSON COMMENT '流程 DSL（v2）',
+        intent_examples JSON COMMENT '意图例句（NLU 理解用）',
         completion_message TEXT,
         on_complete VARCHAR(100) DEFAULT '' COMMENT '完成后动作',
         status TINYINT DEFAULT 1 COMMENT '1=启用 0=禁用',
@@ -67,9 +68,12 @@ class TaskDefs {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     )
-    // 老表补充 steps 列（已存在则忽略错误）
+    // 老表补充 v2 列（已存在则忽略错误）
     try {
       await pool.execute('ALTER TABLE task ADD COLUMN steps JSON NULL COMMENT \'流程 DSL（v2）\' AFTER slots')
+    } catch { /* 列已存在 */ }
+    try {
+      await pool.execute('ALTER TABLE task ADD COLUMN intent_examples JSON NULL COMMENT \'意图例句（NLU 理解用）\' AFTER steps')
     } catch { /* 列已存在 */ }
   }
 
@@ -94,13 +98,21 @@ class TaskDefs {
       steps = this._migrateFromSlots(row, slots)
     }
 
+    // 意图例句：语义向量/LLM 理解只服务"显式声明例句"的任务；
+    // 未写例句的任务仅靠触发词+近义规则（确定性，避免短词向量噪声误触发）
+    const intentExamples = _parseJson(row.intent_examples, null)
+    const vectorSources = (Array.isArray(intentExamples) && intentExamples.length > 0) ? intentExamples : []
+
     const def = {
       code: row.code,
       name: row.name,
       description: row.description || '',
       trigger_keywords: triggerKeywords,
-      // 近义扩展后的触发表达（匹配用，不覆盖原始定义）
+      // 近义扩展后的触发表达（规则匹配用，不覆盖原始定义）
       _triggerExpanded: this._expandTriggers(triggerKeywords),
+      // 意图例句（NLU 向量/LLM 理解用）
+      intent_examples: intentExamples,
+      _vectorSources: vectorSources,
       slots,
       steps,
       completion_message: row.completion_message || '',
@@ -165,6 +177,10 @@ class TaskDefs {
     const steps = def.steps || []
     if (!Array.isArray(steps) || steps.length === 0) errors.push('至少需要一个步骤')
 
+    if (def.intent_examples !== undefined && !Array.isArray(def.intent_examples)) {
+      errors.push('intent_examples 必须是数组')
+    }
+
     const keys = new Set()
     const collectKeys = new Set()
     steps.forEach((step, i) => {
@@ -210,21 +226,23 @@ class TaskDefs {
 
   /** 保存（创建/更新）并刷新缓存 */
   async save(def) {
-    const { code, name, description, trigger_keywords, slots, steps, completion_message, on_complete, status } = def
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, completion_message, on_complete, status } = def
     await pool.execute(
-      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, completion_message, on_complete, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, completion_message=?, on_complete=?, status=?`,
+      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, completion_message, on_complete, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, completion_message=?, on_complete=?, status=?`,
       [
         code, name, description || null,
         JSON.stringify(trigger_keywords || []),
         JSON.stringify(slots || []),
         JSON.stringify(steps || null),
+        JSON.stringify(intent_examples || null),
         completion_message || null, on_complete || '', status ?? 1,
         name, description || null,
         JSON.stringify(trigger_keywords || []),
         JSON.stringify(slots || []),
         JSON.stringify(steps || null),
+        JSON.stringify(intent_examples || null),
         completion_message || null, on_complete || '', status ?? 1,
       ]
     )

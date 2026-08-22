@@ -92,8 +92,13 @@ class LLMClient {
       .map(([k, s]) => `${k}: ${s.value}`)
       .join('；')
 
+    // 意图例句帮助 LLM 理解业务语境（如"报修"场景下的地址/故障/电话）
+    const examples = Array.isArray(task.intent_examples) && task.intent_examples.length > 0
+      ? `\n业务场景例句（用户可能这么说）：${task.intent_examples.slice(0, 8).join('；')}`
+      : ''
+
     const system = '你是客服信息提取助手。只根据用户话术提取指定字段，返回严格 JSON 对象，不要任何解释、前后缀或 markdown 代码块。提取不到的字段不要出现。'
-    const user = `任务：${task.name}\n` +
+    const user = `任务：${task.name}${examples}\n` +
       `需提取字段：${slotDesc}\n` +
       (filledDesc ? `已提取字段：${filledDesc}\n` : '') +
       `用户输入："${text}"\n` +
@@ -105,6 +110,28 @@ class LLMClient {
     ], { maxTokens: 200, temperature: 0 })
 
     return this._parseJson(raw)
+  }
+
+  /**
+   * 提取单个槽位值（LLM 兜底用）
+   * @param {string} text - 用户输入
+   * @param {Object} slotDef - 槽位定义
+   * @param {Object} ctx - { taskCode, state, task }
+   * @returns {Promise<string|null>}
+   */
+  async extractSlot(text, slotDef, ctx = {}) {
+    if (!slotDef?.key) return null
+    const task = ctx.task || { name: '当前任务' }
+    const result = await this.extractSlots(text, task, {
+      [slotDef.key]: {
+        label: slotDef.label || slotDef.key,
+        type: slotDef.extract?.method || 'text',
+        rule: slotDef.extract?.rule || '',
+        required: slotDef.required !== false,
+      },
+    }, ctx.state)
+    const v = result[slotDef.key]
+    return v ? String(v) : null
   }
 
   /**

@@ -21,6 +21,7 @@ export function createRouter(engine) {
       llmEnabled: config.llm_enabled === 'true',
       llmApiUrl: config.llm_api_url || '',
       llmModel: config.llm_model || '',
+      nluMode: config.nlu_mode || 'hybrid',
       meaninglessDetectionMode: config.meaningless_detection_mode || 'rule',
     })
   }))
@@ -46,6 +47,15 @@ export function createRouter(engine) {
       if (mode === 'rule' || mode === 'llm') {
         await configRepo.set('meaningless_detection_mode', mode)
         engine.meaninglessDetectionMode = mode
+      }
+    }
+
+    // 理解层模式（rule 纯规则 / hybrid 规则+LLM 补漏 / llm LLM 优先）
+    if (req.body.nluMode !== undefined) {
+      const mode = req.body.nluMode
+      if (['rule', 'hybrid', 'llm'].includes(mode)) {
+        await configRepo.set('nlu_mode', mode)
+        engine.taskEngine?.setNluMode?.(mode)
       }
     }
 
