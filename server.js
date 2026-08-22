@@ -35,7 +35,7 @@ import { createRouter as createDialogueRulesRouter } from './routes/dialogueRule
 import { createRouter as createUploadRouter } from './routes/upload.js'
 import { createRouter as createHealthRouter } from './routes/health.js'
 import { createRouter as createTasksRouter } from './routes/tasks.js'
-import taskEngine from './services/taskEngine.js'
+import taskEngine from './services/taskflow/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -158,8 +158,11 @@ async function start() {
     console.log(`   请在浏览器中打开上述地址\n`)
   })
 
-  // 定时清理过期会话
-  const cleanupTimer = setInterval(() => engine.cleanSessions(), config.session.cleanupInterval)
+  // 定时清理过期会话（FAQ 会话 + 任务会话）
+  const cleanupTimer = setInterval(() => {
+    engine.cleanSessions()
+    taskEngine.cleanupStale().catch(e => console.error('[TaskFlow] 清理失败:', e.message))
+  }, config.session.cleanupInterval)
 
   // ========== 优雅关闭 ==========
   async function shutdown(signal) {
@@ -172,6 +175,14 @@ async function start() {
 
     // 清理定时器
     clearInterval(cleanupTimer)
+
+    // 关闭任务引擎存储（Redis 连接）
+    try {
+      await taskEngine.stop()
+      console.log('   ✅ 任务存储已关闭')
+    } catch (e) {
+      console.error('   ⚠️ 关闭任务存储失败:', e.message)
+    }
 
     // 关闭数据库连接池
     try {

@@ -10,3 +10,6 @@ _search.*
 screenshot-*.png
 *.png
 logs/
+
+# npm ¹¤×÷Çø»º´æ
+.npm-cache/

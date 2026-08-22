@@ -5,10 +5,16 @@
 
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
-import taskEngine from '../services/taskEngine.js'
+import taskEngine from '../services/taskflow/index.js'
+import { listActions } from '../services/taskflow/actionRegistry.js'
 
 export function createRouter() {
   const router = Router()
+
+  // 获取可用动作列表（供管理后台步骤配置下拉）
+  router.get('/tasks/actions', asyncHandler(async (req, res) => {
+    res.json({ success: true, data: listActions() })
+  }))
 
   // 获取所有任务列表
   router.get('/tasks', asyncHandler(async (req, res) => {
@@ -28,7 +34,7 @@ export function createRouter() {
 
   // 创建/更新任务
   router.post('/tasks', asyncHandler(async (req, res) => {
-    const { code, name, description, trigger_keywords, slots, completion_message, on_complete, status } = req.body
+    const { code, name, description, trigger_keywords, slots, steps, completion_message, on_complete, status } = req.body
 
     if (!code || !name) {
       res.status(400).json({ success: false, message: '编码和名称不能为空' })
@@ -47,8 +53,14 @@ export function createRouter() {
       return
     }
 
+    // 验证 steps 格式
+    if (steps !== undefined && !Array.isArray(steps)) {
+      res.status(400).json({ success: false, message: 'steps 必须是数组' })
+      return
+    }
+
     await taskEngine.save({
-      code, name, description, trigger_keywords, slots,
+      code, name, description, trigger_keywords, slots, steps,
       completion_message, on_complete, status,
     })
 

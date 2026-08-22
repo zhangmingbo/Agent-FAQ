@@ -140,10 +140,10 @@ class FAQEngine {
     // 1. 如果会话中有活跃任务，优先处理任务对话
     if (this.taskEngine && this.taskEngine.hasActiveTask(sessionId)) {
       console.log('[TASK] 检测到活跃任务，进入任务对话模式')
-      const taskResult = this.taskEngine.processInput(sessionId, text)
+      const taskResult = await this.taskEngine.processInput(sessionId, text)
       if (taskResult) {
-        // 如果成功提取了信息、完成了任务、或取消了任务，直接用任务回复
-        if (taskResult.extracted || taskResult.isComplete || taskResult.cancelled) {
+        // 如果成功提取了信息、完成了任务、取消了任务、或要求重问，直接用任务回复
+        if (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask) {
           response = {
             intent_code: `task:${taskResult.taskState.taskCode}`,
             confidence: 1,
@@ -190,7 +190,7 @@ class FAQEngine {
         console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
         const taskState = this.taskEngine.startTask(sessionId, matchedTask)
         // 开始任务后，立即处理当前输入（可能已包含槽位信息）
-        const taskResult = this.taskEngine.processInput(sessionId, text)
+        const taskResult = await this.taskEngine.processInput(sessionId, text)
         if (taskResult) {
           response = {
             intent_code: `task:${matchedTask.code}`,
