@@ -12,7 +12,8 @@
     "start:legacy": "node test-server.js",
     "dev": "node --watch server.js",
     "backup": "bash scripts/backup.sh",
-    "example": "node example.js"
+    "example": "node example.js",
+    "test:taskflow": "node tests/taskflow.test.mjs"
   },
   "keywords": [
     "nlp",
