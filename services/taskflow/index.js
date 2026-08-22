@@ -85,15 +85,10 @@ class TaskFlowEngine {
       ttl: this.sessionTtl,
     })
 
-    // 4) 加载 LLM / NLU 配置（sys_config，未配置自动降级规则）
+    // 4) 加载 LLM / NLU 配置（sys_config，环境变量 DEEPSEEK_API_KEY 兜底自动启用）
     try {
       const dbConfig = await configRepo.getAll()
-      this.llm.configure({
-        enabled: dbConfig.llm_enabled === 'true',
-        apiUrl: dbConfig.llm_api_url || '',
-        apiKey: dbConfig.llm_api_key || '',
-        model: dbConfig.llm_model || 'deepseek-chat',
-      })
+      this.llm.configure(this.llm.resolveFromDb(dbConfig))
       if (dbConfig.nlu_mode) nlu.setMode(dbConfig.nlu_mode)
       else nlu.setMode(options.nluMode || process.env.NLU_MODE || 'hybrid')
     } catch (e) {

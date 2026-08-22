@@ -38,6 +38,25 @@ class LLMClient {
   }
 
   /**
+   * 从数据库配置解析 LLM 配置，环境变量兜底：
+   *   DEEPSEEK_API_KEY（或 LLM_API_KEY）存在时自动启用
+   *   LLM_API_URL / LLM_MODEL 可覆盖默认值
+   * @param {Object} dbConfig - configRepo.getAll() 结果
+   */
+  resolveFromDb(dbConfig = {}) {
+    const envKey = process.env.DEEPSEEK_API_KEY || process.env.LLM_API_KEY || ''
+    const apiUrl = dbConfig.llm_api_url || process.env.LLM_API_URL || 'https://api.deepseek.com/chat/completions'
+    const model = dbConfig.llm_model || process.env.LLM_MODEL || 'deepseek-chat'
+    const enabled = dbConfig.llm_enabled === 'true' || !!envKey
+    return {
+      enabled,
+      apiUrl,
+      apiKey: dbConfig.llm_api_key || envKey,
+      model,
+    }
+  }
+
+  /**
    * 通用 chat 调用
    * @param {Array<{role:string, content:string}>} messages
    * @param {Object} opts - { maxTokens, temperature }

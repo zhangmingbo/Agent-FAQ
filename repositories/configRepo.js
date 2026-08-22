@@ -29,12 +29,12 @@ export async function get(key) {
 }
 
 /**
- * 设置配置值（UPSERT）
+ * 设置配置值（UPSERT：键不存在时插入）
  */
 export async function set(key, value) {
   await pool.execute(
-    'UPDATE sys_config SET config_value = ?, updated_at = NOW() WHERE config_key = ?',
-    [String(value), key]
+    'INSERT INTO sys_config (config_key, config_value, updated_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE config_value = ?, updated_at = NOW()',
+    [key, String(value), String(value)]
   )
 }
 

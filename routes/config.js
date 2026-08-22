@@ -13,14 +13,18 @@ export function createRouter(engine) {
   // 获取配置
   router.get('/config', asyncHandler(async (req, res) => {
     const config = await configRepo.getAll()
+    // 实际生效的 LLM 配置（数据库配置 + 环境变量 DEEPSEEK_API_KEY 兜底）
+    const llmCfg = engine.taskEngine?.llm?.resolveFromDb
+      ? engine.taskEngine.llm.resolveFromDb(config)
+      : { enabled: config.llm_enabled === 'true', apiUrl: config.llm_api_url || '', model: config.llm_model || '' }
     res.json({
       minConfidence: parseFloat(config.min_confidence) || 0.5,
       clarifyThreshold: parseFloat(config.clarify_threshold) || 0.65,
       topK: parseInt(config.top_k) || 5,
       intentCount: engine.getIntentCount(),
-      llmEnabled: config.llm_enabled === 'true',
-      llmApiUrl: config.llm_api_url || '',
-      llmModel: config.llm_model || '',
+      llmEnabled: llmCfg.enabled,
+      llmApiUrl: llmCfg.apiUrl || '',
+      llmModel: llmCfg.model || '',
       nluMode: config.nlu_mode || 'hybrid',
       meaninglessDetectionMode: config.meaningless_detection_mode || 'rule',
     })

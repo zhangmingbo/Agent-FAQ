@@ -123,12 +123,14 @@ async function start() {
     if (dbConfig.min_confidence) engine.recognizer.minConfidence = parseFloat(dbConfig.min_confidence)
     if (dbConfig.clarify_threshold) engine.clarifyThreshold = parseFloat(dbConfig.clarify_threshold)
     if (dbConfig.top_k) engine.recognizer.topK = parseInt(dbConfig.top_k)
-    if (dbConfig.llm_enabled === 'true') {
+    if (dbConfig.llm_enabled === 'true' || process.env.DEEPSEEK_API_KEY || process.env.LLM_API_KEY) {
+      // 环境变量 DEEPSEEK_API_KEY 存在时自动启用（无需在数据库配置）
+      const llmCfg = taskEngine.llm.resolveFromDb(dbConfig)
       engine.llmConfig = {
         enabled: true,
-        apiUrl: dbConfig.llm_api_url || '',
-        apiKey: dbConfig.llm_api_key || '',
-        model: dbConfig.llm_model || '',
+        apiUrl: llmCfg.apiUrl,
+        apiKey: llmCfg.apiKey,
+        model: llmCfg.model,
       }
     }
     if (dbConfig.meaningless_detection_mode) {

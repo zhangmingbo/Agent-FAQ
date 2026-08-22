@@ -157,7 +157,9 @@ class TaskNLU {
   // ========== 槽位提取 ==========
 
   /**
-   * 提取单个槽位值（规则 → LLM 单槽兜底）
+   * 提取单个槽位值
+   * llm 模式：文本槽位 LLM 优先（规则对自然语言只会整句抓取，LLM 才能理解任意口语）
+   * hybrid/rule：规则优先，hybrid 下 LLM 兜底
    * @param {string} text
    * @param {Object} slotDef - 槽位定义（含 extract/validate）
    * @param {Object} ctx - { taskCode, state }
@@ -165,10 +167,29 @@ class TaskNLU {
    * @returns {Promise<{value:string|null, source:'rule'|'llm'|null}>}
    */
   async extractSlotValue(text, slotDef, ctx = {}, opts = {}) {
-    let value = await extractor.extract(text, slotDef, ctx, { labelOnly: !!opts.labelOnly })
-    let source = value !== null ? 'rule' : null
+    const method = slotDef.extract?.method || 'text'
+    const llmFirst = this.mode === 'llm' && llmClient.enabled && !opts.labelOnly && method === 'text'
+    let value = null
+    let source = null
 
-    if (value === null && this.mode !== 'rule' && llmClient.enabled && !opts.labelOnly) {
+    // LLM 优先（llm 模式）：理解任意口语，如"我姓张"→"张"
+    if (llmFirst) {
+      try {
+        value = await llmClient.extractSlot(text, slotDef, ctx)
+        source = value !== null ? 'llm' : null
+      } catch (e) {
+        console.error('[TaskNLU] LLM 单槽提取失败:', e.message)
+      }
+    }
+
+    // 规则提取（显式标签优先，如"地址是X"）
+    if (value === null) {
+      value = await extractor.extract(text, slotDef, ctx, { labelOnly: !!opts.labelOnly })
+      source = value !== null ? 'rule' : null
+    }
+
+    // LLM 兜底（hybrid 模式：规则未提取到时）
+    if (value === null && !llmFirst && this.mode !== 'rule' && llmClient.enabled && !opts.labelOnly) {
       try {
         value = await llmClient.extractSlot(text, slotDef, ctx)
         source = value !== null ? 'llm' : null
