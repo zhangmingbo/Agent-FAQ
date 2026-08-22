@@ -122,7 +122,9 @@ class TaskDefs {
     return def
   }
 
-  /** 触发词近义扩展：命中同义词表则并入相关表达（确定性模糊匹配） */
+  /** 触发词近义扩展：命中同义词表则并入相关表达（确定性模糊匹配）
+   *  注意：单字近义词（修/装/约等）过于宽泛会导致误触发
+   *  （如"修改电话"含"修"字误触报修），因此只保留 2 字及以上表达 */
   _expandTriggers(keywords) {
     const expanded = new Set()
     for (const kw of (keywords || [])) {
@@ -132,8 +134,12 @@ class TaskDefs {
       }
       expanded.add(kw)
       for (const [key, syns] of Object.entries(SYNONYM_EXPANSION)) {
+        // 单字 key 不参与包含匹配，避免"修改"含"修"误触
+        if (key.length < 2) continue
         if (kw.includes(key) || key.includes(kw)) {
-          for (const s of syns) expanded.add(s)
+          for (const s of syns) {
+            if (s.length >= 2) expanded.add(s)
+          }
         }
       }
     }

@@ -227,6 +227,42 @@ check('确认态修改后清单更新', r.taskState.slots.phone.value === '13900
 r = await taskEngine.processInput('t-mod2', '确认')
 check('修改后确认完成', r.isComplete === true)
 
+// ===== 识别问题修复（用户测试日志暴露） =====
+{
+  const noFalse = await taskEngine.matchTask('修改电话')
+  check('修改电话不再误触发报修', noFalse === null, `| code=${noFalse?.code || 'null'}`)
+}
+
+taskEngine.startTask('t-corr3', def)
+await taskEngine.processInput('t-corr3', '我要报修')
+await taskEngine.processInput('t-corr3', '上海嘉定南翔')
+r = await taskEngine.processInput('t-corr3', '地址不对，是嘉定江桥')
+check('口语纠正（地址不对，是X）', r.taskState.slots.address.value === '嘉定江桥', `| value=${r.taskState.slots.address.value}`)
+await taskEngine.processInput('t-corr3', '取消')
+
+taskEngine.startTask('t-confirmword', def)
+await taskEngine.processInput('t-confirmword', '我要报修')
+r = await taskEngine.processInput('t-confirmword', '确认')
+check('收集态"确认"不被吞', r.taskState.slots.address.filled === false && r.reask === true, `| reply=${r.reply.slice(0, 20)}`)
+await taskEngine.processInput('t-confirmword', '取消')
+
+// ===== 默认别名纠正（'安装地址'→'地址'，无需手动配别名） =====
+TaskDefs.defs.set('alias_test', {
+  code: 'alias_test', name: '别名测试', trigger_keywords: ['测试别名'],
+  slots: [{ key: 'addr', label: '安装地址', required: true }],
+  steps: [
+    { key: 'c1', type: 'collect', slot_key: 'addr', label: '安装地址', required: true, prompt: '请问安装地址？', next: 'confirm_step' },
+    { key: 'confirm_step', type: 'confirm', next: 'act' },
+    { key: 'act', type: 'action', action: 'complete_message', done_message: '完成' },
+  ],
+})
+taskEngine.startTask('t-alias', TaskDefs.defs.get('alias_test'))
+await taskEngine.processInput('t-alias', '测试别名')
+await taskEngine.processInput('t-alias', '上海嘉定南翔')
+r = await taskEngine.processInput('t-alias', '地址不对，是嘉定江桥')
+check('默认别名纠正（安装地址→地址）', r.taskState.slots.addr.value === '嘉定江桥', `| value=${r.taskState.slots.addr.value}`)
+TaskDefs.defs.delete('alias_test')
+
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`)
 await taskEngine.stop()
 process.exit(fail > 0 ? 1 : 0)

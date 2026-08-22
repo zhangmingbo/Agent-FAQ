@@ -255,6 +255,14 @@ class DialogManager {
     const isFirstTurn = state.turnCount <= 1
     const textBlocked = method === 'text' && (isFirstTurn || !canText)
 
+    // 控制词（确认/提交等）不作为槽位值：还有必填未填时提示缺什么
+    if (/^(确认|提交|是的|就是)$/.test(text.trim())) {
+      const missing = Object.entries(state.slots).filter(([_, s]) => s.required && !s.filled)
+      if (missing.length > 0) {
+        return { extracted: false, reask: `还差：${missing.map(([_, s]) => s.label).join('、')}，请继续提供。` }
+      }
+    }
+
     const task = this.defs.get(state.taskCode)
     const { value } = await this.nlu.extractSlotValue(
       text, slotDef,
@@ -657,9 +665,19 @@ class DialogManager {
     return (task?.steps || []).find(s => s.type === 'collect' && s.slot_key === slotKey) || null
   }
 
-  /** 槽位名称（含别名） */
+  /** 槽位名称（含别名 + 默认别名：自动去掉常见业务前缀） */
   _slotNames(slot) {
-    return [slot.label, ...(slot.aliases || [])].filter(Boolean)
+    const names = [slot.label, ...(slot.aliases || [])].filter(Boolean)
+    // 默认别名：'安装地址'→'地址'、'联系电话'→'电话'、'客户姓名'→'姓名'
+    if (slot.label && slot.label.length >= 3) {
+      for (const prefix of ['安装', '收货', '客户', '联系', '配送', '上门']) {
+        if (slot.label.startsWith(prefix) && slot.label.length > prefix.length + 1) {
+          names.push(slot.label.slice(prefix.length))
+          break
+        }
+      }
+    }
+    return names
   }
 
   /** 确认态：识别用户重新提供某个槽位值（按名称/别名匹配） */
@@ -716,6 +734,12 @@ class DialogManager {
             if (value.length >= 1) return { key, value }
           }
         }
+        // 模式3："地址不对，是XX" / "地址错了，是XX" / "地址有误，应该改XX"
+        const denyMatch = t.match(new RegExp(`${name}(?:不对|错了|有误|写错|不是)[，,、\\s]*(?:应该|应当)?[是]?[:：\\s]*(.+)$`))
+        if (denyMatch && denyMatch[1] && denyMatch[1].trim().length >= 1) {
+          const value = denyMatch[1].trim().replace(/^[，,、\s]+/, '')
+          if (value.length >= 1) return { key, value }
+        }
       }
     }
     return null
@@ -741,6 +765,9 @@ class DialogManager {
           // 模式2："电话我想改一下"（名字在前，修改词在后）
           const m2 = t.match(new RegExp(`${name}\\s*(?:${MODIFIERS})\\s*[是为]?[:：\\s]*$`))
           if (m2) return key
+          // 模式3："地址不对" / "电话错了"（名字 + 否定词，无新值 → 进入修改等待）
+          const m3 = t.match(new RegExp(`^${name}(?:不对|错了|有误|写错|不是|填错)[，,、\\s]*$`))
+          if (m3) return key
         } catch { /* ignore */ }
       }
     }
