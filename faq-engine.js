@@ -385,21 +385,46 @@ class FAQEngine {
     }
 
     if (result.matched) {
+      // ===== [STEP 3.5] LLM 意图重排（可选，配置启用且置信度不高时） =====
+      if (this.llmConfig?.enabled && result.confidence < 0.9 && (result.top_results?.length || 0) >= 2) {
+        const choice = await this._llmRerankIntent(text, result.top_results.slice(0, 5))
+        if (choice && choice !== result.intent_code) {
+          const alt = result.top_results.find(r => (r.intentCode || r.intent_code) === choice)
+          if (alt && this.faqService.getFaq(choice)) {
+            console.log(`[LLM] 意图重排: ${result.intent_code} → ${choice}`)
+            result.intent_code = choice
+            result.intent_name = alt.intentName || alt.intent_name
+            result.confidence = alt.similarity
+          }
+        }
+      }
+
       const faq = this.faqService.getFaq(result.intent_code)
 
-      if (result.confidence >= this.clarifyThreshold) {
+      // ===== [STEP 3.6] 候选竞争检测：top1/top2 是不同意图且差距很小 → 追问让用户选 =====
+      const top1 = result.top_results?.[0]
+      const top2 = result.top_results?.[1]
+      const competition = !!(
+        top1 && top2
+        && (top1.intentCode || top1.intent_code) !== (top2.intentCode || top2.intent_code)
+        && top1.similarity < 0.95
+        && (top1.similarity - top2.similarity) < 0.06
+      )
+
+      if (result.confidence >= this.clarifyThreshold && !competition) {
         // ===== [STEP 4.1] 高置信度 - 直接回答 =====
         console.log(`[STEP 4.1] ✅ 高置信度 (${(result.confidence * 100).toFixed(1)}% >= ${(this.clarifyThreshold * 100).toFixed(0)}%) → 直接回答`)
         context.pendingClarify = null
         return this._buildResponse(result, faq, 'direct')
       } else {
-        // ===== [STEP 4.2] 中置信度 - 追问确认 =====
-        console.log(`[STEP 4.2] ⚠️ 中置信度 (${(result.confidence * 100).toFixed(1)}% < ${(this.clarifyThreshold * 100).toFixed(0)}%) → 追问确认`)
+        // ===== [STEP 4.2] 中置信度/候选竞争 - 追问确认 =====
+        console.log(`[STEP 4.2] ⚠️ ${competition ? '候选竞争' : '中置信度'} (${(result.confidence * 100).toFixed(1)}%) → 追问确认`)
         context.pendingClarify = {
           intentCode: result.intent_code,
           intentName: result.intent_name,
           confidence: result.confidence,
           topResults: result.top_results,
+          competition,
         }
         return this._buildClarifyResponse(result, faq)
       }
@@ -417,6 +442,19 @@ class FAQEngine {
    */
   async _handleClarify(text, context) {
     const pending = context.pendingClarify
+
+    // 0) 用户在候选竞争追问中选择了候选（"1"/"2"/"第一个"/候选名称）
+    const selected = this._matchClarifySelection(text, pending)
+    if (selected) {
+      console.log(`[FAQEngine] 用户选择候选: ${selected.intentCode}`)
+      context.pendingClarify = null
+      const faq = this.faqService.getFaq(selected.intentCode)
+      return this._buildResponse(
+        { matched: true, intent_code: selected.intentCode, intent_name: selected.intentName, confidence: selected.confidence },
+        faq,
+        'direct'
+      )
+    }
 
     // 使用规则管理器判断用户意图（v2.0 - 返回对象格式）
     const confirmResult = dialogueRules.isConfirm(text)
@@ -460,6 +498,71 @@ class FAQEngine {
   }
 
   /**
+   * 匹配用户在追问中的候选选择："1"/"2"/"3"/"第一个"/候选名称
+   */
+  _matchClarifySelection(text, pending) {
+    if (!pending?.topResults?.length) return null
+    const t = text.trim().toLowerCase()
+    const candidates = pending.topResults.slice(0, 3)
+
+    // 数字/序数选择
+    const numMatch = t.match(/^[第]?([123])[个项条]?$/) || t.match(/^(第一个|第二个|第三个)$/)
+    if (numMatch) {
+      let idx = -1
+      if (/^[123]$/.test(numMatch[1])) {
+        idx = parseInt(numMatch[1], 10) - 1
+      } else {
+        idx = ['第一个', '第二个', '第三个'].indexOf(numMatch[1])
+      }
+      const c = candidates[idx]
+      if (c) return { intentCode: c.intentCode, intentName: c.intentName, confidence: c.similarity }
+    }
+
+    // 候选名称包含匹配（如回复"气价"命中"气价查询"）
+    for (const c of candidates) {
+      const name = c.intentName || ''
+      if (name && name.length > 1 && t.includes(name)) {
+        return { intentCode: c.intentCode, intentName: name, confidence: c.similarity }
+      }
+    }
+    return null
+  }
+
+  /**
+   * LLM 意图重排（可选）：从 top-5 候选中选最符合用户问题的意图
+   * @returns {Promise<string|null>} 意图 code
+   */
+  async _llmRerankIntent(text, candidates) {
+    try {
+      const list = candidates.map((c, i) => `${i + 1}. ${c.intentName || c.intentCode}（${(c.questionText || '').slice(0, 30)}）`).join('\n')
+      const response = await fetch(this.llmConfig.apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.llmConfig.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.llmConfig.model,
+          messages: [
+            { role: 'system', content: '你是客服意图判定器。从候选列表中选出最符合用户问题的那个，只返回数字序号，不要其他文字。' },
+            { role: 'user', content: `候选：\n${list}\n用户问题："${text}"\n请返回序号：` },
+          ],
+          max_tokens: 5,
+          temperature: 0,
+        }),
+      })
+      const data = await response.json()
+      const content = (data.choices?.[0]?.message?.content || '').trim()
+      const idx = parseInt(content, 10) - 1
+      const hit = candidates[idx]
+      return hit ? (hit.intentCode || hit.intent_code) : null
+    } catch (e) {
+      console.error('[LLM] 意图重排失败:', e.message)
+      return null
+    }
+  }
+
+  /**
    * 构建直接回答响应
    */
   _buildResponse(result, faq, source) {
@@ -497,9 +600,26 @@ class FAQEngine {
 
   /**
    * 构建追问确认响应
+   * 候选竞争时改为"选项选择"话术；普通低置信度保持"是/不是"确认
    */
   _buildClarifyResponse(result, faq) {
-    const followUp = faq?.followUp || `您是想咨询"${result.intent_name}"吗？请回复"是"或"不是"`
+    const top = result.top_results || []
+    const top1 = top[0]
+    const top2 = top[1]
+    const competition = !!(
+      top1 && top2
+      && (top1.intentCode || top1.intent_code) !== (top2.intentCode || top2.intent_code)
+      && top1.similarity < 0.95
+      && (top1.similarity - top2.similarity) < 0.06
+    )
+
+    let followUp
+    if (competition) {
+      const options = top.slice(0, 3).map((r, i) => `${i + 1}. ${r.intentName || r.intentCode}`).join('\n')
+      followUp = `您的问题可能属于以下几种，请回复序号（1/2/3）选择：\n${options}`
+    } else {
+      followUp = faq?.followUp || `您是想咨询"${result.intent_name}"吗？请回复"是"或"不是"`
+    }
 
     return {
       matched: false,
@@ -508,7 +628,7 @@ class FAQEngine {
       intent_name: null,
       answer: followUp,
       source: 'clarify',
-      candidates: result.top_results?.slice(0, 3).map(r => ({
+      candidates: top.slice(0, 3).map(r => ({
         intent_code: r.intentCode,
         intent_name: r.intentName,
         similarity: r.similarity,
