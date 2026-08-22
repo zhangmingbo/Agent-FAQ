@@ -132,17 +132,17 @@ class TaskEngine {
    * 处理任务对话（从用户输入中提取槽位信息）
    * @param {string} sessionId 
    * @param {string} text - 用户输入
-   * @returns {Object} { reply, isComplete, taskState }
+   * @returns {Object} { reply, isComplete, extracted, taskState, cancelled }
    */
   processInput(sessionId, text) {
     const state = this.activeTasks.get(sessionId)
     if (!state || state.status !== 'in_progress') {
       return null
     }
-
+  
     state.lastActive = Date.now()
     state.turnCount = (state.turnCount || 0) + 1
-
+  
     // 检查是否要取消
     if (this._isCancel(text)) {
       state.status = 'cancelled'
@@ -150,71 +150,190 @@ class TaskEngine {
       return {
         reply: '好的，已为您取消操作。',
         isComplete: false,
+        extracted: true,
         cancelled: true,
         taskState: state,
       }
     }
-
+  
+    // 检查是否要修改已填槽位（如“地址改成XX”“电话是XXX”）
+    const correction = this._detectCorrection(text, state)
+    if (correction) {
+      const oldVal = state.slots[correction.key].value
+      state.slots[correction.key].value = correction.value
+      state.slots[correction.key].filled = true
+      state.skipCount = 0
+      console.log(`[TASK] 槽位纠正: ${correction.key} 从 "${oldVal}" 改为 "${correction.value}"`)
+  
+      // 检查纠正后是否全部填完
+      const allFilled = Object.values(state.slots).every(s => !s.required || s.filled)
+      if (allFilled) {
+        return this._completeTask(sessionId, state)
+      }
+      const nextPrompt = this._getNextPrompt(state)
+      return {
+        reply: `好的，${state.slots[correction.key].label}已更新为「${correction.value}」。\n${nextPrompt}`,
+        isComplete: false,
+        extracted: true,
+        cancelled: false,
+        taskState: state,
+      }
+    }
+  
     // 首轮不提取（触发消息通常只是意图表达，不含具体信息）
     // 但如果用户一次性给了多个信息（如“我要报修，地址是XX”），则尝试提取
     const isFirstTurn = state.turnCount <= 1
     const isRichInput = !isFirstTurn || this._isRichInput(text, state.taskCode)
-
-    // 尝试从未填充的槽位中提取信息
+  
+    // 尝试从未填充的槽位中提取信息（支持多槽位同时提取）
     const unfilledSlots = Object.entries(state.slots).filter(([_, s]) => !s.filled)
     let extracted = []
-
+  
     if (isRichInput) {
-      for (const [key, slot] of unfilledSlots) {
+      // 优先用结构化提取（正则、枚举），再用文本提取
+      const structuredSlots = unfilledSlots.filter(([_, s]) => s.extractType !== 'text')
+      const textSlots = unfilledSlots.filter(([_, s]) => s.extractType === 'text')
+  
+      // 先提取结构化槽位（更精确）
+      for (const [key, slot] of structuredSlots) {
         const value = this._extractValue(text, slot)
         if (value !== null) {
           slot.filled = true
           slot.value = value
           extracted.push(slot.label)
-          break // 每轮只提取一个槽位，避免错误匹配
+        }
+      }
+      // 再提取第一个匹配的文本槽位
+      if (extracted.length === 0 || textSlots.length === 1) {
+        for (const [key, slot] of textSlots) {
+          const value = this._extractValue(text, slot)
+          if (value !== null) {
+            slot.filled = true
+            slot.value = value
+            extracted.push(slot.label)
+            break
+          }
+        }
+      }
+    }
+  
+    const didExtract = extracted.length > 0
+    state.skipCount = didExtract ? 0 : (state.skipCount || 0) + 1
+  
+    // 检查是否所有必填槽位都已填充
+    const allFilled = Object.values(state.slots).every(s => !s.required || s.filled)
+  
+    if (allFilled) {
+      return this._completeTask(sessionId, state)
+    }
+  
+    // 构建回复
+    let reply = ''
+    if (didExtract) {
+      reply += `好的，已记录：${extracted.join('、')}。\n`
+    }
+  
+    const nextPrompt = this._getNextPrompt(state)
+  
+    if (state.skipCount >= 2 && !didExtract) {
+      // 连续多次无法提取，给出智能引导
+      reply += this._buildSmartGuidance(state)
+      state.skipCount = 0 // 重置，给一次机会
+    } else {
+      reply += nextPrompt
+    }
+  
+    return {
+      reply: reply || '请继续提供所需信息。',
+      isComplete: false,
+      extracted: didExtract,
+      cancelled: false,
+      taskState: state,
+    }
+  }
+
+  /**
+   * 完成当前任务
+   * @private
+   */
+  _completeTask(sessionId, state) {
+    state.status = 'completed'
+    const taskDef = this.taskDefs.get(state.taskCode)
+    const summary = this._buildSummary(state)
+    const completionMsg = taskDef?.completion_message || `已为您完成${state.taskName}。`
+    this.activeTasks.delete(sessionId)
+    return {
+      reply: completionMsg + '\n' + summary,
+      isComplete: true,
+      extracted: true,
+      cancelled: false,
+      taskState: state,
+    }
+  }
+
+  /**
+   * 获取下一个需要填充的槽位的提问
+   * @private
+   */
+  _getNextPrompt(state) {
+    const nextSlot = Object.entries(state.slots).find(([_, s]) => s.required && !s.filled)
+    if (nextSlot) return nextSlot[1].prompt
+    const optSlot = Object.entries(state.slots).find(([_, s]) => !s.required && !s.filled)
+    if (optSlot) return `您还需要提供${optSlot[1].label}吗？不需要的话回复“提交”即可。`
+    return '信息已收集完毕，回复“提交”确认。'
+  }
+
+  /**
+   * 构建智能引导消息（连续多次无法提取时）
+   * @private
+   */
+  _buildSmartGuidance(state) {
+    const filled = Object.entries(state.slots).filter(([_, s]) => s.filled)
+    const unfilled = Object.entries(state.slots).filter(([_, s]) => s.required && !s.filled)
+    
+    let msg = '目前还需要以下信息：\n'
+    for (const [key, slot] of unfilled) {
+      const status = slot.filled ? `✅ ${slot.value}` : '❓ 待提供'
+      msg += `  ${slot.label}：${status}\n`
+    }
+    if (filled.length > 0) {
+      msg += '\n您可以直接回复对应的内容，或说“修改XX”来更改已填信息。'
+    } else {
+      msg += '\n请逐一提供以上信息。'
+    }
+    return msg
+  }
+
+  /**
+   * 检测用户是否在纠正已填槽位
+   * 如“地址改成XX”“电话换成XXX”“地址是XX”（重新提供）
+   * @private
+   */
+  _detectCorrection(text, state) {
+    const filledSlots = Object.entries(state.slots).filter(([_, s]) => s.filled)
+    if (filledSlots.length === 0) return null
+
+    const t = text.trim()
+    // 模式1：“修改/改成/换成 + 槽位标签 + 内容”
+    const modifyPatterns = ['修改', '改成', '换成', '改为', '变更', '改一下']
+    for (const [key, slot] of filledSlots) {
+      for (const p of modifyPatterns) {
+        if (t.includes(p + slot.label) || t.includes(slot.label + p)) {
+          // 提取修改后的值：取标签和关键词后面的内容
+          const idx = t.indexOf(p)
+          const afterP = t.substring(idx + p.length).trim()
+          // 去掉可能的槽位标签前缀
+          const value = afterP.replace(new RegExp(`^${slot.label}[是为]?`), '').trim()
+          if (value.length >= 2) {
+            return { key, value }
+          }
         }
       }
     }
 
-    // 检查是否所有必填槽位都已填充
-    const allFilled = Object.values(state.slots).every(s => !s.required || s.filled)
-
-    if (allFilled) {
-      state.status = 'completed'
-      const taskDef = this.taskDefs.get(state.taskCode)
-      const summary = this._buildSummary(state)
-      const completionMsg = taskDef?.completion_message || `已为您完成${state.taskName}。`
-      
-      this.activeTasks.delete(sessionId)
-      return {
-        reply: completionMsg + '\n' + summary,
-        isComplete: true,
-        cancelled: false,
-        taskState: state,
-      }
-    }
-
-    // 还有未填充的槽位，继续提问
-    const nextSlot = unfilledSlots.find(([_, s]) => s.required && !s.filled)
-    let reply = ''
-
-    if (extracted.length > 0) {
-      reply += `好的，已记录：${extracted.join('、')}。\n`
-    }
-
-    if (nextSlot) {
-      reply += nextSlot[1].prompt
-    } else {
-      // 所有必填项已填，但有选填项未填
-      reply += '信息已收集完毕，请确认以上内容是否正确？回复"确认"提交，或继续补充信息。'
-    }
-
-    return {
-      reply: reply || '请继续提供所需信息。',
-      isComplete: false,
-      cancelled: false,
-      taskState: state,
-    }
+    // 模式2：用户重新提供某个槽位的信息（如之前问了地址，用户直接说新地址）
+    // 这种情况在 processInput 的提取阶段会处理，这里不重复检测
+    return null
   }
 
   /**
@@ -286,10 +405,14 @@ class TaskEngine {
         return null
       }
       case 'text':
-      default:
+      default: {
         // 文本类型：要求输入至少4个字符，且不能是纯触发词
-        if (text.trim().length >= 4) return text.trim()
-        return null
+        const t = text.trim()
+        if (t.length < 4) return null
+        // 如果输入看起来像在提问，不作为文本槽位值
+        if (this._isQuestion(t)) return null
+        return t
+      }
     }
   }
 
@@ -301,6 +424,21 @@ class TaskEngine {
     const cancelPatterns = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
     const t = text.trim()
     return cancelPatterns.some(p => t.includes(p))
+  }
+
+  /**
+   * 检测用户输入是否在提问（而不是提供信息）
+   * @private
+   */
+  _isQuestion(text) {
+    const t = text.trim()
+    // 以问号结尾
+    if (t.includes('？') || t.includes('?')) return true
+    // 包含疑问词
+    const questionWords = ['怎么', '如何', '怎样', '什么', '哪里', '哪儿', '多少', '几个', '为什么',
+      '能不能', '可以吗', '是否', '有没有', '多久', '几时', '请问', '想知道',
+      '怎么办', '好不好', '行不行', '是不是']
+    return questionWords.some(w => t.includes(w))
   }
 
   /**

@@ -165,11 +165,44 @@ class FAQEngine {
       console.log('[TASK] 检测到活跃任务，进入任务对话模式')
       const taskResult = this.taskEngine.processInput(sessionId, text)
       if (taskResult) {
-        response = {
-          intent_code: `task:${taskResult.taskState.taskCode}`,
-          confidence: 1,
-          source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
-          answer: taskResult.reply,
+        // 如果成功提取了信息、完成了任务、或取消了任务，直接用任务回复
+        if (taskResult.extracted || taskResult.isComplete || taskResult.cancelled) {
+          response = {
+            intent_code: `task:${taskResult.taskState.taskCode}`,
+            confidence: 1,
+            source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
+            answer: taskResult.reply,
+          }
+        } else {
+          // 提取失败（用户输入不匹配任何槽位）
+          // 先尝试 FAQ 匹配，如果匹配到则回答 FAQ 并附带任务提醒
+          console.log('[TASK] 提取失败，尝试 FAQ 匹配...')
+          const faqResponse = await this._handleRecognize(text, context)
+          
+          // 如果 FAQ 匹配到了有效答案（不是兆底回复）
+          if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+            // 获取当前任务进度
+            const taskState = this.taskEngine.getActiveTask(sessionId)
+            if (taskState) {
+              const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
+              const progressHint = `\n\n———\n📌 您正在进行「${taskState.taskName}」，还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
+              response = {
+                ...faqResponse,
+                answer: faqResponse.answer + progressHint,
+                source: 'task_faq',
+              }
+            } else {
+              response = faqResponse
+            }
+          } else {
+            // FAQ 也没匹配到，用任务引擎的智能引导回复
+            response = {
+              intent_code: `task:${taskResult.taskState.taskCode}`,
+              confidence: 1,
+              source: 'task_progress',
+              answer: taskResult.reply,
+            }
+          }
         }
       }
     }
