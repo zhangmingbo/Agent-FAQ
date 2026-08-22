@@ -20,6 +20,7 @@ import { validateSlot } from './validator.js'
 import llmClient from './llm.js'
 import { cosineSimilarity } from '../../src/similarity.js'
 import { get as getPrompt } from '../llmPrompts.js'
+import dialogueRules from '../../rules/dialogueRules.js'
 
 /** 否定句防护（避免"没坏/不用修"触发任务） */
 const NEGATION_RE = /没(有)?(坏|问题|故障|事|毛病)|不(是|用|要|想)(报修|维修|修)|没(有)?必要/
@@ -243,6 +244,89 @@ class TaskNLU {
       text,
     })
     return llmClient.dialogueTurn(system, user)
+  }
+
+  // ========== 意图路由（任务通道 vs FAQ 通道） ==========
+
+  /**
+   * 判定用户输入该走哪条通道（双向穿透的核心）
+   *
+   * 返回：
+   *   'task_continue'  继续当前任务（答槽位/确认/取消/纠正）
+   *   'task_new'       发起新任务（用户想办另一件事）
+   *   'faq'            知识咨询（费用/故障/操作，应交给 FAQ 回答）
+   *
+   * 混合策略（运营可配）：
+   *   1. 规则快检（确定性、零成本）：
+   *      - 确认态下的确认/否认、任意状态的取消 → task_continue
+   *      - 话术直接点名当前槽位标签 → task_continue
+   *      - 明确触发其他任务（触发词命中且无咨询疑云）→ task_new
+   *   2. LLM 兜底：仅当规则拿不准时调用（router 提示词，管理后台可编辑）
+   *   3. 降级：LLM 失败 → 有任务上下文则 task_continue（保守不丢进度），否则 faq
+   *
+   * @param {string} text - 用户输入
+   * @param {Object} ctx - { taskState, tasks, filledDesc }
+   * @returns {Promise<string>}
+   */
+  async route(text, ctx = {}) {
+    const t = (text || '').trim()
+    if (!t) return 'faq'
+    const lower = t.toLowerCase()
+
+    // ===== 规则快检 =====
+    // 1) 当前任务中的确定性表达：确认/否认/取消 → 继续任务
+    if (ctx.taskState) {
+      const state = ctx.taskState
+      if (state.status === 'confirming') {
+        const confirmR = dialogueRules.isConfirm(t)
+        const denyR = dialogueRules.isDeny(t)
+        const isConfirm = typeof confirmR === 'object' ? confirmR.matched : confirmR
+        const isDeny = typeof denyR === 'object' ? denyR.matched : denyR
+        if (isConfirm || isDeny) return 'task_continue'
+      }
+      if (this._isCancel(lower)) return 'task_continue'
+      // 话术直接点名槽位标签（"电话是X" "地址改X"）→ 继续任务
+      const slotLabels = Object.values(state.slots || {}).map(s => s.label || s.key).filter(Boolean)
+      if (slotLabels.some(l => l && l.length >= 2 && t.includes(l))) return 'task_continue'
+    }
+
+    // 2) 触发词命中 → 新任务
+    let consultHint = false
+    if (ctx.tasks && ctx.tasks.length > 0) {
+      const byRule = this._matchByRules(lower, ctx.tasks, ctx.taskState?.taskCode || null)
+      if (byRule) {
+        // 触发词命中但话术像咨询（费用/价格/怎么/为什么…）→ 不武断
+        consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
+        // 无咨询疑云 → 直接新任务；有疑云但 LLM 不可用（rule 模式）→ 按规则保守触发
+        if (!consultHint || !llmClient.enabled) return 'task_new'
+      }
+    }
+
+    // ===== LLM 兜底（规则拿不准：任务中插话 / 触发词+咨询疑云 / 无任务咨询疑云） =====
+    if (llmClient.enabled) {
+      try {
+        const decision = await llmClient.routeTurn({
+          taskName: ctx.taskState?.taskName || '',
+          taskContext: ctx.filledDesc || '',
+          text: t,
+        })
+        if (decision === 'faq') return 'faq'
+        if (decision === 'new_task') return 'task_new'
+        // continue 或 null → 有任务上下文则继续任务；无任务上下文则视为 FAQ
+        return ctx.taskState ? 'task_continue' : 'faq'
+      } catch (e) {
+        console.error('[TaskNLU] LLM 路由判定失败:', e.message)
+      }
+    }
+
+    // ===== 降级 =====
+    return ctx.taskState ? 'task_continue' : 'faq'
+  }
+
+  /** 取消词快检（规则确定性，任何模式生效） */
+  _isCancel(lowerText) {
+    return ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃', '不用了']
+      .some(k => lowerText.includes(k))
   }
 
   /**

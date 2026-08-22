@@ -83,6 +83,18 @@ const PROMPT_DEFS = {
     placeholders: ['summary'],
     default: '📋 请确认以下信息：\n{summary}\n回复"确认"提交，或告诉我需要修改的内容。',
   },
+  'router.system': {
+    name: '意图路由 · 系统提示词',
+    desc: '决定用户输入该走哪个通道：继续当前任务 / 发起新任务 / FAQ 知识咨询（规则拿不准时由 LLM 判定）',
+    placeholders: ['taskName', 'taskContext'],
+    default: '你是客服系统的意图路由器。用户在办理「{taskName}」的过程中说了一句话，请判断这句话属于哪种情况：\n\n1. continue —— 用户在继续办理当前任务（提供/补充/修改任务需要的信息，回答提问，确认或取消等）\n2. new_task —— 用户想办理另一项业务（预约、报修、换表等），或明确不想继续当前任务\n3. faq —— 用户咨询知识性问题（费用、故障原因、操作方法、政策规则等），与当前任务办理无关\n\n判断要点：\n- 提供电话号码、地址、姓名、型号、时间、服务类型等任务字段 → continue\n- 询问费用、价格、原因、怎么处理等 → faq（即使提到与任务相关的词，如"上门换滤芯收费吗"仍是咨询）\n- 表达要办理另一件事 → new_task\n- 寒暄、语气词、无实质内容 → 归入 continue（交给任务引擎引导）\n\n只返回一个词：continue / new_task / faq，不要任何其他内容。',
+  },
+  'router.user': {
+    name: '意图路由 · 用户模板',
+    desc: '路由判定时发给 LLM 的用户消息模板',
+    placeholders: ['taskName', 'taskContext', 'text'],
+    default: '当前任务：{taskName}\n{taskContext}\n用户刚说："{text}"\n请判断应返回：continue / new_task / faq',
+  },
 }
 
 /** 当前生效的提示词缓存（key -> value，DB 覆盖后与默认值合并） */

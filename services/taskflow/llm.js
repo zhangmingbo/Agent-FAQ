@@ -208,6 +208,28 @@ class LLMClient {
     return hit ? hit.code : null
   }
 
+  /**
+   * 意图路由判定：用户输入该走哪条通道（规则拿不准时由 LLM 兜底）
+   * @param {Object} opts - { taskName, taskContext, text }
+   * @returns {Promise<string>} 'continue' | 'new_task' | 'faq' | null
+   */
+  async routeTurn({ taskName, taskContext, text }) {
+    if (!this.enabled) return null
+    const system = getPrompt('router.system', { taskName, taskContext })
+    const user = getPrompt('router.user', { taskName, taskContext, text })
+
+    const raw = await this.chat([
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ], { maxTokens: 10, temperature: 0 })
+
+    const trimmed = raw.trim().toLowerCase()
+    if (trimmed.startsWith('continue')) return 'continue'
+    if (trimmed.startsWith('new_task')) return 'new_task'
+    if (trimmed.startsWith('faq')) return 'faq'
+    return null
+  }
+
   /** 解析 LLM 返回的 JSON（容忍 ```json 包裹与前后噪声） */
   _parseJson(raw) {
     let s = raw.trim()

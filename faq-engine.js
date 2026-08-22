@@ -140,89 +140,108 @@ class FAQEngine {
 
     let response
 
-    // ===== 任务流程优先检查 =====
-    // 1. 如果会话中有活跃任务，优先处理任务对话
-    if (this.taskEngine && this.taskEngine.hasActiveTask(sessionId)) {
-      console.log('[TASK] 检测到活跃任务，进入任务对话模式')
-      const taskResult = await this.taskEngine.processInput(sessionId, text)
-      if (taskResult) {
-        // 如果成功提取了信息、完成了任务、取消了任务、或要求重问，直接用任务回复
-        if (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask) {
-          if (taskResult.question && taskResult.questionText) {
-            // 边答边问：先 FAQ 回答问题，再接任务进度提示
-            console.log('[TASK] 检测到边答边问，FAQ 回答:', taskResult.questionText)
-            const faqResponse = await this._handleRecognize(taskResult.questionText, context)
-            if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
-              response = {
-                ...faqResponse,
-                answer: faqResponse.answer + '\n' + taskResult.reply,
-                source: 'task_faq',
-              }
-            } else {
-              response = {
-                intent_code: `task:${taskResult.taskState.taskCode}`,
-                confidence: 1,
-                source: 'task_progress',
-                answer: taskResult.reply,
-              }
-            }
-          } else {
-            response = {
-              intent_code: `task:${taskResult.taskState.taskCode}`,
-              confidence: 1,
-              source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
-              answer: taskResult.reply,
-            }
+    // ===== 意图路由 + 任务流程检查 =====
+    // 任务引擎存在时，每轮输入先经路由判定通道，实现任务/FAQ 双向穿透：
+    //   有活跃任务（含挂起）→ task_continue / task_new / faq 三选一
+    //   无活跃任务        → 命中触发词则发起任务，否则 FAQ
+    if (this.taskEngine) {
+      const hasActive = this.taskEngine.hasActiveTask(sessionId)
+      const isSuspended = this.taskEngine.isSuspended(sessionId)
+
+      // ---------- 场景 A：任务被 FAQ 插话挂起 ----------
+      if (hasActive && isSuspended) {
+        console.log('[TASK] 检测到挂起任务，先判定是否恢复')
+        const taskState = this.taskEngine.getActiveTask(sessionId)
+        const resumeR = dialogueRules.isResume(text)
+        const isResume = typeof resumeR === 'object' ? resumeR.matched : resumeR
+        if (isResume) {
+          // 用户说"继续/接着办" → 恢复任务并回到任务通道
+          this.taskEngine.resume(sessionId)
+          const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
+          const progressHint = unfilled.length
+            ? `还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
+            : '信息已齐全，请确认'
+          response = {
+            intent_code: `task:${taskState.taskCode}`,
+            confidence: 1,
+            source: 'task_resumed',
+            answer: `好的，我们继续「${taskState.taskName}」～${progressHint}`,
           }
         } else {
-          // 提取失败（用户输入不匹配任何槽位）
-          // 先尝试 FAQ 匹配，如果匹配到则回答 FAQ 并附带任务提醒
-          console.log('[TASK] 提取失败，尝试 FAQ 匹配...')
-          const faqResponse = await this._handleRecognize(text, context)
-          
-          // 如果 FAQ 匹配到了有效答案（不是兆底回复）
-          if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
-            // 获取当前任务进度
-            const taskState = this.taskEngine.getActiveTask(sessionId)
-            if (taskState) {
-              const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
-              const progressHint = `\n\n———\n📌 您正在进行「${taskState.taskName}」，还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
-              response = {
-                ...faqResponse,
-                answer: faqResponse.answer + progressHint,
-                source: 'task_faq',
-              }
-            } else {
-              response = faqResponse
-            }
+          // 不是恢复词：可能是继续 FAQ 提问，或想换办别的事
+          const route = await this.taskEngine.nlu.route(text, {
+            taskState,
+            tasks: [...this.taskEngine.taskDefs.values()],
+            filledDesc: this._taskFilledDesc(taskState),
+          })
+          if (route === 'task_new') {
+            // 换办另一件事：中断暂存当前任务，走新任务流程
+            await this.taskEngine.stash(sessionId)
+            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true)
           } else {
-            // FAQ 也没匹配到，用任务引擎的智能引导回复
-            response = {
-              intent_code: `task:${taskResult.taskState.taskCode}`,
-              confidence: 1,
-              source: 'task_progress',
-              answer: taskResult.reply,
+            // 继续 FAQ 通道（任务保持挂起）
+            response = await this._handleRecognize(text, context)
+            if (response.source === 'direct' || response.source === 'confirmed') {
+              response = {
+                ...response,
+                answer: response.answer + this._suspendedHint(taskState),
+                source: 'task_suspended_faq',
+              }
             }
           }
         }
       }
-    }
-    // 2. 如果没有活跃任务，检查是否触发新任务
-    else if (this.taskEngine) {
-      const matchedTask = await this.taskEngine.matchTask(text)
-      if (matchedTask) {
-        console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
-        const taskState = this.taskEngine.startTask(sessionId, matchedTask)
-        // 开始任务后，立即处理当前输入（可能已包含槽位信息）
-        const taskResult = await this.taskEngine.processInput(sessionId, text)
-        if (taskResult) {
-          response = {
-            intent_code: `task:${matchedTask.code}`,
-            confidence: 1,
-            source: taskResult.isComplete ? 'task_complete' : 'task_started',
-            answer: taskResult.reply,
+
+      // ---------- 场景 B：活跃任务（未挂起）→ 路由三选一 ----------
+      else if (hasActive) {
+        console.log('[TASK] 检测到活跃任务，进入任务对话模式')
+        const taskState = this.taskEngine.getActiveTask(sessionId)
+        const route = await this.taskEngine.nlu.route(text, {
+          taskState,
+          tasks: [...this.taskEngine.taskDefs.values()],
+          filledDesc: this._taskFilledDesc(taskState),
+        })
+        console.log(`[TASK] 路由判定: ${route}`)
+
+        if (route === 'faq') {
+          // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
+          console.log('[TASK] 路由→FAQ，任务挂起')
+          const faqResponse = await this._handleRecognize(text, context)
+          if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+            this.taskEngine.suspend(sessionId)
+            response = {
+              ...faqResponse,
+              answer: faqResponse.answer + this._suspendedHint(taskState),
+              source: 'task_suspended_faq',
+            }
+          } else {
+            // FAQ 也没匹配到 → 回任务通道继续引导
+            response = await this._handleTaskTurn(sessionId, text, context)
           }
+        } else if (route === 'task_new') {
+          // 用户想办另一件事 → 中断暂存当前任务，触发新任务
+          console.log('[TASK] 路由→新任务，当前任务中断暂存')
+          await this.taskEngine.stash(sessionId)
+          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true)
+        } else {
+          // task_continue → 任务对话（原逻辑）
+          response = await this._handleTaskTurn(sessionId, text, context)
         }
+      }
+
+      // ---------- 场景 C：无活跃任务 → 路由判定后决定触发任务或 FAQ ----------
+      else {
+        // 无任务上下文时 route 判定：命中触发词且无咨询疑云 → task_new；
+        // 咨询疑云（"上门换滤芯收费吗"）→ faq，不触发任务（避免误抢 FAQ）
+        const route = await this.taskEngine.nlu.route(text, {
+          taskState: null,
+          tasks: [...this.taskEngine.taskDefs.values()],
+          filledDesc: '',
+        })
+        if (route === 'task_new') {
+          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ false)
+        }
+        // route === 'faq' → 走下方常规 FAQ 流程（response 保持 null）
       }
     }
 
@@ -264,6 +283,102 @@ class FAQEngine {
     if (opts.debug) this._attachDebug(response, sessionId)
 
     return response
+  }
+
+  /**
+   * 任务对话轮次（task_continue 通道）—— 原 processInput 处理逻辑
+   */
+  async _handleTaskTurn(sessionId, text, context) {
+    const taskResult = await this.taskEngine.processInput(sessionId, text)
+    if (!taskResult) return null
+
+    if (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask) {
+      if (taskResult.question && taskResult.questionText) {
+        // 边答边问：先 FAQ 回答问题，再接任务进度提示
+        console.log('[TASK] 检测到边答边问，FAQ 回答:', taskResult.questionText)
+        const faqResponse = await this._handleRecognize(taskResult.questionText, context)
+        if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+          return {
+            ...faqResponse,
+            answer: faqResponse.answer + '\n' + taskResult.reply,
+            source: 'task_faq',
+          }
+        }
+        return {
+          intent_code: `task:${taskResult.taskState.taskCode}`,
+          confidence: 1,
+          source: 'task_progress',
+          answer: taskResult.reply,
+        }
+      }
+      return {
+        intent_code: `task:${taskResult.taskState.taskCode}`,
+        confidence: 1,
+        source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
+        answer: taskResult.reply,
+      }
+    }
+
+    // 提取失败（用户输入不匹配任何槽位）→ 尝试 FAQ 匹配
+    console.log('[TASK] 提取失败，尝试 FAQ 匹配...')
+    const faqResponse = await this._handleRecognize(text, context)
+    if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+      const taskState = this.taskEngine.getActiveTask(sessionId)
+      if (taskState) {
+        const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
+        const progressHint = `\n\n———\n📌 您正在进行「${taskState.taskName}」，还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
+        return { ...faqResponse, answer: faqResponse.answer + progressHint, source: 'task_faq' }
+      }
+      return faqResponse
+    }
+    return {
+      intent_code: `task:${taskResult.taskState.taskCode}`,
+      confidence: 1,
+      source: 'task_progress',
+      answer: taskResult.reply,
+    }
+  }
+
+  /**
+   * 尝试发起新任务（无活跃任务时，或从挂起中断后换办新任务时）
+   * @param {boolean} fromStash - 是否有被中断的任务可恢复
+   */
+  async _tryStartTask(sessionId, text, context, fromStash = false) {
+    const matchedTask = await this.taskEngine.matchTask(text)
+    if (!matchedTask) return null
+
+    console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
+    const taskState = this.taskEngine.startTask(sessionId, matchedTask)
+    const taskResult = await this.taskEngine.processInput(sessionId, text)
+    if (taskResult) {
+      let answer = taskResult.reply
+      // 有被中断的任务时，提示可恢复
+      if (fromStash) {
+        const stashed = await this.taskEngine.getStashed(sessionId)
+        if (stashed) {
+          answer = `（您之前正在进行「${stashed.taskName}」，回复"继续"可接着办理）\n\n` + answer
+        }
+      }
+      return {
+        intent_code: `task:${matchedTask.code}`,
+        confidence: 1,
+        source: taskResult.isComplete ? 'task_complete' : 'task_started',
+        answer,
+      }
+    }
+    return null
+  }
+
+  /** 任务已收集槽位摘要（路由 LLM 上下文用） */
+  _taskFilledDesc(state) {
+    if (!state?.slots) return ''
+    const filled = Object.entries(state.slots).filter(([, s]) => s.filled)
+    return filled.length ? `已收集：${filled.map(([k, s]) => `${s.label || k}: ${s.value}`).join('；')}` : '已收集：无'
+  }
+
+  /** 挂起提示话术（FAQ 回答后拼接，引导用户恢复任务） */
+  _suspendedHint(taskState) {
+    return `\n\n———\n📌 您正在进行「${taskState.taskName}」，回复"继续"可接着办理。`
   }
 
   /**

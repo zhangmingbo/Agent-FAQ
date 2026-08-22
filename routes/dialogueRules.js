@@ -18,14 +18,19 @@ export function createRouter(engine, ruleLoader, dialogueRules) {
 
   // 更新对话规则配置
   router.post('/dialogue-rules', asyncHandler(async (req, res) => {
-    const { confirmWords, denyWords, meaninglessWords, sessionTimeout } = req.body
+    const { confirmWords, denyWords, meaninglessWords, resumeWords, sessionTimeout } = req.body
 
     if (!Array.isArray(confirmWords) || !Array.isArray(denyWords) || !Array.isArray(meaninglessWords)) {
       res.status(400).json({ success: false, message: '参数格式错误' })
       return
     }
 
-    await configRepo.set('dialogue_rules', JSON.stringify({ confirmWords, denyWords, meaninglessWords }))
+    await configRepo.set('dialogue_rules', JSON.stringify({
+      confirmWords,
+      denyWords,
+      meaninglessWords,
+      resumeWords: Array.isArray(resumeWords) ? resumeWords : [],
+    }))
 
     if (typeof sessionTimeout === 'number' && sessionTimeout > 0) {
       await configRepo.set('session_timeout', String(sessionTimeout))
@@ -66,6 +71,7 @@ export function createRouter(engine, ruleLoader, dialogueRules) {
         confirmWords: rules.confirmWords,
         denyWords: rules.denyWords,
         meaninglessWords: rules.meaninglessWords,
+        resumeWords: rules.resumeWords || [],
       }))
       res.json({ success: true, version: rules.version })
     } else {

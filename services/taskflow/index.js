@@ -210,6 +210,95 @@ class TaskFlowEngine {
     return this.activeTasks.get(sessionId) || null
   }
 
+  // ========== 任务挂起/恢复（FAQ 插话双向穿透） ==========
+
+  /**
+   * 挂起任务：用户中途问 FAQ 时保留槽位进度，标记 interrupted
+   * 挂起后任务仍在 activeTasks 中，但 faq-engine 路由到 FAQ 通道回答；
+   * 用户回复恢复词（继续/接着办…）后 resume() 回到任务通道。
+   */
+  suspend(sessionId) {
+    const state = this.activeTasks.get(sessionId)
+    if (!state) return false
+    state.suspended = true
+    state.suspendedAt = Date.now()
+    this._persist(sessionId, state)
+    console.log(`[TaskFlow] 任务挂起: ${state.taskCode} @ session ${sessionId}`)
+    return true
+  }
+
+  /** 恢复任务（用户说"继续"等恢复词） */
+  resume(sessionId) {
+    const state = this.activeTasks.get(sessionId)
+    if (!state) return false
+    state.suspended = false
+    state.suspendedAt = null
+    this._persist(sessionId, state)
+    console.log(`[TaskFlow] 任务恢复: ${state.taskCode} @ session ${sessionId}`)
+    return true
+  }
+
+  /** 是否有被挂起的任务 */
+  isSuspended(sessionId) {
+    const state = this.activeTasks.get(sessionId)
+    return !!(state && state.suspended)
+  }
+
+  /**
+   * 中断当前任务（用户换办另一件事）：把进度暂存到 store，从 activeTasks 移除。
+   * 新任务结束后可 popStashed() 恢复继续。
+   */
+  async stash(sessionId) {
+    const state = this.activeTasks.get(sessionId)
+    if (!state) return false
+    state.suspended = true
+    state.suspendedAt = Date.now()
+    if (this.store) {
+      try {
+        await this.store.set(`taskflow:stash:${sessionId}`, state, this.sessionTtl)
+      } catch (e) {
+        console.error('[TaskFlow] 任务暂存失败:', e.message)
+      }
+    }
+    this.activeTasks.delete(sessionId)
+    console.log(`[TaskFlow] 任务中断暂存: ${state.taskCode} @ session ${sessionId}`)
+    return true
+  }
+
+  /** 是否有暂存的任务可恢复 */
+  async hasStashed(sessionId) {
+    return !!(await this.getStashed(sessionId))
+  }
+
+  /** 读取暂存的任务状态（不弹出） */
+  async getStashed(sessionId) {
+    if (!this.store) return null
+    try {
+      return await this.store.get(`taskflow:stash:${sessionId}`) || null
+    } catch (e) {
+      return null
+    }
+  }
+
+  /** 恢复暂存的任务（回到 activeTasks） */
+  async popStashed(sessionId) {
+    let state = null
+    if (this.store) {
+      try {
+        state = await this.store.get(`taskflow:stash:${sessionId}`)
+      } catch (e) {
+        console.error('[TaskFlow] 暂存任务读取失败:', e.message)
+      }
+    }
+    if (!state) return null
+    state.suspended = false
+    state.suspendedAt = null
+    this.activeTasks.set(sessionId, state)
+    try { await this.store.del(`taskflow:stash:${sessionId}`) } catch { /* ignore */ }
+    console.log(`[TaskFlow] 恢复暂存任务: ${state.taskCode} @ session ${sessionId}`)
+    return state
+  }
+
   /**
    * 调试快照：查看某个会话的任务状态（前端调试用）
    */

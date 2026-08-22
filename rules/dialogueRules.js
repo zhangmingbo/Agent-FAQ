@@ -41,6 +41,20 @@ class DialogueRules {
         { pattern: '知道(了)?|明白(了)?|了解', weight: 0.4, isRegex: true },
         { pattern: '随便|都行|不知道|不清楚|不懂', weight: 0.3, isRegex: true },
       ],
+      // 恢复词：任务被 FAQ 插话挂起后，用户表达"继续办理"时恢复任务
+      resumeWords: [
+        { pattern: '继续', weight: 1.0 },
+        { pattern: '接着', weight: 1.0 },
+        { pattern: '继续办', weight: 1.0 },
+        { pattern: '继续吧', weight: 1.0 },
+        { pattern: '接着办', weight: 1.0 },
+        { pattern: '好，继续', weight: 1.0 },
+        { pattern: '好的，继续', weight: 1.0 },
+        { pattern: '恩继续', weight: 1.0 },
+        { pattern: '嗯继续', weight: 1.0 },
+        { pattern: '继续预约', weight: 1.0 },
+        { pattern: '继续办理', weight: 1.0 },
+      ],
       sessionTimeout: 30 * 60 * 1000, // 30分钟
     }
     
@@ -86,6 +100,10 @@ class DialogueRules {
     
     if (Array.isArray(newRules.meaninglessWords)) {
       this.currentRules.meaninglessWords = newRules.meaninglessWords.map(w => this._normalizeRule(w))
+    }
+    
+    if (Array.isArray(newRules.resumeWords)) {
+      this.currentRules.resumeWords = newRules.resumeWords.map(w => this._normalizeRule(w))
     }
     
     if (typeof newRules.sessionTimeout === 'number' && newRules.sessionTimeout > 0) {
@@ -362,6 +380,28 @@ class DialogueRules {
     }
     
     return result
+  }
+
+  /**
+   * 判断文本是否为"恢复任务"意图（任务被 FAQ 插话挂起后，用户表达继续办理）
+   * @param {string} text - 用户输入
+   * @returns {{matched: boolean, score: number, matchedRule?: Object}} 匹配结果
+   */
+  isResume(text) {
+    if (!text) return { matched: false, score: 0 }
+    const lowerText = text.trim().toLowerCase()
+    const rules = this.currentRules.resumeWords || []
+
+    let maxScore = 0
+    let bestMatch = null
+    for (const rule of rules) {
+      const score = this._matchRule(lowerText, rule)
+      if (score > maxScore) {
+        maxScore = score
+        bestMatch = rule
+      }
+    }
+    return { matched: maxScore > 0, score: maxScore, matchedRule: bestMatch }
   }
 
   /**

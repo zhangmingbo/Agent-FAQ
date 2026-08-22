@@ -122,9 +122,12 @@ class RuleLoader {
         const parsed = JSON.parse(config.dialogue_rules)
         
         // 兼容旧格式（字符串数组）和新格式（对象数组）
-        rules.confirmWords = this._normalizeRulesArray(parsed.confirmWords || [])
-        rules.denyWords = this._normalizeRulesArray(parsed.denyWords || [])
-        rules.meaninglessWords = this._normalizeRulesArray(parsed.meaninglessWords || [])
+        // 注意：DB 无该字段时不要传空数组（会覆盖 dialogueRules 默认值），
+        // 因此仅在 parsed 存在对应字段时才赋值
+        if (parsed.confirmWords) rules.confirmWords = this._normalizeRulesArray(parsed.confirmWords)
+        if (parsed.denyWords) rules.denyWords = this._normalizeRulesArray(parsed.denyWords)
+        if (parsed.meaninglessWords) rules.meaninglessWords = this._normalizeRulesArray(parsed.meaninglessWords)
+        if (parsed.resumeWords) rules.resumeWords = this._normalizeRulesArray(parsed.resumeWords)
       } catch (e) {
         console.warn('[RuleLoader] 解析对话规则失败，使用默认值')
       }
