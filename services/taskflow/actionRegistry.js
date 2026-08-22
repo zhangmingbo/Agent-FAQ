@@ -101,4 +101,30 @@ register('create_meter_replace_order', async (ctx) => {
   return { ok: true, message: `已为您登记换表申请（单号 #${result.insertId}），师傅会尽快联系您确认上门时间。` }
 })
 
+register('create_service_appointment', async (ctx) => {
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS service_appointment (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      session_id VARCHAR(100),
+      code VARCHAR(50) NOT NULL,
+      phone VARCHAR(20),
+      service_type VARCHAR(50),
+      customer_name VARCHAR(50),
+      address VARCHAR(255),
+      machine_model VARCHAR(50),
+      time_slot VARCHAR(50),
+      status TINYINT DEFAULT 1 COMMENT '1=待联系 2=已预约 3=已完成',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  )
+
+  const slots = ctx.slots || {}
+  const [result] = await pool.execute(
+    'INSERT INTO service_appointment (session_id, code, phone, service_type, customer_name, address, machine_model, time_slot, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
+    [ctx.sessionId, ctx.task.code, slots.phone || null, slots.service_type || null, slots.customer_name || null, slots.address || null, slots.machine_model || null, slots.time_slot || null]
+  )
+
+  return { ok: true, message: `已为您预约${slots.service_type || ''}服务（单号 #${result.insertId}），售后会在24小时内联系您，请保持电话畅通。` }
+})
+
 export default { register, runAction, listActions }
