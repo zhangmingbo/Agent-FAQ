@@ -12,12 +12,12 @@ export function createRouter(engine) {
 
   // 核心聊天接口
   router.post('/chat', chatLimiter, asyncHandler(async (req, res) => {
-    const { text, sessionId, userId } = req.body
+    const { text, sessionId, userId, debug } = req.body
     if (!text) {
       res.status(400).json({ message: '输入不能为空' })
       return
     }
-    const result = await engine.chat(text, sessionId || 'default', userId || null)
+    const result = await engine.chat(text, sessionId || 'default', userId || null, { debug: !!debug })
     res.json(result)
   }))
 

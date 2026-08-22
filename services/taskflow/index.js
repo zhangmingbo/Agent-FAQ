@@ -197,6 +197,37 @@ class TaskFlowEngine {
     return this.activeTasks.get(sessionId) || null
   }
 
+  /**
+   * 调试快照：查看某个会话的任务状态（前端调试用）
+   */
+  getDebugInfo(sessionId) {
+    const state = this.activeTasks.get(sessionId)
+    if (!state) return { active: false, sessionId }
+    return {
+      active: true,
+      sessionId,
+      taskCode: state.taskCode,
+      taskName: state.taskName,
+      status: state.status,
+      currentStep: state.currentStep,
+      turnCount: state.turnCount,
+      skipCount: state.skipCount || 0,
+      pendingModify: state.pendingModify || null,
+      stack: (state.stack || []).map(p => ({
+        taskCode: p.taskCode,
+        taskName: p.taskName,
+        currentStep: p.currentStep,
+      })),
+      slots: Object.entries(state.slots).map(([k, s]) => ({
+        key: k,
+        label: s.label || k,
+        value: s.value,
+        filled: !!s.filled,
+        required: !!s.required,
+      })),
+    }
+  }
+
   // ========== 持久化 ==========
 
   async _persist(sessionId, state) {

@@ -82,9 +82,11 @@ class FAQEngine {
    * 处理用户提问（核心接口）
    * @param {string} text - 用户输入
    * @param {string} sessionId - 会话ID（可选）
+   * @param {string|null} userId - 用户ID（可选）
+   * @param {Object} opts - 选项；opts.debug=true 时响应附加 _debug 调试信息
    * @returns {Promise<ChatResponse>}
    */
-  async chat(text, sessionId = 'default', userId = null) {
+  async chat(text, sessionId = 'default', userId = null, opts = {}) {
     const startTime = Date.now()
     const timestamp = new Date().toISOString()
     
@@ -120,6 +122,7 @@ class FAQEngine {
         // 记录日志
         await this._logChat(sessionId, text, response, userId, Date.now() - startTime)
         
+        if (opts.debug) this._attachDebug(response, sessionId)
         console.log(`[CHAT-END] Duration: ${Date.now() - startTime}ms`)
         console.log(`${'='.repeat(80)}\n`)
         return response
@@ -257,7 +260,21 @@ class FAQEngine {
       console.error('[聊天日志] 记录失败:', e.message)
     })
 
+    if (opts.debug) this._attachDebug(response, sessionId)
+
     return response
+  }
+
+  /**
+   * 附加调试信息（前端调试模式用，仅 debug=true 时调用）
+   */
+  _attachDebug(response, sessionId) {
+    response._debug = {
+      source: response.source,
+      intent: response.intent_code,
+      confidence: response.confidence,
+      task: this.taskEngine?.getDebugInfo ? this.taskEngine.getDebugInfo(sessionId) : null,
+    }
   }
 
   /**

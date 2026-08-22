@@ -34,6 +34,8 @@
     .msg .related span { padding: 4px 12px; background: #f0f2f5; border: 1px solid #e0e0e0; border-radius: 14px; font-size: 12px; color: #555; cursor: pointer; }
     .msg .related span:hover { background: #4361ee; color: #fff; border-color: #4361ee; }
     .msg .src { margin-top: 6px; font-size: 11px; color: #bbb; }
+    .msg .dbg { margin-top: 6px; font-size: 11px; color: #999; background: #fafafa; border: 1px dashed #ddd; border-radius: 6px; padding: 6px 8px; line-height: 1.6; word-break: break-all; }
+    .debug-badge { font-size: 10px; color: #e8590c; background: #fff4e6; border: 1px solid #ffd8a8; border-radius: 10px; padding: 1px 8px; margin-left: 8px; }
     .quick-bar { padding: 8px 20px; display: flex; gap: 8px; flex-wrap: wrap; background: #fff; border-top: 1px solid #eee; }
     .quick-bar span { padding: 6px 14px; background: #f5f7fa; border: 1px solid #e0e0e0; border-radius: 16px; font-size: 13px; color: #555; cursor: pointer; transition: .2s; }
     .quick-bar span:hover { background: #4361ee; color: #fff; border-color: #4361ee; }
@@ -76,7 +78,12 @@
 const chat = document.getElementById('chat')
 let sid = 's' + Date.now()
 const uid = new URLSearchParams(window.location.search).get('userId') || null
+const isDebug = new URLSearchParams(window.location.search).get('debug') === '1'
 let firstMsg = true
+
+if (isDebug) {
+  document.querySelector('.header .info p').innerHTML = '在线 <span class="debug-badge">调试模式</span>'
+}
 
 function ask(t) { document.getElementById('inp').value = t; send() }
 
@@ -90,7 +97,7 @@ async function send() {
   document.getElementById('btn').disabled = true
   const typing = addTyping()
   try {
-    const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text, sessionId: sid, userId: uid}) })
+    const r = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text, sessionId: sid, userId: uid, debug: isDebug}) })
     const d = await r.json()
     typing.remove()
     addBotMsg(d)
@@ -117,7 +124,23 @@ function addBotMsg(d) {
   if (d.richContent) h += renderRich(d.richContent)
   if (d.links?.length) h += `<div class="links">${d.links.map(l=>`<a href="${l.url}" target="_blank">🔗 ${l.text}</a>`).join('')}</div>`
   if (d.related?.length) h += `<div class="related">${d.related.map(q=>`<span onclick="ask('${q}')">${q}</span>`).join('')}</div>`
-  if (d.source) { const m={direct:'FAQ',confirmed:'FAQ',clarify:'追问',llm:'AI',fallback:'兜底'}; h += `<div class="src">${m[d.source]||d.source}${d.confidence?' · '+Math.round(d.confidence*100)+'%':''}</div>` }
+  if (d.source) { const m={direct:'FAQ',confirmed:'FAQ',clarify:'追问',llm:'AI',fallback:'兜底',meaningless:'无意义',task_started:'任务开始',task_progress:'任务进行',task_complete:'任务完成',task_cancelled:'任务取消',task_faq:'任务+FAQ'}; h += `<div class="src">${m[d.source]||d.source}${d.confidence?' · '+Math.round(d.confidence*100)+'%':''}</div>` }
+  // 调试信息（?debug=1 时显示）
+  if (isDebug) {
+    let dbg = `source=${d.source} | intent=${d.intent_code||'-'} | conf=${d.confidence?Math.round(d.confidence*100)+'%':'-'}`
+    const t = d._debug && d._debug.task
+    if (t) {
+      if (t.active) {
+        dbg += `<br>task=${t.taskCode} [${t.status}] step=${t.currentStep}${t.pendingModify?(' | 修改中→'+t.pendingModify):''}`
+        if (t.slots && t.slots.length) {
+          dbg += `<br>slots: ` + t.slots.map(s=>`${s.key}${s.filled?'=「'+(s.value||'')+'」':'=待填'}`).join(' | ')
+        }
+      } else {
+        dbg += `<br>task=无`
+      }
+    }
+    h += `<div class="dbg">${dbg}</div>`
+  }
   h += '</div>'
   el.innerHTML = h
   chat.appendChild(el)

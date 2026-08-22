@@ -22,6 +22,16 @@ export function createRouter() {
     res.json({ success: true, data: tasks })
   }))
 
+  // 任务会话调试：查看某个 session 的任务状态（前端调试用）
+  router.get('/tasks/debug', asyncHandler(async (req, res) => {
+    const sessionId = req.query.sessionId
+    if (!sessionId) {
+      res.status(400).json({ success: false, message: '缺少 sessionId 参数' })
+      return
+    }
+    res.json({ success: true, data: taskEngine.getDebugInfo(sessionId) })
+  }))
+
   // 获取单个任务详情
   router.get('/tasks/:code', asyncHandler(async (req, res) => {
     const task = await taskEngine.get(req.params.code)
