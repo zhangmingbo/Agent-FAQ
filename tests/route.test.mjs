@@ -132,3 +132,47 @@ test('route: 空输入 → faq', async () => {
   const r = await nlu.route('', ctx(makeState()))
   assert.equal(r, 'faq')
 })
+
+// ========== clarify（拿不准 → 追问用户二选一） ==========
+
+test('route: 触发词+咨询疑云 + LLM 不可用 → clarify（不武断触发任务）', async () => {
+  llmClient.configure({ enabled: false })
+  const r = await nlu.route('上门换滤芯收费吗', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'clarify')
+})
+
+test('route: 无任务 + 触发词+咨询疑云 + LLM 也拿不准(null) → clarify', async () => {
+  stubRouteTurn(null) // LLM 无法判定
+  const r = await nlu.route('上门换滤芯收费吗', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'clarify')
+})
+
+test('route: 无任务 + LLM 返回 continue（无任务却说要继续）→ clarify', async () => {
+  stubRouteTurn('continue')
+  const r = await nlu.route('随便说说', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'clarify')
+})
+
+test('route: 任务中插话 + LLM 拿不准(null) → clarify（追问继续办理还是咨询）', async () => {
+  stubRouteTurn(null)
+  const r = await nlu.route('你们还有什么服务', ctx(makeState()))
+  assert.equal(r, 'clarify')
+})
+
+test('route: 任务中插话 + LLM 明确 faq → faq（不打扰）', async () => {
+  stubRouteTurn('faq')
+  const r = await nlu.route('换芯后出水发黑正常吗', ctx(makeState()))
+  assert.equal(r, 'faq')
+})
+
+test('route: 触发词+咨询疑云 + LLM 明确 faq → faq（明确咨询不追问）', async () => {
+  stubRouteTurn('faq')
+  const r = await nlu.route('上门换滤芯收费吗', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'faq')
+})
+
+test('route: 触发词+咨询疑云 + LLM 明确 new_task → task_new（明确办理不追问）', async () => {
+  stubRouteTurn('new_task')
+  const r = await nlu.route('能上门换滤芯吗', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'task_new')
+})

@@ -255,6 +255,7 @@ class TaskNLU {
    *   'task_continue'  继续当前任务（答槽位/确认/取消/纠正）
    *   'task_new'       发起新任务（用户想办另一件事）
    *   'faq'            知识咨询（费用/故障/操作，应交给 FAQ 回答）
+   *   'clarify'        拿不准，需要追问用户二选一（任务 or 咨询）
    *
    * 混合策略（运营可配）：
    *   1. 规则快检（确定性、零成本）：
@@ -262,7 +263,11 @@ class TaskNLU {
    *      - 话术直接点名当前槽位标签 → task_continue
    *      - 明确触发其他任务（触发词命中且无咨询疑云）→ task_new
    *   2. LLM 兜底：仅当规则拿不准时调用（router 提示词，管理后台可编辑）
-   *   3. 降级：LLM 失败 → 有任务上下文则 task_continue（保守不丢进度），否则 faq
+   *      - LLM 明确 faq / new_task → 按判定走
+   *      - LLM 也拿不准（返回 null / continue 但无任务上下文）→ clarify
+   *   3. 降级：LLM 失败或不可用
+   *      - 触发词+咨询疑云（无法区分任务还是咨询）→ clarify（把选择权交给用户）
+   *      - 有任务上下文且规则无法判定 → task_continue（保守不丢进度）
    *
    * @param {string} text - 用户输入
    * @param {Object} ctx - { taskState, tasks, filledDesc }
@@ -290,15 +295,17 @@ class TaskNLU {
       if (slotLabels.some(l => l && l.length >= 2 && t.includes(l))) return 'task_continue'
     }
 
-    // 2) 触发词命中 → 新任务
+    // 2) 触发词命中 → 可能新任务，也可能只是咨询（费用/怎么/为什么…）
+    let byRuleHit = false
     let consultHint = false
     if (ctx.tasks && ctx.tasks.length > 0) {
       const byRule = this._matchByRules(lower, ctx.tasks, ctx.taskState?.taskCode || null)
       if (byRule) {
+        byRuleHit = true
         // 触发词命中但话术像咨询（费用/价格/怎么/为什么…）→ 不武断
         consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
-        // 无咨询疑云 → 直接新任务；有疑云但 LLM 不可用（rule 模式）→ 按规则保守触发
-        if (!consultHint || !llmClient.enabled) return 'task_new'
+        // 无咨询疑云 → 明确新任务
+        if (!consultHint) return 'task_new'
       }
     }
 
@@ -312,14 +319,21 @@ class TaskNLU {
         })
         if (decision === 'faq') return 'faq'
         if (decision === 'new_task') return 'task_new'
-        // continue 或 null → 有任务上下文则继续任务；无任务上下文则视为 FAQ
-        return ctx.taskState ? 'task_continue' : 'faq'
+        if (decision === 'continue') {
+          // LLM 认为在继续任务：无任务上下文则不合理 → 追问
+          return ctx.taskState ? 'task_continue' : 'clarify'
+        }
+        // LLM 返回 null（拿不准）→ 追问用户
+        return 'clarify'
       } catch (e) {
         console.error('[TaskNLU] LLM 路由判定失败:', e.message)
       }
     }
 
-    // ===== 降级 =====
+    // ===== 降级（LLM 不可用/失败） =====
+    // 触发词+咨询疑云，规则无法区分任务还是咨询 → 追问用户二选一
+    if (byRuleHit && consultHint) return 'clarify'
+    // 有任务上下文且规则拿不准 → 保守继续任务（不丢进度）
     return ctx.taskState ? 'task_continue' : 'faq'
   }
 

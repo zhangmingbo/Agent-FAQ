@@ -95,6 +95,12 @@ const PROMPT_DEFS = {
     placeholders: ['taskName', 'taskContext', 'text'],
     default: '当前任务：{taskName}\n{taskContext}\n用户刚说："{text}"\n请判断应返回：continue / new_task / faq',
   },
+  'router.clarify': {
+    name: '意图路由 · 澄清话术',
+    desc: '路由拿不准（无法区分任务还是咨询）时，追问用户二选一的话术',
+    placeholders: ['taskName'],
+    default: '抱歉，我没太确定您的需求～您是想办理「{taskName}」业务，还是想咨询其他问题呢？\n请回复对应数字：\n1. 办理「{taskName}」\n2. 咨询其他问题',
+  },
 }
 
 /** 当前生效的提示词缓存（key -> value，DB 覆盖后与默认值合并） */

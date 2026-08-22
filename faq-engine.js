@@ -140,11 +140,98 @@ class FAQEngine {
 
     let response
 
+    // ===== 意图路由澄清待选（pendingRoute）：用户上轮被追问"办理还是咨询"，本轮回复选项 =====
+    if (context.pendingRoute) {
+      console.log('[ROUTE] 处理路由澄清选项:', text)
+      const pending = context.pendingRoute
+      const choice = this._parseRouteChoice(text)
+
+      if (choice === 'task') {
+        // 用户选"办理"
+        context.pendingRoute = null
+        const hasActiveNow = this.taskEngine.hasActiveTask(sessionId)
+        if (pending.suspended && hasActiveNow) {
+          // 场景 A：恢复被挂起的任务
+          this.taskEngine.resume(sessionId)
+          const taskState = this.taskEngine.getActiveTask(sessionId)
+          const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
+          const progressHint = unfilled.length
+            ? `还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
+            : '信息已齐全，请确认'
+          response = {
+            intent_code: `task:${taskState.taskCode}`,
+            confidence: 1,
+            source: 'task_resumed',
+            answer: `好的，我们继续「${taskState.taskName}」～${progressHint}`,
+          }
+        } else if (hasActiveNow) {
+          // 场景 B：任务中插话拿不准，用户选择继续办理当前任务
+          const taskState = this.taskEngine.getActiveTask(sessionId)
+          const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
+          const progressHint = unfilled.length
+            ? `还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
+            : '信息已齐全，请确认'
+          response = {
+            intent_code: `task:${taskState.taskCode}`,
+            confidence: 1,
+            source: 'task_progress',
+            answer: `好的，我们继续「${taskState.taskName}」～${progressHint}`,
+          }
+        } else if (pending.taskCode) {
+          // 场景 C：无任务时澄清 → 触发候选任务（用原始触发句）
+          const def = await this.taskEngine.get(pending.taskCode)
+          if (def) {
+            const state = this.taskEngine.startTask(sessionId, def)
+            const taskResult = await this.taskEngine.processInput(sessionId, pending.triggerText)
+            response = {
+              intent_code: `task:${def.code}`,
+              confidence: 1,
+              source: taskResult?.isComplete ? 'task_complete' : 'task_started',
+              answer: taskResult?.reply || `好的，开始办理「${def.name}」。`,
+            }
+          }
+        }
+        if (!response) {
+          response = {
+            intent_code: null,
+            confidence: 1,
+            source: 'route',
+            answer: '好的，请问您需要办理什么业务呢？',
+          }
+        }
+      } else if (choice === 'faq') {
+        // 用户选"咨询"
+        context.pendingRoute = null
+        const faqResponse = await this._handleRecognize(pending.triggerText, context)
+        if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+          // 有活跃任务（挂起或进行中）→ 附挂起提示
+          const taskState = this.taskEngine.getActiveTask(sessionId)
+          if (taskState) {
+            this.taskEngine.suspend(sessionId)
+            response = {
+              ...faqResponse,
+              answer: faqResponse.answer + this._suspendedHint(taskState),
+              source: 'task_suspended_faq',
+            }
+          } else {
+            response = faqResponse
+          }
+        } else {
+          // FAQ 也没匹配到 → 兜底
+          response = faqResponse
+        }
+      } else {
+        // 未识别选项 → 重复澄清
+        console.log('[ROUTE] 未识别澄清选项，重复追问')
+        response = this._buildRouteClarifyResponse(pending, /* repeat */ true)
+      }
+    }
+
     // ===== 意图路由 + 任务流程检查 =====
     // 任务引擎存在时，每轮输入先经路由判定通道，实现任务/FAQ 双向穿透：
-    //   有活跃任务（含挂起）→ task_continue / task_new / faq 三选一
+    //   有活跃任务（含挂起）→ task_continue / task_new / faq / clarify 四选一
     //   无活跃任务        → 命中触发词则发起任务，否则 FAQ
-    if (this.taskEngine) {
+    if (!response && this.taskEngine) {
       const hasActive = this.taskEngine.hasActiveTask(sessionId)
       const isSuspended = this.taskEngine.isSuspended(sessionId)
 
@@ -178,6 +265,17 @@ class FAQEngine {
             // 换办另一件事：中断暂存当前任务，走新任务流程
             await this.taskEngine.stash(sessionId)
             response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true)
+          } else if (route === 'clarify') {
+            // 挂起状态下仍拿不准 → 追问（恢复办理 or 继续咨询）
+            console.log('[ROUTE] 挂起中拿不准，追问用户')
+            context.pendingRoute = {
+              taskCode: taskState.taskCode,
+              taskName: taskState.taskName,
+              triggerText: text,
+              suspended: true,
+              askedAt: Date.now(),
+            }
+            response = this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
           } else {
             // 继续 FAQ 通道（任务保持挂起）
             response = await this._handleRecognize(text, context)
@@ -192,7 +290,7 @@ class FAQEngine {
         }
       }
 
-      // ---------- 场景 B：活跃任务（未挂起）→ 路由三选一 ----------
+      // ---------- 场景 B：活跃任务（未挂起）→ 路由四选一 ----------
       else if (hasActive) {
         console.log('[TASK] 检测到活跃任务，进入任务对话模式')
         const taskState = this.taskEngine.getActiveTask(sessionId)
@@ -203,7 +301,17 @@ class FAQEngine {
         })
         console.log(`[TASK] 路由判定: ${route}`)
 
-        if (route === 'faq') {
+        if (route === 'clarify') {
+          // 拿不准：任务中插话无法区分是继续办理还是咨询 → 追问二选一
+          console.log('[TASK] 路由拿不准，追问用户')
+          context.pendingRoute = {
+            taskCode: taskState.taskCode,
+            taskName: taskState.taskName,
+            triggerText: text,
+            askedAt: Date.now(),
+          }
+          response = this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+        } else if (route === 'faq') {
           // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
           console.log('[TASK] 路由→FAQ，任务挂起')
           const faqResponse = await this._handleRecognize(text, context)
@@ -232,7 +340,7 @@ class FAQEngine {
       // ---------- 场景 C：无活跃任务 → 路由判定后决定触发任务或 FAQ ----------
       else {
         // 无任务上下文时 route 判定：命中触发词且无咨询疑云 → task_new；
-        // 咨询疑云（"上门换滤芯收费吗"）→ faq，不触发任务（避免误抢 FAQ）
+        // 咨询疑云（"上门换滤芯收费吗"）→ faq；两者混杂拿不准 → clarify 追问
         const route = await this.taskEngine.nlu.route(text, {
           taskState: null,
           tasks: [...this.taskEngine.taskDefs.values()],
@@ -240,6 +348,17 @@ class FAQEngine {
         })
         if (route === 'task_new') {
           response = await this._tryStartTask(sessionId, text, context, /* fromStash */ false)
+        } else if (route === 'clarify') {
+          // 无法区分任务还是咨询（触发词+咨询疑云混杂）→ 追问二选一
+          console.log('[ROUTE] 无法区分任务/咨询，追问用户')
+          const candTask = await this.taskEngine.matchTask(text)
+          context.pendingRoute = {
+            taskCode: candTask ? candTask.code : null,
+            taskName: candTask ? candTask.name : '',
+            triggerText: text,
+            askedAt: Date.now(),
+          }
+          response = this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
         }
         // route === 'faq' → 走下方常规 FAQ 流程（response 保持 null）
       }
@@ -379,6 +498,38 @@ class FAQEngine {
   /** 挂起提示话术（FAQ 回答后拼接，引导用户恢复任务） */
   _suspendedHint(taskState) {
     return `\n\n———\n📌 您正在进行「${taskState.taskName}」，回复"继续"可接着办理。`
+  }
+
+  /** 解析路由澄清的用户选项回复 → 'task' | 'faq' | null */
+  _parseRouteChoice(text) {
+    const t = (text || '').trim()
+    if (!t) return null
+    const lower = t.toLowerCase()
+
+    // 数字选项：1=办理 2=咨询（支持 "1" "1." "1、" 等）
+    if (/^1[.、．，,。]?\s*$/.test(t)) return 'task'
+    if (/^2[.、．，,。]?\s*$/.test(t)) return 'faq'
+
+    // 语义关键词（运营可配的词面，先内置常用词）
+    const taskWords = ['办理', '预约', '要办', '想办', '登记', '办业务', '继续办理', '继续办', '申请', '办一下']
+    const faqWords = ['咨询', '了解', '问问', '查询', '不需要', '不用了', '其他', '别的', '不是', '算了', '看看']
+
+    if (taskWords.some(w => lower.includes(w))) return 'task'
+    if (faqWords.some(w => lower.includes(w))) return 'faq'
+    return null
+  }
+
+  /** 构建路由澄清话术响应（话术来自运营配置注册表 router.clarify）
+   *  注意：与 FAQ 追问确认的 _buildClarifyResponse 是不同机制，勿混用 */
+  _buildRouteClarifyResponse(pending, repeat = false) {
+    const taskName = pending.taskName || '相关业务'
+    const tpl = getPrompt('router.clarify', { taskName })
+    return {
+      intent_code: pending.taskCode ? `task:${pending.taskCode}` : null,
+      confidence: 1,
+      source: 'route_clarify',
+      answer: (repeat ? '抱歉，我没有理解您的选择。\n' : '') + tpl,
+    }
   }
 
   /**
@@ -854,6 +1005,8 @@ class FAQEngine {
       sessionId,
       history: [],
       pendingClarify: null,
+      // 意图路由澄清：{ taskCode, taskName, askedAt } —— 路由拿不准时等用户二选一
+      pendingRoute: null,
       lastActive: now,
       createdAt: now,
     }
