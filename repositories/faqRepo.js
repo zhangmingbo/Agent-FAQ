@@ -158,6 +158,17 @@ export async function getQuestionCounts() {
 }
 
 /**
+ * 获取某个 FAQ 的全部相似问（正则带 /.../ 标记，供识别器使用）
+ */
+export async function getQuestions(code) {
+  const [rows] = await pool.execute(
+    'SELECT question, is_regex FROM faq_question WHERE faq_code = ?',
+    [code]
+  )
+  return rows.map(r => (r.is_regex ? `/${r.question}/` : r.question))
+}
+
+/**
  * 检查相似问是否已存在
  */
 export async function questionExists(faqCode, question) {
@@ -196,13 +207,15 @@ export async function checkQuestions(texts) {
 }
 
 /**
- * 获取相似问数量不足的 FAQ（< 5条）
+ * 获取相似问数量不足的 FAQ（< 5条，含名称）
  */
 export async function getLowQuestionFaqs() {
   const [rows] = await pool.execute(
-    'SELECT faq_code, COUNT(*) as cnt FROM faq_question GROUP BY faq_code HAVING cnt < 5'
+    `SELECT fq.faq_code, f.name, COUNT(*) as cnt
+     FROM faq_question fq LEFT JOIN faq f ON f.code = fq.faq_code
+     GROUP BY fq.faq_code HAVING cnt < 5`
   )
-  return rows.map(r => ({ code: r.faq_code, count: r.cnt }))
+  return rows.map(r => ({ code: r.faq_code, name: r.name, count: r.cnt }))
 }
 
 /**

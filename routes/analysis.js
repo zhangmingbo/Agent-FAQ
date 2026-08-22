@@ -5,7 +5,6 @@
 
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
-import * as faqRepo from '../repositories/faqRepo.js'
 
 export function createRouter(engine) {
   const router = Router()
@@ -25,7 +24,7 @@ export function createRouter(engine) {
     }
 
     const result = await engine.recognizer.recognize(text)
-    const allFaqs = await engine.listFAQ()
+    const allFaqs = await engine.faqService.listAll()
 
     const suggestions = []
     if (result.matched && result.top_results) {
@@ -52,7 +51,7 @@ export function createRouter(engine) {
     })
   }))
 
-  // 将未匹配问题加入已有 FAQ 的相似问
+  // 将未匹配问题加入已有 FAQ 的相似问（写库 + 增量重编码，无需全量加载）
   router.post('/analysis/add-question', asyncHandler(async (req, res) => {
     const { faqCode, question } = req.body
     if (!faqCode || !question) {
@@ -60,13 +59,12 @@ export function createRouter(engine) {
       return
     }
 
-    if (await faqRepo.questionExists(faqCode, question)) {
+    if (await engine.faqService.questionExists(faqCode, question)) {
       res.json({ success: false, message: '该相似问已存在' })
       return
     }
 
-    await faqRepo.addQuestion(faqCode, question)
-    await engine.loadFAQ()
+    await engine.faqService.addQuestion(faqCode, question)
 
     res.json({ success: true, message: `已将"${question}"加入"${faqCode}"的相似问` })
   }))
@@ -78,7 +76,7 @@ export function createRouter(engine) {
       res.json({ results: {} })
       return
     }
-    const results = await faqRepo.checkQuestions(texts)
+    const results = await engine.faqService.checkQuestions(texts)
     res.json({ results })
   }))
 

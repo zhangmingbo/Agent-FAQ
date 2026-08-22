@@ -14,6 +14,7 @@ import { existsSync, mkdirSync } from 'fs'
 import config from './config/index.js'
 import pool from './db/pool.js'
 import FAQEngine from './faq-engine.js'
+import FaqService from './services/faqService.js'
 import ruleLoader from './rules/ruleLoader.js'
 import dialogueRules from './rules/dialogueRules.js'
 
@@ -64,10 +65,15 @@ app.get('/admin.html', (req, res) => res.sendFile(join(PUBLIC_DIR, 'admin-legacy
 
 // ========== 创建 FAQ 引擎 ==========
 
-const engine = new FAQEngine({
+// 知识库领域服务（持有识别器与答案缓存，供引擎与路由共享）
+const faqService = new FaqService({
   minConfidence: config.engine.minConfidence,
-  clarifyThreshold: config.engine.clarifyThreshold,
   topK: config.engine.topK,
+})
+
+const engine = new FAQEngine({
+  faqService,
+  clarifyThreshold: config.engine.clarifyThreshold,
   llm: { enabled: false },
 })
 engine.meaninglessDetectionMode = config.engine.meaninglessDetectionMode

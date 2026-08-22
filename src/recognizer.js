@@ -135,6 +135,14 @@ class IntentRecognizer {
   }
 
   /**
+   * 清空所有意图（全量重建知识库前调用）
+   */
+  clear() {
+    this.intents.clear()
+    this.allSamples = []
+  }
+
+  /**
    * 删除一个意图
    * @param {string} intentCode - 意图code
    */
