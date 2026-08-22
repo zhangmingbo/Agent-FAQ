@@ -185,7 +185,8 @@ class DialogManager {
             reply += outcome.note || ''
             extracted = true
             alreadyExtracted = true
-            if (step.extract?.method === 'text') textUsed = true
+            // 本轮已填入任意槽位后，后续文本槽位只认显式标签（避免同一段话重复填入）
+            textUsed = true
             state.currentStep = step.next
             state.skipCount = 0
           } else if (outcome.reask) {
@@ -270,8 +271,11 @@ class DialogManager {
       { labelOnly: textBlocked }
     )
 
-    // 规则/单槽未提取到 → LLM 批量兜底（一次性抽取所有未填槽位）
-    if (value === null && this.nlu.mode !== 'rule') {
+    // LLM 提取的值必须满足槽位约束（枚举/正则），防止 LLM 乱填/回显整句
+    let finalValue = (value !== null && this.nlu.valueMatchesSlot(slotDef, value)) ? value : null
+
+    // 规则/单槽未提取到 → LLM 批量兜底（一次性抽取所有未填槽位；探测阶段不重复调用）
+    if (finalValue === null && !probing && this.nlu.mode !== 'rule') {
       const all = await this._llmExtractAll(state, text)
       if (all && Object.keys(all).length > 0) {
         let llmFilledAny = false
@@ -279,7 +283,9 @@ class DialogManager {
           const s = state.slots[k]
           if (!s || s.filled || !v) continue
           const sDef = this._slotDefByKey(state, k)
-          const check = sDef ? this.nlu.validate(sDef, v) : { ok: true }
+          // LLM 值必须满足槽位约束
+          if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) continue
+          const check = this.nlu.validate(sDef, v)
           if (check.ok) {
             s.value = String(v)
             s.filled = true
@@ -297,7 +303,7 @@ class DialogManager {
       }
     }
 
-    if (value === null) {
+    if (finalValue === null) {
       // 结构化槽位（regex/number/enum）：输入非空且不像闲聊 → 视为格式错误，直接重问
       // 探测模式下不重问（避免"地址X，电话Y"场景下地址被问成电话）
       if (!probing && method !== 'text' && text.trim().length > 0 && !extractor.isQuestion(text)) {
@@ -306,19 +312,19 @@ class DialogManager {
       return { extracted: false, reask: '' }
     }
 
-    const check = this.nlu.validate(slotDef, value)
+    const check = this.nlu.validate(slotDef, finalValue)
     if (!check.ok) {
       return { extracted: false, reask: check.message }
     }
 
     state.slots[slotDef.key] = {
       ...state.slots[slotDef.key],
-      value,
+      value: finalValue,
       filled: true,
       label: slotDef.label || slotDef.key,
       required: slotDef.required !== false,
     }
-    console.log(`[TaskFlow] 已填槽位 ${slotDef.key} = "${value}"`)
+    console.log(`[TaskFlow] 已填槽位 ${slotDef.key} = "${finalValue}"`)
     return { extracted: true, note: `已记录：${slotDef.label || slotDef.key}。\n` }
   }
 

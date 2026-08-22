@@ -218,6 +218,28 @@ class TaskNLU {
   validate(slotDef, value) {
     return validateSlot(slotDef, value)
   }
+
+  /**
+   * LLM 提取值是否符合槽位约束（枚举/正则），防止 LLM 乱填/回显整句
+   */
+  valueMatchesSlot(slotDef, value) {
+    if (!slotDef || value === null || value === undefined || value === '') return false
+    const v = String(value)
+    const method = slotDef.extract?.method
+    if (method === 'enum') {
+      const options = Array.isArray(slotDef.extract.enum)
+        ? slotDef.extract.enum
+        : String(slotDef.extract.rule || '').split(',').map(s => s.trim())
+      return options.includes(v)
+    }
+    if (method === 'regex' && slotDef.extract?.rule) {
+      try {
+        const rule = slotDef.extract.rule.replace(/\\\\/g, '\\')
+        return new RegExp(rule, 'i').test(v)
+      } catch { return true }
+    }
+    return true
+  }
 }
 
 export default new TaskNLU()

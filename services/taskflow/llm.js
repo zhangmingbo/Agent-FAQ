@@ -116,7 +116,7 @@ class LLMClient {
       ? `\n业务场景例句（用户可能这么说）：${task.intent_examples.slice(0, 8).join('；')}`
       : ''
 
-    const system = '你是客服信息提取助手。只根据用户话术提取指定字段，返回严格 JSON 对象，不要任何解释、前后缀或 markdown 代码块。提取不到的字段不要出现。'
+    const system = '你是客服信息提取助手。只根据用户话术提取指定字段，返回严格 JSON 对象，不要任何解释、前后缀或 markdown 代码块。提取不到的字段不要出现。如果用户输入中没有明确提供某个字段的信息，绝对不要编造，也不要重复用户输入的整句话作为字段值——该字段直接省略。'
     const user = `任务：${task.name}${examples}\n` +
       `需提取字段：${slotDesc}\n` +
       (filledDesc ? `已提取字段：${filledDesc}\n` : '') +

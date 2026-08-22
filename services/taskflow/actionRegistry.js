@@ -76,4 +76,29 @@ register('transfer_human', async () => {
   return { ok: true, message: '好的，正在为您转接人工客服，请稍候...\n客服热线：400-123-4567' }
 })
 
+register('create_meter_replace_order', async (ctx) => {
+  await pool.execute(
+    `CREATE TABLE IF NOT EXISTS meter_replace_order (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      session_id VARCHAR(100),
+      code VARCHAR(50) NOT NULL,
+      customer_name VARCHAR(50),
+      phone VARCHAR(20),
+      address VARCHAR(255),
+      reason VARCHAR(50),
+      time_slot VARCHAR(20),
+      status TINYINT DEFAULT 1 COMMENT '1=待联系 2=已预约 3=已完成',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  )
+
+  const slots = ctx.slots || {}
+  const [result] = await pool.execute(
+    'INSERT INTO meter_replace_order (session_id, code, customer_name, phone, address, reason, time_slot, status) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
+    [ctx.sessionId, ctx.task.code, slots.customer_name || null, slots.phone || null, slots.address || null, slots.reason || null, slots.time_slot || null]
+  )
+
+  return { ok: true, message: `已为您登记换表申请（单号 #${result.insertId}），师傅会尽快联系您确认上门时间。` }
+})
+
 export default { register, runAction, listActions }
