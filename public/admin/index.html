@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FAQ 管理后台 v3.0</title>
+  <script type="module" crossorigin src="./assets/index-D334h4Ji.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CKU7t4Vg.css">
+  <style>
+    /* 登录遮罩层 */
+    #auth-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;z-index:99999;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif}
+    #auth-overlay.hidden{display:none}
+    .auth-card{background:#fff;border-radius:16px;padding:40px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .auth-card h2{text-align:center;margin-bottom:8px;color:#333;font-size:22px}
+    .auth-card .subtitle{text-align:center;color:#888;font-size:13px;margin-bottom:28px}
+    .auth-card .field{margin-bottom:18px}
+    .auth-card label{display:block;font-size:13px;color:#555;margin-bottom:6px;font-weight:500}
+    .auth-card input{width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;transition:border-color .2s;box-sizing:border-box}
+    .auth-card input:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,.15)}
+    .auth-card .login-btn{width:100%;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s;margin-top:8px}
+    .auth-card .login-btn:hover{opacity:.9}
+    .auth-card .login-btn:disabled{opacity:.5;cursor:not-allowed}
+    .auth-card .error-msg{color:#e74c3c;font-size:13px;text-align:center;margin-top:12px;min-height:20px}
+    .auth-card .logo{text-align:center;font-size:40px;margin-bottom:12px}
+
+    /* ===== 全局表格方案 ===== */
+    /* Element Plus el-table 需要 table-layout:fixed 才能正确处理列宽 */
+    .el-table,.el-table__body-wrapper table{table-layout:fixed !important}
+    /* 强制 header table 宽度为 100%（Element Plus 会设为错误的像素值） */
+    .el-table__header-wrapper table{width:100% !important}
+    .faq-table-wrap,.table-wrap{width:100%;overflow-x:auto}
+    /* 分类树布局 */
+    .faq-layout{display:flex !important;gap:16px !important;align-items:flex-start !important;width:100% !important}
+    .faq-layout > .category-tree{width:260px !important;min-width:260px !important;max-width:260px !important;flex-shrink:0 !important;background:#fff !important;border-radius:10px !important;box-shadow:0 1px 3px rgba(0,0,0,.06) !important;padding:16px !important;position:sticky !important;top:24px !important;overflow:hidden !important}
+    .faq-content{flex:1 !important;min-width:0 !important}
+    /* 隐藏 CategoryTree 组件内部重复的 header */
+    .faq-layout .category-tree .category-tree .tree-header{display:none !important}
+    /* 分类树节点：数字右对齐 */
+    .faq-layout .category-tree .el-tree-node__content{display:flex !important;width:100% !important;justify-content:space-between !important;align-items:center !important}
+    .faq-layout .category-tree .tree-node{display:flex !important;align-items:center !important;justify-content:space-between !important;width:100% !important}
+    .faq-layout .category-tree .tree-node span{overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;flex:1 !important;min-width:0 !important}
+    .faq-layout .category-tree .tree-node .el-tag{flex-shrink:0 !important;background:transparent !important;border:none !important;color:#bbb !important;font-size:12px !important;padding:0 !important;min-width:auto !important;width:auto !important;height:auto !important;line-height:1.4 !important;margin-left:8px !important}
+    /* 聊天预览右侧面板 */
+    #chat-preview-panel{position:fixed;top:0;right:0;bottom:0;width:420px;background:#fff;box-shadow:-4px 0 20px rgba(0,0,0,.15);z-index:999999;display:none;flex-direction:column}
+    #chat-preview-panel.show{display:flex}
+    #chat-preview-resize{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:1}
+    #chat-preview-resize:hover,#chat-preview-resize.active{background:#4361ee}
+    #chat-preview-header{padding:12px 16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+    #chat-preview-header h3{font-size:14px;margin:0;color:#333}
+    #chat-preview-header .close-btn{cursor:pointer;font-size:18px;color:#999;background:none;border:none;line-height:1}
+    #chat-preview-header .close-btn:hover{color:#333}
+    #chat-preview-iframe{flex:1;border:none;width:100%;min-height:0}
+
+    /* Admin 布局高度修复：确保 el-main 填满剩余空间 */
+    html,body,#app{height:100% !important;margin:0 !important}
+    .el-container{display:flex !important}
+    .el-container>.el-container{flex-direction:column !important;flex:1 !important;min-height:0 !important}
+    .el-main{flex:1 !important;min-height:0 !important;overflow:hidden !important;padding:20px !important;display:flex !important;flex-direction:column !important}
+  </style>
+</head>
+<body>
+  <!-- 聊天预览右侧面板 -->
+  <div id="chat-preview-panel">
+    <div id="chat-preview-resize"></div>
+    <div id="chat-preview-header">
+      <h3>💬 聊天预览</h3>
+      <button class="close-btn" id="chat-preview-close">&times;</button>
+    </div>
+    <iframe id="chat-preview-iframe" src="about:blank"></iframe>
+  </div>
+
+  <div id="app"></div>
+
+  <!-- 认证层：登录 + XHR 拦截 -->
+  <div id="auth-overlay">
+    <div class="auth-card">
+      <div class="logo">🤖</div>
+      <h2>FAQ 管理后台</h2>
+      <p class="subtitle">请登录以继续</p>
+      <form id="auth-form">
+        <div class="field">
+          <label for="auth-username">用户名</label>
+          <input type="text" id="auth-username" placeholder="请输入用户名" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label for="auth-password">密码</label>
+          <input type="password" id="auth-password" placeholder="请输入密码" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="login-btn" id="auth-submit">登 录</button>
+        <div class="error-msg" id="auth-error"></div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+    var TOKEN_KEY = 'faq_admin_token';
+    var overlay = document.getElementById('auth-overlay');
+    var form = document.getElementById('auth-form');
+    var errEl = document.getElementById('auth-error');
+    var submitBtn = document.getElementById('auth-submit');
+
+    // ===== Token 管理 =====
+    function getToken() {
+      try { return localStorage.getItem(TOKEN_KEY); } catch(e) { return null; }
+    }
+    function setToken(t) {
+      try { localStorage.setItem(TOKEN_KEY, t); } catch(e) {}
+    }
+    function clearToken() {
+      try { localStorage.removeItem(TOKEN_KEY); } catch(e) {}
+    }
+
+    // ===== 显示/隐藏登录 =====
+    function showLogin() {
+      overlay.classList.remove('hidden');
+    }
+    function hideLogin() {
+      overlay.classList.add('hidden');
+    }
+
+    // ===== 登录请求 =====
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var username = document.getElementById('auth-username').value.trim();
+      var password = document.getElementById('auth-password').value;
+      if (!username || !password) {
+        errEl.textContent = '请输入用户名和密码';
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = '登录中...';
+      errEl.textContent = '';
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/auth/login', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      // 标记这是登录请求，避免被拦截器循环调用
+      xhr._isLoginReq = true;
+      xhr.onload = function() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登 录';
+        if (xhr.status === 200) {
+          try {
+            var res = JSON.parse(xhr.responseText);
+            if (res.success && res.token) {
+              setToken(res.token);
+              hideLogin();
+              // 触发页面刷新让 Vue 重新加载
+              window.location.reload();
+              return;
+            }
+          } catch(ex) {}
+          errEl.textContent = '登录响应异常';
+        } else if (xhr.status === 401) {
+          errEl.textContent = '用户名或密码错误';
+        } else {
+          errEl.textContent = '登录失败，请重试';
+        }
+        document.getElementById('auth-password').value = '';
+        document.getElementById('auth-password').focus();
+      };
+      xhr.onerror = function() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登 录';
+        errEl.textContent = '网络错误，请检查服务是否运行';
+      };
+      xhr.send(JSON.stringify({ username: username, password: password }));
+    });
+
+    // ===== Monkey-patch XMLHttpRequest 注入 Authorization =====
+    var OrigXHR = XMLHttpRequest;
+    var origOpen = OrigXHR.prototype.open;
+    var origSend = OrigXHR.prototype.send;
+    var origSetRequestHeader = OrigXHR.prototype.setRequestHeader;
+
+    OrigXHR.prototype.open = function(method, url) {
+      this._authUrl = url;
+      return origOpen.apply(this, arguments);
+    };
+
+    OrigXHR.prototype.send = function() {
+      var token = getToken();
+      var self = this;
+
+      // 如果是登录请求，不注入 token
+      if (this._isLoginReq) {
+        return origSend.apply(this, arguments);
+      }
+
+      // 如果有 token 且是 API 请求，注入 Authorization
+      if (token && this._authUrl && this._authUrl.indexOf('/api/') === 0) {
+        try { origSetRequestHeader.call(this, 'Authorization', 'Bearer ' + token); } catch(e) {}
+      }
+
+      // 监听 401 响应
+      var origOnload = this.onload;
+      var origOnreadystatechange = this.onreadystatechange;
+
+      function check401() {
+        if (self.status === 401 && self._authUrl && self._authUrl.indexOf('/api/') === 0) {
+          clearToken();
+          showLogin();
+        }
+      }
+
+      if (origOnload) {
+        this.onload = function() {
+          check401();
+          return origOnload.apply(this, arguments);
+        };
+      }
+      if (origOnreadystatechange) {
+        this.onreadystatechange = function() {
+          if (self.readyState === 4) check401();
+          return origOnreadystatechange.apply(this, arguments);
+        };
+      }
+      if (!origOnload && !origOnreadystatechange) {
+        this.addEventListener('load', check401);
+      }
+
+      return origSend.apply(this, arguments);
+    };
+
+    // ===== 同时拦截 fetch（以防部分代码使用 fetch）=====
+    var origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = function(input, init) {
+        var token = getToken();
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+
+        if (token && url.indexOf('/api/') === 0) {
+          init = init || {};
+          init.headers = init.headers || {};
+          if (init.headers instanceof Headers) {
+            if (!init.headers.has('Authorization')) {
+              init.headers.set('Authorization', 'Bearer ' + token);
+            }
+          } else if (typeof init.headers === 'object') {
+            if (!init.headers['Authorization']) {
+              init.headers['Authorization'] = 'Bearer ' + token;
+            }
+          }
+        }
+
+        return origFetch.call(this, input, init).then(function(resp) {
+          if (resp.status === 401 && url.indexOf('/api/') === 0) {
+            clearToken();
+            showLogin();
+          }
+          return resp;
+        });
+      };
+    }
+
+    // ===== 启动检查 =====
+    if (getToken()) {
+      // 验证 token 是否仍然有效
+      var verifyXhr = new OrigXHR();
+      verifyXhr._isLoginReq = true;
+      verifyXhr.open('GET', '/api/auth/verify', true);
+      verifyXhr.setRequestHeader('Authorization', 'Bearer ' + getToken());
+      verifyXhr.onload = function() {
+        if (verifyXhr.status === 200) {
+          try {
+            var res = JSON.parse(verifyXhr.responseText);
+            if (res.valid) { hideLogin(); return; }
+          } catch(e) {}
+        }
+        clearToken();
+        showLogin();
+      };
+      verifyXhr.onerror = function() {
+        // 网络错误时也显示登录
+        showLogin();
+      };
+      verifyXhr.send();
+    } else {
+      showLogin();
+    }
+
+    // ===== 表格列宽修正 =====
+    // Element Plus el-table-column 的 width 百分比值会被当作像素写入 colgroup
+    // 此函数读取 col 的像素值作为比例，按容器实际宽度重新分配
+    function setTableColumnWidths() {
+      var tables = document.querySelectorAll('.el-table');
+      tables.forEach(function(table) {
+        var headerTable = table.querySelector('.el-table__header-wrapper table');
+        if (!headerTable) return;
+        var cols = headerTable.querySelectorAll('col');
+        if (!cols.length) return;
+        var containerWidth = table.clientWidth;
+        if (containerWidth <= 0) return;
+        // 收集每列的原始值（Element Plus 把百分比当像素写入 col width）
+        var ratios = [];
+        var totalRatio = 0;
+        for (var i = 0; i < cols.length; i++) {
+          var w = parseFloat(cols[i].getAttribute('width') || '0');
+          ratios.push(w);
+          totalRatio += w;
+        }
+        if (totalRatio <= 0) return;
+        // 检查是否已经正确设置（避免重复计算）
+        var firstColWidth = parseFloat(cols[0].getAttribute('width') || '0');
+        var expectedFirst = Math.round((ratios[0] / totalRatio) * containerWidth);
+        if (expectedFirst < 40) expectedFirst = 40;
+        if (Math.abs(firstColWidth - expectedFirst) < 2) return; // 已正确，跳过
+        // 按比例重新分配实际像素宽度
+        var bodyTable = table.querySelector('.el-table__body-wrapper table');
+        var bodyCols = bodyTable ? bodyTable.querySelectorAll('col') : [];
+        var headerCells = headerTable.querySelectorAll('th');
+        // 修正 body table 的内联宽度（Element Plus 设为错误的像素值）
+        if (bodyTable) bodyTable.style.width = containerWidth + 'px';
+        for (var i = 0; i < cols.length; i++) {
+          var px = Math.round((ratios[i] / totalRatio) * containerWidth);
+          if (px < 40) px = 40;
+          cols[i].setAttribute('width', px);
+          if (bodyCols[i]) bodyCols[i].setAttribute('width', px);
+          if (headerCells[i]) headerCells[i].style.width = px + 'px';
+        }
+      });
+    }
+    // 持续轮询修正表格列宽（Element Plus 虚拟 DOM 会覆盖直接修改）
+    setInterval(setTableColumnWidths, 500);
+    setTimeout(setTableColumnWidths, 200);
+
+    // ===== 修复分类树重复 header =====
+    function fixDuplicateHeader() {
+      var panels = document.querySelectorAll('.category-tree');
+      panels.forEach(function(panel) {
+        var inner = panel.querySelector('.category-tree');
+        if (inner) {
+          var header = inner.querySelector('.tree-header');
+          if (header) header.style.display = 'none';
+        }
+      });
+    }
+    var observer = new MutationObserver(fixDuplicateHeader);
+    observer.observe(document.getElementById('app'), { childList: true, subtree: true });
+    setTimeout(fixDuplicateHeader, 500);
+    setTimeout(fixDuplicateHeader, 1500);
+  })();
+  </script>
+<script>
+(function(){
+  var reqVisible=true, rateVisible=true;
+  function updateLegend(){
+    var reqEl=document.querySelector('.legend-req');
+    var rateEl=document.querySelector('.legend-rate');
+    if(reqEl) reqEl.classList.toggle('disabled',!reqVisible);
+    if(rateEl) rateEl.classList.toggle('disabled',!rateVisible);
+  }
+  function updateBars(){
+    document.querySelectorAll('.trend-bar:not(.trend-bar-rate)').forEach(function(b){
+      b.classList.toggle('hidden',!reqVisible);
+    });
+    document.querySelectorAll('.trend-bar-rate').forEach(function(b){
+      b.classList.toggle('hidden',!rateVisible);
+    });
+  }
+  document.addEventListener('click',function(e){
+    var target=e.target.closest('.legend-item');
+    if(!target) return;
+    if(target.classList.contains('legend-req')){
+      reqVisible=!reqVisible;
+      updateLegend();
+      updateBars();
+    } else if(target.classList.contains('legend-rate')){
+      rateVisible=!rateVisible;
+      updateLegend();
+      updateBars();
+    }
+  });
+})();
+</script>
+<script>
+// ===== 聊天预览右侧面板 =====
+(function(){
+  var panel = document.getElementById('chat-preview-panel');
+  var iframe = document.getElementById('chat-preview-iframe');
+  var closeBtn = document.getElementById('chat-preview-close');
+  var resizeHandle = document.getElementById('chat-preview-resize');
+  var isOpen = false;
+
+  function openPreview() {
+    if (!isOpen) {
+      iframe.src = '/';
+      panel.classList.add('show');
+      isOpen = true;
+    }
+  }
+  function closePreview() {
+    panel.classList.remove('show');
+    iframe.src = 'about:blank';
+    isOpen = false;
+  }
+
+  closeBtn.addEventListener('click', closePreview);
+
+  // 拖拽调整宽度
+  var resizing = false, startX = 0, startW = 0;
+  resizeHandle.addEventListener('mousedown', function(e) {
+    resizing = true;
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    resizeHandle.classList.add('active');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!resizing) return;
+    var newW = startW + (startX - e.clientX);
+    if (newW >= 300 && newW <= window.innerWidth * 0.7) {
+      panel.style.width = newW + 'px';
+    }
+  });
+  document.addEventListener('mouseup', function() {
+    if (resizing) { resizing = false; resizeHandle.classList.remove('active'); }
+  });
+
+  // 拦截"聊天预览"菜单项的点击
+  document.addEventListener('click', function(e) {
+    var menuItem = e.target.closest('.el-menu-item');
+    if (menuItem && menuItem.textContent.trim() === '聊天预览') {
+      e.preventDefault();
+      e.stopPropagation();
+      openPreview();
+    }
+  }, true);
+})();
+</script>
+</body>
+</html>

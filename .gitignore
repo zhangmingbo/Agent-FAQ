@@ -1,0 +1,12 @@
+node_modules/
+uploads/
+model_cache/
+*.log
+.env
+.DS_Store
+faq-bot-image.tar
+faq-bot-release.zip
+_search.*
+screenshot-*.png
+*.png
+logs/

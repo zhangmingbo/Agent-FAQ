@@ -1,0 +1,35 @@
+{
+  "name": "intent-recognizer-sdk",
+  "version": "1.0.0",
+  "description": "基于余弦相似度的意图识别SDK，无需数据库，纯内存向量匹配",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "start:legacy": "node test-server.js",
+    "dev": "node --watch server.js",
+    "backup": "bash scripts/backup.sh",
+    "example": "node example.js"
+  },
+  "keywords": [
+    "nlp",
+    "intent",
+    "recognition",
+    "cosine-similarity",
+    "sdk"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.5.1",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.23.4"
+  }
+}
