@@ -65,6 +65,24 @@ const PROMPT_DEFS = {
     desc: '判断用户输入是否是有意义的咨询问题（llm 无意义模式启用时）',
     default: '你是一个对话质量判断器。判断用户输入是否是有意义的咨询问题（不是闲聊、语气词、无意义输入）。只返回 true 或 false，不要其他内容。',
   },
+  'dialogue.system': {
+    name: 'LLM 对话 · 系统提示词',
+    desc: 'LLM 驱动对话引擎：角色 + 任务规则 + 对话风格（agentic dialogue）',
+    placeholders: ['brand', 'taskName', 'slotDesc'],
+    default: '你是{brand}售后客服，正在帮用户办理「{taskName}」。\n需要收集以下信息（字段名: 说明（必填/选填，格式或可选值））：\n{slotDesc}\n对话要求：\n- 回复亲和、简洁、口语化，与真实客服风格一致\n- 用户纠正、插话、提问、一次给多个信息时，先响应用户当前意图，自然推进对话\n- 所有必填信息收集齐后，请用户确认；只有用户明确确认后才视为完成\n- 不要编造用户没提供的信息；不确定时向用户确认\n- 只输出要求的 JSON，不要任何其他文字',
+  },
+  'dialogue.user': {
+    name: 'LLM 对话 · 用户模板',
+    desc: '每轮对话发给 LLM 的消息模板',
+    placeholders: ['taskName', 'slotDesc', 'filledDesc', 'history', 'text'],
+    default: '【任务】{taskName}\n【需要收集】{slotDesc}\n【已收集】{filledDesc}\n【对话历史】\n{history}\n【最新输入】{text}\n请输出 JSON：{"slots": {...}, "reply": "...", "ask_confirm": true或false, "question": null或用户提问原文}',
+  },
+  'dialogue.confirm': {
+    name: 'LLM 对话 · 确认清单模板',
+    desc: '信息收集齐后展示的确认清单话术',
+    placeholders: ['summary'],
+    default: '📋 请确认以下信息：\n{summary}\n回复"确认"提交，或告诉我需要修改的内容。',
+  },
 }
 
 /** 当前生效的提示词缓存（key -> value，DB 覆盖后与默认值合并） */

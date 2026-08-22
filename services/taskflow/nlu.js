@@ -19,6 +19,7 @@ import extractor from './extractor.js'
 import { validateSlot } from './validator.js'
 import llmClient from './llm.js'
 import { cosineSimilarity } from '../../src/similarity.js'
+import { get as getPrompt } from '../llmPrompts.js'
 
 /** 否定句防护（避免"没坏/不用修"触发任务） */
 const NEGATION_RE = /没(有)?(坏|问题|故障|事|毛病)|不(是|用|要|想)(报修|维修|修)|没(有)?必要/
@@ -217,6 +218,31 @@ class TaskNLU {
   /** 校验槽位值（规则层，任何模式下都执行） */
   validate(slotDef, value) {
     return validateSlot(slotDef, value)
+  }
+
+  // ========== LLM 驱动对话（agentic dialogue） ==========
+
+  /**
+   * 单轮对话决策：LLM 看到「任务目标 + 字段约束 + 已收集 + 对话历史 + 最新输入」，
+   * 输出 { slots, reply, ask_confirm, question }。系统侧负责校验/确认门禁/执行。
+   * @param {Object} opts - { task, slotDesc, filledDesc, history, text }
+   * @returns {Promise<{slots:Object, reply:string, ask_confirm:boolean, question:string|null}>}
+   */
+  async dialogue({ task, slotDesc, filledDesc, history, text }) {
+    if (!llmClient.enabled) throw new Error('LLM 未配置，无法执行 LLM 对话')
+    const system = getPrompt('dialogue.system', {
+      brand: '沁园',
+      taskName: task.name,
+      slotDesc,
+    })
+    const user = getPrompt('dialogue.user', {
+      taskName: task.name,
+      slotDesc,
+      filledDesc,
+      history,
+      text,
+    })
+    return llmClient.dialogueTurn(system, user)
   }
 
   /**

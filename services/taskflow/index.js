@@ -17,6 +17,7 @@
 import { getStore, closeStore } from './store.js'
 import TaskDefs from './taskDefs.js'
 import DialogManager from './dialogManager.js'
+import LLMDialogManager from './llmDialogManager.js'
 import llmClient from './llm.js'
 import nlu from './nlu.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
@@ -34,7 +35,10 @@ class TaskFlowEngine {
 
     // 理解层（意图判定/槽位提取，可插拔模式：rule/hybrid/llm）
     this.nlu = nlu
+    // 规则版对话管理器（确定性骨架，LLM 不可用时降级用）
     this.dialog = new DialogManager(TaskDefs, nlu)
+    // LLM 驱动对话管理器（llm/hybrid 模式主用）
+    this.llmDialog = new LLMDialogManager(TaskDefs, nlu)
 
     /** @type {import('./store.js').MemoryStore|import('./store.js').RedisStore|null} */
     this.store = null
@@ -146,6 +150,8 @@ class TaskFlowEngine {
       stack: [],
       turnCount: 0,
       skipCount: 0,
+      // LLM 驱动对话的对话历史（最近若干轮，仅 llmDialog 使用）
+      history: [],
       startedAt: Date.now(),
       lastActive: Date.now(),
     }
@@ -159,7 +165,7 @@ class TaskFlowEngine {
    * 处理一轮任务对话
    * @param {string} sessionId
    * @param {string} text
-   * @returns {Promise<Object|null>} 信封 { reply, isComplete, extracted, reask, cancelled, taskState }
+   * @returns {Promise<Object|null>} 信封 { reply, isComplete, extracted, reask, cancelled, question, questionText, taskState }
    */
   async processInput(sessionId, text) {
     const state = this.activeTasks.get(sessionId)
@@ -167,7 +173,19 @@ class TaskFlowEngine {
       return null
     }
 
-    const result = await this.dialog.processTurn(state, text)
+    // LLM 驱动对话（llm/hybrid 模式且 LLM 可用）；LLM 失败自动降级回规则版
+    const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid') && this.llm.enabled
+    let result = null
+    if (useLlmDialog) {
+      try {
+        result = await this.llmDialog.processTurn(state, text)
+      } catch (e) {
+        console.error(`[TaskFlow] LLM 对话失败，降级规则模式: ${e.message}`)
+        result = await this.dialog.processTurn(state, text)
+      }
+    } else {
+      result = await this.dialog.processTurn(state, text)
+    }
 
     if (result.isComplete || result.cancelled) {
       this.activeTasks.delete(sessionId)

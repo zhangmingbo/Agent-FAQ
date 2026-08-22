@@ -98,6 +98,28 @@ class LLMClient {
   }
 
   /**
+   * LLM 驱动对话：单轮决策（agentic dialogue）
+   * @param {string} system - 系统提示词（已填充）
+   * @param {string} user - 用户消息（已填充）
+   * @returns {Promise<Object>} { slots, reply, ask_confirm, question }
+   */
+  async dialogueTurn(system, user) {
+    const raw = await this.chat([
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ], { maxTokens: 400, temperature: 0.2 })
+
+    const obj = this._parseJson(raw)
+    if (!obj || typeof obj !== 'object') return { slots: {}, reply: '', ask_confirm: false, question: null }
+    return {
+      slots: obj.slots && typeof obj.slots === 'object' ? obj.slots : {},
+      reply: typeof obj.reply === 'string' ? obj.reply.trim() : '',
+      ask_confirm: !!obj.ask_confirm,
+      question: typeof obj.question === 'string' && obj.question.trim() ? obj.question.trim() : null,
+    }
+  }
+
+  /**
    * 从用户输入一次性抽取所有未填槽位
    * @param {string} text - 用户输入
    * @param {Object} task - 任务定义
