@@ -159,12 +159,48 @@ class FAQEngine {
 
     let response
 
-    // 检查是否在追问确认流程中
-    if (context.pendingClarify) {
-      response = await this._handleClarify(text, context)
-    } else {
-      // 正常意图识别
-      response = await this._handleRecognize(text, context)
+    // ===== 任务流程优先检查 =====
+    // 1. 如果会话中有活跃任务，优先处理任务对话
+    if (this.taskEngine && this.taskEngine.hasActiveTask(sessionId)) {
+      console.log('[TASK] 检测到活跃任务，进入任务对话模式')
+      const taskResult = this.taskEngine.processInput(sessionId, text)
+      if (taskResult) {
+        response = {
+          intent_code: `task:${taskResult.taskState.taskCode}`,
+          confidence: 1,
+          source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
+          answer: taskResult.reply,
+        }
+      }
+    }
+    // 2. 如果没有活跃任务，检查是否触发新任务
+    else if (this.taskEngine) {
+      const matchedTask = this.taskEngine.matchTask(text)
+      if (matchedTask) {
+        console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
+        const taskState = this.taskEngine.startTask(sessionId, matchedTask)
+        // 开始任务后，立即处理当前输入（可能已包含槽位信息）
+        const taskResult = this.taskEngine.processInput(sessionId, text)
+        if (taskResult) {
+          response = {
+            intent_code: `task:${matchedTask.code}`,
+            confidence: 1,
+            source: taskResult.isComplete ? 'task_complete' : 'task_started',
+            answer: taskResult.reply,
+          }
+        }
+      }
+    }
+
+    // 3. 常规 FAQ 对话流程
+    if (!response) {
+      // 检查是否在追问确认流程中
+      if (context.pendingClarify) {
+        response = await this._handleClarify(text, context)
+      } else {
+        // 正常意图识别
+        response = await this._handleRecognize(text, context)
+      }
     }
 
     // 记录回复到历史

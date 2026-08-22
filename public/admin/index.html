@@ -51,6 +51,54 @@
     #chat-preview-header .close-btn:hover{color:#333}
     #chat-preview-iframe{flex:1;border:none;width:100%;min-height:0}
 
+    /* 任务管理标签页 */
+    #rules-tabs{display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #eee}
+    #rules-tabs .tab-btn{padding:10px 24px;cursor:pointer;font-size:14px;font-weight:500;color:#666;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;background:none;border-top:none;border-left:none;border-right:none}
+    #rules-tabs .tab-btn:hover{color:#4361ee}
+    #rules-tabs .tab-btn.active{color:#4361ee;border-bottom-color:#4361ee}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
+    /* 任务管理样式 */
+    .task-panel{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px #0000000f}
+    .task-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .task-header h4{margin:0;font-size:15px;color:#333}
+    .task-table-wrap{max-height:500px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fafbfc}
+    .task-empty{text-align:center;padding:60px 20px;color:#999}
+    .task-empty .icon{font-size:48px;margin-bottom:12px}
+    /* 任务编辑弹窗 */
+    .task-modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:999998;display:flex;align-items:center;justify-content:center}
+    .task-modal{background:#fff;border-radius:12px;width:680px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .task-modal-header{padding:20px 24px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:1;border-radius:12px 12px 0 0}
+    .task-modal-header h3{margin:0;font-size:16px}
+    .task-modal-header .close-btn{cursor:pointer;font-size:20px;color:#999;background:none;border:none;line-height:1}
+    .task-modal-body{padding:24px}
+    .task-modal-body .form-group{margin-bottom:18px}
+    .task-modal-body label{display:block;font-size:13px;color:#555;margin-bottom:6px;font-weight:500}
+    .task-modal-body input,.task-modal-body textarea,.task-modal-body select{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box}
+    .task-modal-body textarea{resize:vertical;min-height:60px}
+    .task-modal-body input:focus,.task-modal-body textarea:focus{outline:none;border-color:#4361ee}
+    .task-modal-footer{padding:16px 24px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:#fff;border-radius:0 0 12px 12px}
+    .slot-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:10px;background:#f8f9fa;border-radius:6px}
+    .slot-row input,.slot-row select{padding:6px 8px;font-size:12px}
+    .slot-row .slot-key{width:100px}
+    .slot-row .slot-label{width:100px}
+    .slot-row .slot-prompt{flex:1}
+    .slot-row .slot-type{width:90px}
+    .slot-row .slot-required{width:50px;text-align:center}
+    .slot-row .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
+    .keyword-tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#e8ecff;border-radius:12px;font-size:12px;margin:2px 4px 2px 0}
+    .keyword-tag .remove{cursor:pointer;color:#999;font-size:14px}
+    .keyword-tag .remove:hover{color:#e74c3c}
+    .btn-sm{padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid #ddd;background:#fff;color:#333}
+    .btn-sm:hover{border-color:#4361ee;color:#4361ee}
+    .btn-primary{background:#4361ee;color:#fff;border-color:#4361ee}
+    .btn-primary:hover{background:#3651d4}
+    .btn-danger{color:#e74c3c;border-color:#e74c3c}
+    .btn-danger:hover{background:#fef0f0}
+    .status-tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px}
+    .status-tag.on{background:#e8f5e9;color:#2e7d32}
+    .status-tag.off{background:#fce4ec;color:#c62828}
+
     /* Admin 布局高度修复：确保 el-main 填满剩余空间 */
     html,body,#app{height:100% !important;margin:0 !important}
     .el-container{display:flex !important}
@@ -428,6 +476,299 @@
       openPreview();
     }
   }, true);
+})();
+// ===== 规则引擎页面 - 任务管理标签页 =====
+(function(){
+  var injected = false;
+  var observer = new MutationObserver(function(){
+    if (injected) return;
+    var panel = document.querySelector('.config-panel');
+    if (!panel) return;
+    // 检查是否已在规则引擎页面（通过内容判断）
+    var h3 = panel.querySelector('h3');
+    if (!h3 || h3.textContent.indexOf('对话规则') === -1) return;
+    injected = true;
+    injectTaskTabs(panel);
+  });
+  observer.observe(document.getElementById('app'), { childList: true, subtree: true });
+
+  // 监听路由变化，重置注入标记
+  var lastHref = location.href;
+  setInterval(function(){
+    if (location.href !== lastHref) {
+      lastHref = location.href;
+      injected = false;
+    }
+  }, 300);
+
+  function injectTaskTabs(panel) {
+    // 创建标签导航
+    var tabs = document.createElement('div');
+    tabs.id = 'rules-tabs';
+    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button>';
+    // 把原有内容包进 tab panel
+    var rulesPanel = document.createElement('div');
+    rulesPanel.className = 'tab-panel active';
+    rulesPanel.id = 'tab-rules';
+    while (panel.firstChild) rulesPanel.appendChild(panel.firstChild);
+    // 创建任务面板
+    var tasksPanel = document.createElement('div');
+    tasksPanel.className = 'tab-panel';
+    tasksPanel.id = 'tab-tasks';
+    tasksPanel.innerHTML = buildTaskPanelHTML();
+    // 组装
+    panel.appendChild(tabs);
+    panel.appendChild(rulesPanel);
+    panel.appendChild(tasksPanel);
+    // 标签切换
+    tabs.addEventListener('click', function(e) {
+      var btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      tabs.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active') });
+      btn.classList.add('active');
+      var tab = btn.getAttribute('data-tab');
+      rulesPanel.classList.toggle('active', tab === 'rules');
+      tasksPanel.classList.toggle('active', tab === 'tasks');
+      if (tab === 'tasks') loadTasks();
+    });
+  }
+
+  // ===== 任务面板 HTML =====
+  function buildTaskPanelHTML() {
+    return '<div class="task-panel">' +
+      '<div class="task-header">' +
+        '<h4>任务流程管理</h4>' +
+        '<button class="btn-sm btn-primary" id="task-add-btn">+ 新建任务</button>' +
+      '</div>' +
+      '<div id="task-list-area"><div class="task-empty"><div class="icon">📋</div><div>加载中...</div></div></div>' +
+    '</div>';
+  }
+
+  // ===== 加载任务列表 =====
+  function loadTasks() {
+    var area = document.getElementById('task-list-area');
+    if (!area) return;
+    api('GET', '/api/tasks', null, function(res) {
+      if (!res.success || !res.data || !res.data.length) {
+        area.innerHTML = '<div class="task-empty"><div class="icon">📋</div><div>暂无任务流程</div><div style="margin-top:8px;font-size:12px">点击"新建任务"创建多轮对话任务</div></div>';
+        return;
+      }
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%">';
+      html += '<thead><tr><th style="width:50px">#</th><th>编码</th><th>名称</th><th>触发词</th><th>槽位数</th><th>状态</th><th style="width:180px">操作</th></tr></thead><tbody>';
+      res.data.forEach(function(t, i) {
+        var kws = (t.trigger_keywords || []).map(function(k){ return typeof k === 'string' ? k : k.regex || ''; }).join(', ');
+        var slots = t.slots || [];
+        var statusCls = t.status === 1 ? 'on' : 'off';
+        var statusText = t.status === 1 ? '启用' : '禁用';
+        html += '<tr>';
+        html += '<td>' + (i+1) + '</td>';
+        html += '<td><code>' + esc(t.code) + '</code></td>';
+        html += '<td>' + esc(t.name) + '</td>';
+        html += '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(kws) + '">' + esc(kws || '-') + '</td>';
+        html += '<td>' + slots.length + '</td>';
+        html += '<td><span class="status-tag ' + statusCls + '">' + statusText + '</span></td>';
+        html += '<td>';
+        html += '<button class="btn-sm" onclick="editTask(\'' + esc(t.code) + '\')">编辑</button> ';
+        html += '<button class="btn-sm" onclick="toggleTask(\'' + esc(t.code) + '\',' + (t.status === 1 ? 0 : 1) + ')">' + (t.status === 1 ? '禁用' : '启用') + '</button> ';
+        html += '<button class="btn-sm btn-danger" onclick="deleteTask(\'' + esc(t.code) + '\')">删除</button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      area.innerHTML = html;
+    });
+  }
+
+  // ===== 编辑/新建任务弹窗 =====
+  window.editTask = function(code) {
+    api('GET', '/api/tasks/' + code, null, function(res) {
+      if (res.success && res.data) showTaskModal(res.data);
+    });
+  };
+  window.addTask = function() { showTaskModal(null); };
+
+  // 绑定新建按钮
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'task-add-btn') { window.addTask(); }
+  });
+
+  function showTaskModal(task) {
+    var isEdit = !!task;
+    var overlay = document.createElement('div');
+    overlay.className = 'task-modal-overlay';
+    overlay.innerHTML = '<div class="task-modal">' +
+      '<div class="task-modal-header"><h3>' + (isEdit ? '编辑任务' : '新建任务') + '</h3><button class="close-btn" id="task-modal-close">&times;</button></div>' +
+      '<div class="task-modal-body">' +
+        '<div class="form-group"><label>任务编码（唯一标识，英文）</label><input id="tf-code" value="' + esc(isEdit ? task.code : '') + '" ' + (isEdit ? 'readonly style="background:#f5f5f5"' : '') + ' placeholder="如：repair_order"></div>' +
+        '<div class="form-group"><label>任务名称</label><input id="tf-name" value="' + esc(isEdit ? task.name : '') + '" placeholder="如：报修工单"></div>' +
+        '<div class="form-group"><label>描述</label><textarea id="tf-desc" placeholder="任务描述（可选）">' + esc(isEdit ? (task.description || '') : '') + '</textarea></div>' +
+        '<div class="form-group"><label>触发关键词（回车添加）</label>' +
+          '<div id="tf-keywords">' + buildKeywordTags(isEdit ? task.trigger_keywords : []) + '</div>' +
+          '<input id="tf-kw-input" placeholder="输入关键词后回车" style="margin-top:6px">' +
+        '</div>' +
+        '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
+          '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
+          '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
+        '</div>' +
+        '<div class="form-group"><label>完成提示语</label><textarea id="tf-complete" placeholder="所有信息收集完毕后的回复">' + esc(isEdit ? (task.completion_message || '') : '') + '</textarea></div>' +
+      '</div>' +
+      '<div class="task-modal-footer">' +
+        '<button class="btn-sm" id="tf-cancel">取消</button>' +
+        '<button class="btn-sm btn-primary" id="tf-save">保存</button>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(overlay);
+
+    // 事件绑定
+    overlay.querySelector('#task-modal-close').onclick = function(){ overlay.remove(); };
+    overlay.querySelector('#tf-cancel').onclick = function(){ overlay.remove(); };
+    overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
+
+    // 关键词输入
+    var kwInput = overlay.querySelector('#tf-kw-input');
+    kwInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && kwInput.value.trim()) {
+        e.preventDefault();
+        var kw = kwInput.value.trim();
+        var container = overlay.querySelector('#tf-keywords');
+        var tag = document.createElement('span');
+        tag.className = 'keyword-tag';
+        tag.innerHTML = esc(kw) + '<span class="remove">&times;</span>';
+        tag.setAttribute('data-value', kw);
+        tag.querySelector('.remove').onclick = function(){ tag.remove(); };
+        container.appendChild(tag);
+        kwInput.value = '';
+      }
+    });
+
+    // 添加槽位
+    overlay.querySelector('#tf-add-slot').onclick = function() {
+      var container = overlay.querySelector('#tf-slots');
+      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract_type:'text',extract_rule:'',required:true}));
+      bindSlotDel(container.lastElementChild);
+    };
+    // 绑定已有槽位删除
+    overlay.querySelectorAll('.slot-row').forEach(bindSlotDel);
+
+    // 保存
+    overlay.querySelector('#tf-save').onclick = function() {
+      var code = overlay.querySelector('#tf-code').value.trim();
+      var name = overlay.querySelector('#tf-name').value.trim();
+      if (!code || !name) { alert('编码和名称不能为空'); return; }
+      // 收集关键词
+      var keywords = [];
+      overlay.querySelectorAll('#tf-keywords .keyword-tag').forEach(function(tag) {
+        keywords.push(tag.getAttribute('data-value'));
+      });
+      // 收集槽位
+      var slots = [];
+      overlay.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
+        var key = row.querySelector('.slot-key').value.trim();
+        var label = row.querySelector('.slot-label').value.trim();
+        if (!key || !label) return;
+        slots.push({
+          key: key,
+          label: label,
+          prompt: row.querySelector('.slot-prompt').value.trim(),
+          extract_type: row.querySelector('.slot-type').value,
+          extract_rule: row.querySelector('.slot-rule').value.trim(),
+          required: row.querySelector('.slot-required').checked,
+        });
+      });
+      var data = {
+        code: code,
+        name: name,
+        description: overlay.querySelector('#tf-desc').value.trim(),
+        trigger_keywords: keywords,
+        slots: slots,
+        completion_message: overlay.querySelector('#tf-complete').value.trim(),
+        on_complete: '',
+        status: 1,
+      };
+      api('POST', '/api/tasks', data, function(res) {
+        if (res.success) {
+          overlay.remove();
+          loadTasks();
+        } else {
+          alert(res.message || '保存失败');
+        }
+      });
+    };
+  }
+
+  function buildKeywordTags(keywords) {
+    if (!keywords || !keywords.length) return '<span style="color:#999;font-size:12px">暂无关键词</span>';
+    return keywords.map(function(k) {
+      var val = typeof k === 'string' ? k : (k.regex || '');
+      return '<span class="keyword-tag" data-value="' + esc(val) + '">' + esc(val) + '<span class="remove">&times;</span></span>';
+    }).join('');
+  }
+
+  function buildSlotRows(slots) {
+    if (!slots || !slots.length) return '<div style="color:#999;font-size:12px;padding:8px">暂无槽位，点击下方添加</div>';
+    return slots.map(function(s) { return buildOneSlotRow(s); }).join('');
+  }
+
+  function buildOneSlotRow(s) {
+    return '<div class="slot-row">' +
+      '<input class="slot-key" value="' + esc(s.key||'') + '" placeholder="字段名">' +
+      '<input class="slot-label" value="' + esc(s.label||'') + '" placeholder="显示名">' +
+      '<input class="slot-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
+      '<select class="slot-type">' +
+        '<option value="text"' + (s.extract_type==='text'?' selected':'') + '>文本</option>' +
+        '<option value="regex"' + (s.extract_type==='regex'?' selected':'') + '>正则</option>' +
+        '<option value="number"' + (s.extract_type==='number'?' selected':'') + '>数字</option>' +
+        '<option value="enum"' + (s.extract_type==='enum'?' selected':'') + '>枚举</option>' +
+      '</select>' +
+      '<input class="slot-rule" value="' + esc(s.extract_rule||'') + '" placeholder="提取规则" style="width:120px">' +
+      '<label class="slot-required"><input type="checkbox"' + (s.required!==false?' checked':'') + '>必填</label>' +
+      '<button class="slot-del">&times;</button>' +
+    '</div>';
+  }
+
+  function bindSlotDel(row) {
+    var del = row.querySelector('.slot-del');
+    if (del) del.onclick = function() { row.remove(); };
+  }
+
+  // ===== 删除任务 =====
+  window.deleteTask = function(code) {
+    if (!confirm('确定要删除任务「' + code + '」吗？')) return;
+    api('DELETE', '/api/tasks/' + code, null, function(res) {
+      if (res.success) loadTasks();
+      else alert(res.message || '删除失败');
+    });
+  };
+
+  // ===== 启用/禁用 =====
+  window.toggleTask = function(code, status) {
+    api('POST', '/api/tasks/' + code + '/toggle', {status: !!status}, function(res) {
+      if (res.success) loadTasks();
+    });
+  };
+
+  // ===== 通用 API 请求 =====
+  function api(method, url, data, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr._isLoginReq = true; // 避免被 auth 拦截器循环
+    xhr.open(method, url, true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    // 注入 token
+    try {
+      var token = localStorage.getItem('faq_admin_token');
+      if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    } catch(e) {}
+    xhr.onload = function() {
+      try { cb(JSON.parse(xhr.responseText)); } catch(e) { cb({success:false, message:'解析响应失败'}); }
+    };
+    xhr.onerror = function() { cb({success:false, message:'网络错误'}); };
+    xhr.send(data ? JSON.stringify(data) : null);
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
 })();
 </script>
 </body>

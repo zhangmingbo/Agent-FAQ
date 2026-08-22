@@ -33,6 +33,8 @@ import { createRouter as createConfigRouter } from './routes/config.js'
 import { createRouter as createDialogueRulesRouter } from './routes/dialogueRules.js'
 import { createRouter as createUploadRouter } from './routes/upload.js'
 import { createRouter as createHealthRouter } from './routes/health.js'
+import { createRouter as createTasksRouter } from './routes/tasks.js'
+import taskEngine from './services/taskEngine.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -95,6 +97,7 @@ app.use('/api', createAnalysisRouter(engine))
 app.use('/api', createConfigRouter(engine))
 app.use('/api', createDialogueRulesRouter(engine, ruleLoader, dialogueRules))
 app.use('/api', createUploadRouter(engine, UPLOADS_DIR))
+app.use('/api', createTasksRouter())
 
 // ========== 错误处理 ==========
 
@@ -134,6 +137,12 @@ async function start() {
   console.log('   📚 正在加载 FAQ 知识库...')
   await engine.initialize()
   console.log(`   ✅ FAQ 加载完成，共 ${engine.getIntentCount()} 条`)
+  
+  // 初始化任务引擎
+  console.log('   📋 正在加载任务流程...')
+  await taskEngine.initialize()
+  engine.taskEngine = taskEngine
+  console.log(`   ✅ 任务加载完成，共 ${taskEngine.taskDefs.size} 个`)
 
   // 启动 HTTP 服务
   const PORT = config.server.port
