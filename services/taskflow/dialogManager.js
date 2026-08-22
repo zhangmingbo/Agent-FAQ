@@ -49,7 +49,12 @@ class DialogManager {
       return this._cancel(state)
     }
 
-    // 2) 槽位纠正（"地址改成XX"）
+    // 2) 修改等待状态：上一轮用户要求"修改XX"，本轮的输入即新值
+    if (state.pendingModify) {
+      return this._applyPendingModify(state, text)
+    }
+
+    // 3) 槽位纠正（"地址改成XX"带值，直接更新）
     const correction = this._detectCorrection(text, state)
     if (correction) {
       state.slots[correction.key] = {
@@ -86,7 +91,23 @@ class DialogManager {
       }
     }
 
-    // 3) 按当前状态推进
+    // 4) "修改XX"不带新值 → 进入修改等待（避免被当作槽位值吞掉）
+    const modifyReq = this._detectModifyRequest(text, state)
+    if (modifyReq) {
+      state.pendingModify = modifyReq
+      state.skipCount = 0
+      console.log(`[TaskFlow] 修改请求: ${modifyReq}`)
+      return {
+        reply: `好的，请告诉我新的${state.slots[modifyReq]?.label || modifyReq}：`,
+        isComplete: false,
+        extracted: true,
+        reask: false,
+        cancelled: false,
+        taskState: state,
+      }
+    }
+
+    // 5) 按当前状态推进
     if (state.status === TaskState.CONFIRMING) {
       return this._handleConfirmTurn(state, text)
     }
@@ -698,6 +719,98 @@ class DialogManager {
       }
     }
     return null
+  }
+
+  /**
+   * 检测"修改XX"请求（不带新值，如"修改联系电话"）
+   * 与 _detectCorrection 的区别：这里要求槽位名后面没有内容
+   * @returns {string|null} 槽位 key
+   */
+  _detectModifyRequest(text, state) {
+    const t = text.trim()
+    if (!t) return null
+    const MODIFIERS = '修改|改成|换成|改为|变更|改一下|换一下|改下|改改|重填|重新填'
+    for (const [key, slot] of Object.entries(state.slots)) {
+      const names = [slot.label, ...(slot.aliases || [])].filter(Boolean)
+      for (const name of names) {
+        if (!name) continue
+        try {
+          // 模式1："修改联系电话" / "重新填一下地址"（修改词在前，名字后无内容）
+          const m1 = t.match(new RegExp(`(?:${MODIFIERS})\\s*${name}\\s*[是为]?[:：\\s]*$`))
+          if (m1) return key
+          // 模式2："电话我想改一下"（名字在前，修改词在后）
+          const m2 = t.match(new RegExp(`${name}\\s*(?:${MODIFIERS})\\s*[是为]?[:：\\s]*$`))
+          if (m2) return key
+        } catch { /* ignore */ }
+      }
+    }
+    return null
+  }
+
+  /**
+   * 应用修改等待状态：本轮的输入即被修改槽位的新值
+   */
+  _applyPendingModify(state, text) {
+    const key = state.pendingModify
+    const slot = state.slots[key]
+    state.pendingModify = null
+    if (!slot) {
+      return this._advanceCollect(state, '', '')
+    }
+    if (this._isCancel(text)) return this._cancel(state)
+
+    let value = text.trim()
+    // 清理修饰词/标签前缀："改成139..."、"电话是139..."
+    const names = [slot.label, ...(slot.aliases || [])].filter(Boolean)
+    for (const name of names) {
+      value = value.replace(new RegExp(`^(?:修改|改成|换成|改为|变更|改一下|换一下|改下|改改|重填|重新填)\\s*${name}[是为]?[:：\\s]*`), '')
+      value = value.replace(new RegExp(`^${name}[是为]?[:：\\s]*`), '')
+    }
+    value = value.replace(/^(?:修改|改成|换成|改为|变更|改一下|换一下|改下|改改|重填|重新填)\s*/, '').trim()
+
+    if (!value) {
+      state.pendingModify = key
+      return {
+        reply: `请直接输入新的${slot.label || key}：`,
+        isComplete: false,
+        extracted: true,
+        reask: true,
+        cancelled: false,
+        taskState: state,
+      }
+    }
+
+    // 校验
+    const slotDef = this._slotDefByKey(state, key)
+    if (slotDef) {
+      const check = this.nlu.validate(slotDef, value)
+      if (!check.ok) {
+        state.pendingModify = key
+        return {
+          reply: check.message,
+          isComplete: false,
+          extracted: true,
+          reask: true,
+          cancelled: false,
+          taskState: state,
+        }
+      }
+    }
+
+    slot.value = value
+    slot.filled = true
+    console.log(`[TaskFlow] 修改完成 ${key} = "${value}"`)
+    const prefix = `好的，${slot.label}已更新为「${value}」。\n`
+
+    // 确认态 → 重新展示确认清单
+    if (state.status === TaskState.CONFIRMING) {
+      return this._renderConfirm(state, prefix)
+    }
+
+    // 收集态 → 从该槽位步骤之后继续
+    const step = this._findStepBySlot(state, key)
+    state.currentStep = step?.next || state.currentStep
+    return this._advanceCollect(state, '', prefix)
   }
 
   /** 初始化槽位状态（新任务/子任务） */
