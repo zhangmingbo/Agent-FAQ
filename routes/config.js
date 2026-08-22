@@ -6,9 +6,31 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import * as configRepo from '../repositories/configRepo.js'
+import llmPrompts from '../services/llmPrompts.js'
 
 export function createRouter(engine) {
   const router = Router()
+
+  // 获取 LLM 提示词注册表（管理后台「LLM 智能层」用）
+  router.get('/config/llm-prompts', asyncHandler(async (req, res) => {
+    const data = await llmPrompts.getAll()
+    res.json({ success: true, data })
+  }))
+
+  // 更新 LLM 提示词（空值=恢复默认；保存即生效，无需重启）
+  router.post('/config/llm-prompts', asyncHandler(async (req, res) => {
+    const { prompts } = req.body
+    if (!prompts || typeof prompts !== 'object') {
+      res.status(400).json({ success: false, message: 'prompts 必须是对象' })
+      return
+    }
+    await llmPrompts.updatePrompts(prompts)
+    // 同步 FAQ 引擎兜底回答的系统提示词
+    if (engine.llmConfig) {
+      engine.llmConfig.systemPrompt = llmPrompts.get('faq_answer.system')
+    }
+    res.json({ success: true, message: '提示词已保存' })
+  }))
 
   // 获取配置
   router.get('/config', asyncHandler(async (req, res) => {

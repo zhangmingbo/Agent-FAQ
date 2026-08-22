@@ -29,8 +29,36 @@ function check(name, ok, extra = '') {
 }
 
 await taskEngine.initialize({ storeDriver: 'memory' })
-const def = await taskEngine.matchTask('我要报修燃气表')
-check('触发匹配 repair_order', def?.code === 'repair_order', `| code=${def?.code}`)
+
+// 引擎测试强制规则模式（确定性，不依赖 LLM 是否配置；LLM 行为由运营在后台配置）
+taskEngine.setNluMode('rule')
+
+// 测试用报修任务定义（自注入，与数据库任务解耦——DB 中的任务由运营配置管理）
+TaskDefs.defs.set('repair_order', {
+  code: 'repair_order', name: '报修工单', trigger_keywords: ['报修', '维修', '坏了', '故障'],
+  // 模拟 taskDefs._normalize 的近义扩展与例句向量源（DB 加载时会自动生成）
+  _triggerExpanded: ['报修', '维修', '修理', '修一下', '坏了', '故障', '出问题', '出毛病', '异常', '失灵', '不工作', '有问题', '找人修', '来修', '不动了', '不走', '不准', '维修一下', '报修单'],
+  _vectorSources: ['我要报修燃气表', '燃气表坏了需要维修', '帮我叫师傅来修一下'],
+  intent_examples: ['我要报修燃气表', '燃气表坏了需要维修', '帮我叫师傅来修一下'],
+  slots: [
+    { key: 'address', label: '地址', aliases: ['地址'], required: true },
+    { key: 'fault', label: '故障描述', aliases: ['故障', '情况', '描述'], required: true },
+    { key: 'phone', label: '联系电话', aliases: ['电话', '手机号', '联系方式'], required: true },
+  ],
+  steps: [
+    { key: 'collect_address', type: 'collect', slot_key: 'address', label: '地址', required: true, prompt: '请问您的地址是？', validate: { rule: 'length>=5', reask: '地址信息过短，请提供更详细的地址（至少5个字）' }, next: 'collect_fault' },
+    { key: 'collect_fault', type: 'collect', slot_key: 'fault', label: '故障描述', required: true, prompt: '请描述一下具体的故障情况', next: 'collect_phone' },
+    { key: 'collect_phone', type: 'collect', slot_key: 'phone', label: '联系电话', required: true, prompt: '请留一个联系电话，方便师傅联系您', extract: { method: 'regex', rule: '1[3-9]\\d{9}' }, validate: { rule: 'phone', reask: '请输入正确的11位手机号' }, next: 'confirm_step' },
+    { key: 'confirm_step', type: 'confirm', next: 'submit' },
+    { key: 'submit', type: 'action', action: 'complete_message', done_message: '已为您提交报修工单，我们会尽快处理。' },
+  ],
+  completion_message: '已为您提交报修工单，我们会尽快处理。',
+  on_complete: 'complete_message',
+  status: 1,
+})
+const def = TaskDefs.defs.get('repair_order')
+check('测试任务已注入', !!def)
+check('触发匹配 repair_order', (await taskEngine.matchTask('我要报修燃气表'))?.code === 'repair_order')
 check('v2 DSL 步骤已生效（含 confirm 与 action）',
   def.steps.some(s => s.type === 'confirm') && def.steps.some(s => s.type === 'action'))
 
@@ -188,7 +216,7 @@ await taskEngine.processInput('t-smart3', '取消')
 
 // ===== NLU 理解层 =====
 check('nlu 模式设置', taskEngine.setNluMode('rule') === true && taskEngine.setNluMode('bad') === false)
-taskEngine.setNluMode('hybrid')
+taskEngine.setNluMode('rule')
 check('matchTask 排除当前任务', (await taskEngine.matchTask('我要报修', 'repair_order')) === null, `| code=${(await taskEngine.matchTask('我要报修', 'repair_order'))?.code || 'null'}`)
 
 // intent_examples 保存往返（写入真实 DB，测完清理）
@@ -203,6 +231,9 @@ check('intent_examples 持久化', Array.isArray(saved.intent_examples) && saved
 check('例句向量源就绪', Array.isArray(saved._vectorSources) && saved._vectorSources.length === 2)
 await taskEngine.remove('nlu_test')
 check('测试任务已清理', taskEngine.taskDefs.get('nlu_test') === undefined)
+
+// loadTasks()（上面 save 触发）会清空内存定义，重新注入测试任务
+TaskDefs.defs.set('repair_order', def)
 
 // ===== 修改请求（"修改XX"不带新值） =====
 taskEngine.startTask('t-mod1', def)

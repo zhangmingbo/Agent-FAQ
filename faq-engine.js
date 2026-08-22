@@ -21,6 +21,7 @@ import dialogueRules from './rules/dialogueRules.js'
 import FaqService from './services/faqService.js'
 import * as statsService from './services/statsService.js'
 import * as chatLogRepo from './repositories/chatLogRepo.js'
+import { get as getPrompt } from './services/llmPrompts.js'
 
 class FAQEngine {
   /**
@@ -309,7 +310,7 @@ class FAQEngine {
           messages: [
             {
               role: 'system',
-              content: '你是一个对话质量判断器。判断用户输入是否是有意义的咨询问题（不是闲聊、语气词、无意义输入）。只返回 true 或 false，不要其他内容。'
+              content: getPrompt('meaningless.system'),
             },
             { role: 'user', content: text }
           ],
@@ -530,6 +531,7 @@ class FAQEngine {
 
   /**
    * LLM 意图重排（可选）：从 top-5 候选中选最符合用户问题的意图
+   * 提示词来自运营配置注册表（llm_rerank.*）
    * @returns {Promise<string|null>} 意图 code
    */
   async _llmRerankIntent(text, candidates) {
@@ -544,8 +546,8 @@ class FAQEngine {
         body: JSON.stringify({
           model: this.llmConfig.model,
           messages: [
-            { role: 'system', content: '你是客服意图判定器。从候选列表中选出最符合用户问题的那个，只返回数字序号，不要其他文字。' },
-            { role: 'user', content: `候选：\n${list}\n用户问题："${text}"\n请返回序号：` },
+            { role: 'system', content: getPrompt('llm_rerank.system') },
+            { role: 'user', content: getPrompt('llm_rerank.user', { list, text }) },
           ],
           max_tokens: 5,
           temperature: 0,
@@ -688,9 +690,9 @@ class FAQEngine {
       throw new Error('大模型配置不完整')
     }
 
-    // 构建上下文消息
+    // 构建上下文消息（系统提示词来自运营配置注册表，可后台覆盖）
     const messages = [
-      { role: 'system', content: this.llmConfig.systemPrompt },
+      { role: 'system', content: this.llmConfig.systemPrompt || getPrompt('faq_answer.system') },
     ]
 
     // 加入最近 5 轮对话作为上下文

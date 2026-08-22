@@ -502,10 +502,10 @@
   }, 300);
 
   function injectTaskTabs(panel) {
-    // 创建标签导航
+    // 创建标签导航（对话规则 | 任务流程 | LLM 智能层）
     var tabs = document.createElement('div');
     tabs.id = 'rules-tabs';
-    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button>';
+    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="llm">LLM 智能层</button>';
     // 把原有内容包进 tab panel
     var rulesPanel = document.createElement('div');
     rulesPanel.className = 'tab-panel active';
@@ -516,10 +516,16 @@
     tasksPanel.className = 'tab-panel';
     tasksPanel.id = 'tab-tasks';
     tasksPanel.innerHTML = buildTaskPanelHTML();
+    // 创建 LLM 智能层面板
+    var llmPanel = document.createElement('div');
+    llmPanel.className = 'tab-panel';
+    llmPanel.id = 'tab-llm';
+    llmPanel.innerHTML = buildLLMPanelHTML();
     // 组装
     panel.appendChild(tabs);
     panel.appendChild(rulesPanel);
     panel.appendChild(tasksPanel);
+    panel.appendChild(llmPanel);
     // 标签切换
     tabs.addEventListener('click', function(e) {
       var btn = e.target.closest('.tab-btn');
@@ -529,9 +535,98 @@
       var tab = btn.getAttribute('data-tab');
       rulesPanel.classList.toggle('active', tab === 'rules');
       tasksPanel.classList.toggle('active', tab === 'tasks');
+      llmPanel.classList.toggle('active', tab === 'llm');
       if (tab === 'tasks') loadTasks();
+      if (tab === 'llm') loadLLMPanel();
     });
   }
+
+  // ===== LLM 智能层面板（提示词运营配置） =====
+  function buildLLMPanelHTML() {
+    return '<div class="llm-panel">' +
+      '<div class="task-header"><h4>LLM 智能层 · 提示词运营配置</h4></div>' +
+      '<div id="llm-status" style="padding:8px 0;font-size:13px;color:#555">加载中...</div>' +
+      '<div id="llm-calls"></div>' +
+    '</div>';
+  }
+
+  function loadLLMPanel() {
+    // 状态概览
+    api('GET', '/api/config', null, function(cfg) {
+      var el = document.getElementById('llm-status');
+      if (!el) return;
+      var st = cfg.llmEnabled ? '<span class="status-tag on">已启用</span>' : '<span class="status-tag off">未启用</span>';
+      el.innerHTML = st + ' ｜ 模型：' + esc(cfg.llmModel || '-') + ' ｜ 接口：' + esc(cfg.llmApiUrl || '-') + ' ｜ 理解模式：' + esc(cfg.nluMode || 'hybrid');
+    });
+    // 调用点清单
+    api('GET', '/api/config/llm-prompts', null, function(res) {
+      var el = document.getElementById('llm-calls');
+      if (!el || !res.success) return;
+      var data = res.data || [];
+      if (!data.length) { el.innerHTML = '<div class="task-empty">暂无提示词配置</div>'; return; }
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead><tr><th style="width:220px">提示词</th><th>用途</th><th style="width:90px">状态</th><th style="width:150px">操作</th></tr></thead><tbody>';
+      data.forEach(function(p) {
+        var statusCls = p.isCustom ? 'on' : '';
+        html += '<tr><td>' + esc(p.name) + '</td><td style="font-size:12px;color:#888">' + esc(p.desc||'') + '</td>' +
+          '<td><span class="status-tag ' + statusCls + '">' + (p.isCustom ? '已自定义' : '默认') + '</span></td>' +
+          '<td><button class="btn-sm" onclick="editLLMPrompt(\'' + esc(p.key) + '\')">编辑</button> ' +
+          (p.isCustom ? '<button class="btn-sm" onclick="resetLLMPrompt(\'' + esc(p.key) + '\')">恢复默认</button>' : '') +
+          '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '<div style="color:#999;font-size:12px;margin-top:8px">提示词改动保存后立即生效（无需重启）；点"恢复默认"即回退内置模板。</div>';
+      el.innerHTML = html;
+    });
+  }
+
+  window.editLLMPrompt = function(key) {
+    api('GET', '/api/config/llm-prompts', null, function(res) {
+      if (!res.success) return;
+      var p = (res.data||[]).find(function(x){ return x.key === key; });
+      if (!p) return;
+      showLLMPromptModal(p);
+    });
+  };
+
+  function showLLMPromptModal(p) {
+    var overlay = document.createElement('div');
+    overlay.className = 'task-modal-overlay';
+    overlay.innerHTML = '<div class="task-modal" style="width:680px">' +
+      '<div class="task-modal-header"><h3>' + esc(p.name) + '</h3><button class="close-btn" id="llm-modal-close">&times;</button></div>' +
+      '<div class="task-modal-body">' +
+        '<div style="font-size:12px;color:#888;margin-bottom:8px">' + esc(p.desc||'') + '</div>' +
+        (p.placeholders && p.placeholders.length ? '<div style="font-size:12px;color:#999;margin-bottom:8px">可用占位符（系统自动填充）：<code>{' + p.placeholders.join('}</code> <code>{') + '}</code></div>' : '') +
+        '<div class="form-group"><label>提示词内容</label><textarea id="llm-prompt-value" rows="9" style="width:100%;font-family:monospace;font-size:12px;box-sizing:border-box">' + esc(p.value) + '</textarea></div>' +
+      '</div>' +
+      '<div class="task-modal-footer">' +
+        '<button class="btn-sm" id="llm-prompt-reset">恢复默认</button>' +
+        '<button class="btn-sm" id="llm-prompt-cancel">取消</button>' +
+        '<button class="btn-sm btn-primary" id="llm-prompt-save">保存</button>' +
+      '</div></div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('#llm-modal-close').onclick = function(){ overlay.remove(); };
+    overlay.querySelector('#llm-prompt-cancel').onclick = function(){ overlay.remove(); };
+    overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#llm-prompt-reset').onclick = function(){
+      overlay.querySelector('#llm-prompt-value').value = p.default || '';
+    };
+    overlay.querySelector('#llm-prompt-save').onclick = function(){
+      var payload = {};
+      payload[p.key] = overlay.querySelector('#llm-prompt-value').value.trim();
+      api('POST', '/api/config/llm-prompts', { prompts: payload }, function(res) {
+        if (res.success) { overlay.remove(); loadLLMPanel(); }
+        else alert(res.message || '保存失败');
+      });
+    };
+  }
+
+  window.resetLLMPrompt = function(key) {
+    var payload = {};
+    payload[key] = '';
+    api('POST', '/api/config/llm-prompts', { prompts: payload }, function(res) {
+      if (res.success) loadLLMPanel();
+    });
+  };
 
   // ===== 任务面板 HTML =====
   function buildTaskPanelHTML() {

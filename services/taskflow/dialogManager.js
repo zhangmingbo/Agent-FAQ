@@ -179,7 +179,10 @@ class DialogManager {
         }
         case 'collect':
         default: {
-          const canText = !(textUsed && step.extract?.method === 'text')
+          // 有效提取方式（步骤未显式配置时按默认 text 处理，保证防重填守卫生效）
+          const stepDef = this._slotDef(state, step)
+          const effMethod = stepDef?.extract?.method || 'text'
+          const canText = !(textUsed && effMethod === 'text')
           const outcome = await this._tryFillSlot(state, step, text, canText, probing)
           if (outcome.extracted) {
             reply += outcome.note || ''
@@ -275,30 +278,34 @@ class DialogManager {
     let finalValue = (value !== null && this.nlu.valueMatchesSlot(slotDef, value)) ? value : null
 
     // 规则/单槽未提取到 → LLM 批量兜底（一次性抽取所有未填槽位；探测阶段不重复调用）
+    // 首轮且输入未提到任何槽位关键词时跳过（避免把触发句"我要报修燃气表"瞎填成槽位值）
     if (finalValue === null && !probing && this.nlu.mode !== 'rule') {
-      const all = await this._llmExtractAll(state, text)
-      if (all && Object.keys(all).length > 0) {
-        let llmFilledAny = false
-        for (const [k, v] of Object.entries(all)) {
-          const s = state.slots[k]
-          if (!s || s.filled || !v) continue
-          const sDef = this._slotDefByKey(state, k)
-          // LLM 值必须满足槽位约束
-          if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) continue
-          const check = this.nlu.validate(sDef, v)
-          if (check.ok) {
-            s.value = String(v)
-            s.filled = true
-            llmFilledAny = true
-            console.log(`[TaskNLU] LLM提取槽位 ${k} = "${v}"`)
+      const canBatch = state.turnCount > 1 || this._textMentionsSlots(text, state)
+      if (canBatch) {
+        const all = await this._llmExtractAll(state, text)
+        if (all && Object.keys(all).length > 0) {
+          let llmFilledAny = false
+          for (const [k, v] of Object.entries(all)) {
+            const s = state.slots[k]
+            if (!s || s.filled || !v) continue
+            const sDef = this._slotDefByKey(state, k)
+            // LLM 值必须满足槽位约束
+            if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) continue
+            const check = this.nlu.validate(sDef, v)
+            if (check.ok) {
+              s.value = String(v)
+              s.filled = true
+              llmFilledAny = true
+              console.log(`[TaskNLU] LLM提取槽位 ${k} = "${v}"`)
+            }
           }
-        }
-        if (llmFilledAny) {
-          const filled = state.slots[slotDef.key]
-          if (filled?.filled) {
-            return { extracted: true, note: '' }
+          if (llmFilledAny) {
+            const filled = state.slots[slotDef.key]
+            if (filled?.filled) {
+              return { extracted: true, note: '' }
+            }
+            return { extracted: false, reask: '' }
           }
-          return { extracted: false, reask: '' }
         }
       }
     }
@@ -654,13 +661,28 @@ class DialogManager {
     const task = this.defs.get(state.taskCode)
     const def = (task?.slots || []).find(s => s.key === step.slot_key)
     if (!def) return null
+
+    const extract = step.extract || {
+      method: def.extract_type || 'text',
+      rule: def.extract_rule || '',
+    }
+
+    // 提问话术：枚举槽位自动追加可选值，让用户知道怎么回答（话术已含选项则跳过）
+    let prompt = step.prompt || def.prompt || `请提供${def.label || step.slot_key}`
+    if (extract.method === 'enum') {
+      const options = Array.isArray(extract.enum)
+        ? extract.enum
+        : String(extract.rule || '').split(',').map(s => s.trim()).filter(Boolean)
+      const alreadyShown = options.some(opt => opt.length > 1 && prompt.includes(opt))
+      if (options.length > 0 && !alreadyShown) {
+        prompt += `（可选：${options.join('、')}）`
+      }
+    }
+
     return {
       ...def,
-      // 提取配置优先取步骤 DSL；v1 槽位字段（extract_type/extract_rule）兜底
-      extract: step.extract || {
-        method: def.extract_type || 'text',
-        rule: def.extract_rule || '',
-      },
+      extract,
+      prompt,
       validate: step.validate || def.validate || {},
       _triggers: task.trigger_keywords || [],
     }
@@ -669,6 +691,17 @@ class DialogManager {
   _findStepBySlot(state, slotKey) {
     const task = this.defs.get(state.taskCode)
     return (task?.steps || []).find(s => s.type === 'collect' && s.slot_key === slotKey) || null
+  }
+
+  /** 输入文本是否提到任意槽位关键词（槽位标签/别名） */
+  _textMentionsSlots(text, state) {
+    for (const slot of Object.values(state.slots)) {
+      const names = this._slotNames(slot)
+      for (const name of names) {
+        if (name && name.length >= 2 && text.includes(name)) return true
+      }
+    }
+    return false
   }
 
   /** 槽位名称（含别名 + 默认别名：自动去掉常见业务前缀） */

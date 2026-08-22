@@ -15,6 +15,7 @@ import config from './config/index.js'
 import pool from './db/pool.js'
 import FAQEngine from './faq-engine.js'
 import FaqService from './services/faqService.js'
+import { initPrompts } from './services/llmPrompts.js'
 import ruleLoader from './rules/ruleLoader.js'
 import dialogueRules from './rules/dialogueRules.js'
 
@@ -146,6 +147,14 @@ async function start() {
   await engine.initialize()
   console.log(`   ✅ FAQ 加载完成，共 ${engine.getIntentCount()} 条`)
   
+  // 加载 LLM 提示词注册表（运营配置，管理后台可编辑）
+  try {
+    await initPrompts()
+    console.log('   ✅ LLM 提示词已加载')
+  } catch (e) {
+    console.log('   ⚠️ LLM 提示词加载失败，使用默认值:', e.message)
+  }
+
   // 初始化任务引擎
   console.log('   📋 正在加载任务流程...')
   await taskEngine.initialize()

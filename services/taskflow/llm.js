@@ -1,8 +1,12 @@
+import { get as getPrompt } from '../llmPrompts.js'
+
 /**
  * LLM 智能层客户端（OpenAI 兼容接口）
  *
  * 配置来源：sys_config 的 llm_enabled / llm_api_url / llm_api_key / llm_model
  * （与 FAQ 引擎的大模型兜底共用同一套配置，管理后台可改）
+ *
+ * 提示词来源：运营配置注册表 llmPrompts（管理后台「LLM 智能层」可编辑，默认值兜底）
  *
  * 能力：
  *   extractSlots()  从自由文本一次性抽取所有槽位（JSON 输出），理解任意口语表达
@@ -103,7 +107,7 @@ class LLMClient {
    */
   async extractSlots(text, task, slotsSpec, state) {
     const slotDesc = Object.entries(slotsSpec)
-      .map(([k, s]) => `${k}: ${s.label}${s.type === 'regex' && s.rule ? `（格式：${s.rule}）` : ''}`)
+      .map(([k, s]) => `${k}: ${s.label}${s.type === 'regex' && s.rule ? `（格式：${s.rule}）` : ''}${s.type === 'enum' && s.rule ? `（可选：${s.rule}）` : ''}`)
       .join('；')
 
     const filledDesc = Object.entries(state?.slots || {})
@@ -116,12 +120,15 @@ class LLMClient {
       ? `\n业务场景例句（用户可能这么说）：${task.intent_examples.slice(0, 8).join('；')}`
       : ''
 
-    const system = '你是客服信息提取助手。只根据用户话术提取指定字段，返回严格 JSON 对象，不要任何解释、前后缀或 markdown 代码块。提取不到的字段不要出现。如果用户输入中没有明确提供某个字段的信息，绝对不要编造，也不要重复用户输入的整句话作为字段值——该字段直接省略。'
-    const user = `任务：${task.name}${examples}\n` +
-      `需提取字段：${slotDesc}\n` +
-      (filledDesc ? `已提取字段：${filledDesc}\n` : '') +
-      `用户输入："${text}"\n` +
-      `请返回 JSON：`
+    // 提示词来自运营配置注册表（管理后台可编辑，默认值兜底）
+    const system = getPrompt('extract_slots.system')
+    const user = getPrompt('extract_slots.user', {
+      taskName: task.name,
+      examples,
+      slotDesc,
+      filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '',
+      text,
+    })
 
     const raw = await this.chat([
       { role: 'system', content: system },
@@ -165,8 +172,8 @@ class LLMClient {
       `${t.code}（${t.name}）：触发表达如 ${(t.trigger_keywords || []).filter(k => typeof k === 'string').slice(0, 5).join('、')}`
     ).join('\n')
 
-    const system = '你是客服意图判定器。判断用户输入是否意图办理某个业务任务（而非单纯咨询/闲聊）。只返回任务 code 或 null，不要任何其他文字。'
-    const user = `可选任务：\n${taskDesc}\n用户输入："${text}"\n请返回触发的任务 code（未触发返回 null）：`
+    const system = getPrompt('judge_trigger.system')
+    const user = getPrompt('judge_trigger.user', { taskDesc, text })
 
     const raw = await this.chat([
       { role: 'system', content: system },
