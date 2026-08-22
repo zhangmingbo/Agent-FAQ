@@ -554,10 +554,11 @@
         return;
       }
       var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%">';
-      html += '<thead><tr><th style="width:50px">#</th><th>编码</th><th>名称</th><th>触发词</th><th>槽位数</th><th>状态</th><th style="width:180px">操作</th></tr></thead><tbody>';
+      html += '<thead><tr><th style="width:50px">#</th><th>编码</th><th>名称</th><th>触发词</th><th>步骤数</th><th>状态</th><th style="width:180px">操作</th></tr></thead><tbody>';
       res.data.forEach(function(t, i) {
         var kws = (t.trigger_keywords || []).map(function(k){ return typeof k === 'string' ? k : k.regex || ''; }).join(', ');
         var slots = t.slots || [];
+        var stepCount = (t.steps && t.steps.length) ? t.steps.length : (slots.length ? '自动' : '0');
         var statusCls = t.status === 1 ? 'on' : 'off';
         var statusText = t.status === 1 ? '启用' : '禁用';
         html += '<tr>';
@@ -565,7 +566,7 @@
         html += '<td><code>' + esc(t.code) + '</code></td>';
         html += '<td>' + esc(t.name) + '</td>';
         html += '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(kws) + '">' + esc(kws || '-') + '</td>';
-        html += '<td>' + slots.length + '</td>';
+        html += '<td>' + stepCount + '</td>';
         html += '<td><span class="status-tag ' + statusCls + '">' + statusText + '</span></td>';
         html += '<td>';
         html += '<button class="btn-sm" onclick="editTask(\'' + esc(t.code) + '\')">编辑</button> ';
@@ -610,6 +611,18 @@
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
         '</div>' +
+        '<div class="form-group"><label>完成动作（可选）</label>' +
+          '<select id="tf-action"><option value="complete_message">仅回复完成话术</option></select>' +
+          '<input id="tf-action-msg" placeholder="动作成功后回复（完成话术）" value="' + esc(isEdit ? (task.completion_message || '') : '') + '" style="margin-top:6px">' +
+        '</div>' +
+        '<div class="form-group"><label>流程步骤（v2 步骤 DSL）</label>' +
+          '<div id="tf-steps">' + buildStepRows(isEdit ? (task.steps || []) : []) + '</div>' +
+          '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button class="btn-sm" id="tf-auto-steps">⚡ 从槽位自动生成</button>' +
+            '<button class="btn-sm" id="tf-add-step">+ 添加步骤</button>' +
+          '</div>' +
+          '<div style="color:#999;font-size:12px;margin-top:4px">提示：点"从槽位自动生成"可一键生成「收集 → 确认 → 动作」流程，再按需增删调整；分支步骤在 JSON 里配置 cases</div>' +
+        '</div>' +
         '<div class="form-group"><label>完成提示语</label><textarea id="tf-complete" placeholder="所有信息收集完毕后的回复">' + esc(isEdit ? (task.completion_message || '') : '') + '</textarea></div>' +
       '</div>' +
       '<div class="task-modal-footer">' +
@@ -650,6 +663,26 @@
     // 绑定已有槽位删除
     overlay.querySelectorAll('.slot-row').forEach(bindSlotDel);
 
+    // 加载完成动作列表
+    api('GET', '/api/tasks/actions', null, function(res) {
+      var sel = overlay.querySelector('#tf-action');
+      if (!sel) return;
+      var actions = (res.success && res.data && res.data.length) ? res.data : ['complete_message'];
+      sel.innerHTML = actions.map(function(a) {
+        return '<option value="' + esc(a) + '">' + esc(a) + '</option>';
+      }).join('');
+      if (isEdit && task.on_complete && actions.indexOf(task.on_complete) >= 0) sel.value = task.on_complete;
+    });
+
+    // v2 步骤编辑器
+    overlay.querySelector('#tf-add-step').onclick = function() {
+      var container = overlay.querySelector('#tf-steps');
+      container.insertAdjacentHTML('beforeend', buildOneStepRow({key:'',type:'collect',next:''}));
+      bindStepRowEvents(container.lastElementChild);
+    };
+    overlay.querySelector('#tf-auto-steps').onclick = autoGenerateSteps;
+    overlay.querySelectorAll('#tf-steps .step-row').forEach(bindStepRowEvents);
+
     // 保存
     overlay.querySelector('#tf-save').onclick = function() {
       var code = overlay.querySelector('#tf-code').value.trim();
@@ -675,14 +708,16 @@
           required: row.querySelector('.slot-required').checked,
         });
       });
+      var steps = collectStepRows();
       var data = {
         code: code,
         name: name,
         description: overlay.querySelector('#tf-desc').value.trim(),
         trigger_keywords: keywords,
         slots: slots,
-        completion_message: overlay.querySelector('#tf-complete').value.trim(),
-        on_complete: '',
+        steps: steps.length ? steps : undefined,
+        completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
+        on_complete: overlay.querySelector('#tf-action').value || '',
         status: 1,
       };
       api('POST', '/api/tasks', data, function(res) {
@@ -729,6 +764,138 @@
   function bindSlotDel(row) {
     var del = row.querySelector('.slot-del');
     if (del) del.onclick = function() { row.remove(); };
+  }
+
+  // ===== v2 步骤 DSL 编辑器 =====
+  function buildStepRows(steps) {
+    if (!steps || !steps.length) return '<div style="color:#999;font-size:12px;padding:8px">暂无步骤，点击"从槽位自动生成"一键生成</div>';
+    return steps.map(function(s) { return buildOneStepRow(s); }).join('');
+  }
+
+  function buildOneStepRow(s) {
+    s = s || {};
+    var collectExtra = s.type === 'collect' ?
+      '<input class="step-slot" value="' + esc(s.slot_key||'') + '" placeholder="槽位key" style="width:90px">' +
+      '<input class="step-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
+      '<input class="step-extract" value="' + esc((s.extract&&s.extract.method)||'') + '" placeholder="提取:text/regex/number/enum" style="width:120px">' +
+      '<input class="step-rule" value="' + esc((s.extract&&s.extract.rule)||'') + '" placeholder="提取规则/枚举" style="width:110px">' +
+      '<input class="step-validate" value="' + esc((s.validate&&s.validate.rule)||'') + '" placeholder="校验规则" style="width:100px">' +
+      '<input class="step-reask" value="' + esc((s.validate&&s.validate.reask)||'') + '" placeholder="重问话术" style="width:130px">' : '';
+    var actionExtra = s.type === 'action' ?
+      '<input class="step-action" value="' + esc(s.action||'') + '" placeholder="动作名" style="width:130px">' +
+      '<input class="step-msg" value="' + esc(s.done_message||'') + '" placeholder="完成话术">' : '';
+    var subtaskExtra = s.type === 'subtask' ?
+      '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
+      '<input class="step-return" value="' + esc(s.on_return||'') + '" placeholder="返回步骤">' : '';
+    var messageExtra = s.type === 'message' ?
+      '<input class="step-text" value="' + esc(s.text||'') + '" placeholder="回复内容">' : '';
+    var branchExtra = s.type === 'branch' ?
+      '<textarea class="step-cases" rows="1" placeholder=\'[{"when":{"slot":"type","op":"eq","value":"漏水"},"next":"leak"}]\'>' + esc(JSON.stringify(s.cases||[])) + '</textarea>' +
+      '<input class="step-default" value="' + esc(s.default_next||'') + '" placeholder="默认下一步" style="width:110px">' : '';
+    return '<div class="step-row">' +
+      '<input class="step-key" value="' + esc(s.key||'') + '" placeholder="步骤key" style="width:100px">' +
+      '<select class="step-type">' +
+        '<option value="collect"' + (s.type==='collect'?' selected':'') + '>收集</option>' +
+        '<option value="confirm"' + (s.type==='confirm'?' selected':'') + '>确认</option>' +
+        '<option value="action"' + (s.type==='action'?' selected':'') + '>动作</option>' +
+        '<option value="subtask"' + (s.type==='subtask'?' selected':'') + '>子任务</option>' +
+        '<option value="branch"' + (s.type==='branch'?' selected':'') + '>分支</option>' +
+        '<option value="message"' + (s.type==='message'?' selected':'') + '>回复</option>' +
+      '</select>' +
+      '<input class="step-next" value="' + esc(s.next||'') + '" placeholder="下一步" style="width:90px">' +
+      collectExtra + actionExtra + subtaskExtra + messageExtra + branchExtra +
+      '<button class="step-up" title="上移">↑</button><button class="step-down" title="下移">↓</button><button class="step-del" title="删除">&times;</button>' +
+    '</div>';
+  }
+
+  function bindStepRowEvents(row) {
+    var del = row.querySelector('.step-del');
+    if (del) del.onclick = function() { row.remove(); };
+    var up = row.querySelector('.step-up');
+    if (up) up.onclick = function() {
+      var prev = row.previousElementSibling;
+      if (prev && prev.classList.contains('step-row')) row.parentNode.insertBefore(row, prev);
+    };
+    var down = row.querySelector('.step-down');
+    if (down) down.onclick = function() {
+      var next = row.nextElementSibling;
+      if (next && next.classList.contains('step-row')) row.parentNode.insertBefore(next, row);
+    };
+    // 类型切换：重读全部步骤、更新该行类型后整体重渲染
+    var typeSel = row.querySelector('.step-type');
+    if (typeSel) typeSel.onchange = function() {
+      var steps = collectStepRows();
+      var idx = Array.prototype.indexOf.call(row.parentNode.children, row);
+      if (idx >= 0 && steps[idx]) steps[idx].type = typeSel.value;
+      var container = document.getElementById('tf-steps');
+      container.innerHTML = buildStepRows(steps);
+      container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
+    };
+  }
+
+  function collectStepRows() {
+    var steps = [];
+    document.querySelectorAll('#tf-steps .step-row').forEach(function(row) {
+      var key = row.querySelector('.step-key').value.trim();
+      var type = row.querySelector('.step-type').value;
+      if (!key) return;
+      var step = { key: key, type: type, next: row.querySelector('.step-next').value.trim() || undefined };
+      if (type === 'collect') {
+        step.slot_key = (row.querySelector('.step-slot').value || key).trim();
+        step.prompt = row.querySelector('.step-prompt').value.trim();
+        step.extract = { method: row.querySelector('.step-extract').value.trim() || 'text', rule: row.querySelector('.step-rule').value.trim() };
+        var vr = row.querySelector('.step-validate').value.trim();
+        var vk = row.querySelector('.step-reask').value.trim();
+        if (vr) step.validate = { rule: vr, reask: vk };
+      } else if (type === 'action') {
+        step.action = row.querySelector('.step-action').value.trim() || 'complete_message';
+        var dm = row.querySelector('.step-msg').value.trim();
+        if (dm) step.done_message = dm;
+      } else if (type === 'subtask') {
+        step.task = row.querySelector('.step-task').value.trim();
+        step.on_return = row.querySelector('.step-return').value.trim();
+      } else if (type === 'message') {
+        step.text = row.querySelector('.step-text').value.trim();
+      } else if (type === 'branch') {
+        try { step.cases = JSON.parse(row.querySelector('.step-cases').value || '[]'); } catch(e) { step.cases = []; }
+        step.default_next = row.querySelector('.step-default').value.trim() || undefined;
+      }
+      steps.push(step);
+    });
+    return steps;
+  }
+
+  // 从槽位自动生成：收集 → 确认 → 动作
+  function autoGenerateSteps() {
+    var slots = [];
+    document.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
+      var key = row.querySelector('.slot-key').value.trim();
+      var label = row.querySelector('.slot-label').value.trim();
+      if (!key || !label) return;
+      slots.push({
+        key: key, label: label,
+        prompt: row.querySelector('.slot-prompt').value.trim(),
+        extract_type: row.querySelector('.slot-type').value,
+        extract_rule: row.querySelector('.slot-rule').value.trim(),
+        required: row.querySelector('.slot-required').checked,
+      });
+    });
+    var action = document.getElementById('tf-action').value || 'complete_message';
+    var msg = document.getElementById('tf-action-msg').value.trim();
+    var steps = [];
+    slots.forEach(function(s, i) {
+      steps.push({
+        key: 'collect_' + s.key, type: 'collect', slot_key: s.key, label: s.label, required: s.required !== false,
+        prompt: s.prompt || ('请提供' + s.label),
+        extract: { method: s.extract_type || 'text', rule: s.extract_rule || '' },
+        next: i < slots.length - 1 ? 'collect_' + slots[i+1].key : 'confirm_step',
+      });
+    });
+    if (slots.length) steps.push({ key: 'confirm_step', type: 'confirm', next: 'submit' });
+    steps.push({ key: 'submit', type: 'action', action: action, done_message: msg });
+    var container = document.getElementById('tf-steps');
+    container.innerHTML = buildStepRows(steps);
+    container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
   }
 
   // ===== 删除任务 =====
