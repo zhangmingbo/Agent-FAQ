@@ -737,6 +737,15 @@
     overlay.querySelector('#tf-cancel').onclick = function(){ overlay.remove(); };
     overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
 
+    // 标签删除委托：初始渲染的例句/关键词标签（build*Tags 生成）的 × 也能删除
+    // （此前只给 Enter 新建的标签绑定了 onclick，导致编辑已有任务时删不掉标签）
+    overlay.addEventListener('click', function(e) {
+      var del = e.target && e.target.closest ? e.target.closest('.remove') : null;
+      if (del && del.parentElement && del.parentElement.classList.contains('keyword-tag')) {
+        del.parentElement.remove();
+      }
+    });
+
     // 关键词输入
     var kwInput = overlay.querySelector('#tf-kw-input');
     kwInput.addEventListener('keydown', function(e) {
