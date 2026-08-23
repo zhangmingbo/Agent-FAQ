@@ -22,6 +22,7 @@ import FaqService from './services/faqService.js'
 import * as statsService from './services/statsService.js'
 import * as chatLogRepo from './repositories/chatLogRepo.js'
 import { get as getPrompt } from './services/llmPrompts.js'
+import traceService from './services/traceService.js'
 
 class FAQEngine {
   /**
@@ -91,11 +92,16 @@ class FAQEngine {
     const startTime = Date.now()
     const timestamp = new Date().toISOString()
     
+    // ===== [STEP 0] 轨迹追踪：本轮对话的处理步骤链（可视化调试用） =====
+    const traceSteps = traceService.startTurn(sessionId)
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(traceSteps, step, detail, level)
+    
     // ===== [STEP 1] 收到请求 =====
     console.log(`\n${'='.repeat(80)}`)
     console.log(`[CHAT-START] ${timestamp} | Session: ${sessionId} | User: ${userId || 'anonymous'}`)
     console.log(`[INPUT] "${text}"`)
     console.log(`${'='.repeat(80)}\n`)
+    _t('收到输入', { text, sessionId, userId: userId || 'anonymous' })
     
     // Phase 2: 无意义输入过滤（在规则模式下）
     if (this.meaninglessDetectionMode === 'rule') {
@@ -109,6 +115,7 @@ class FAQEngine {
         const score = typeof meaninglessResult === 'object' ? meaninglessResult.score : 1.0
         const reason = typeof meaninglessResult === 'object' ? meaninglessResult.reason : '未知'
         console.log(`[RESULT] ❌ 无意义输入 detected! Score: ${score}, Reason: ${reason}`)
+        _t('无意义检测', { isMeaningless: true, score, reason }, 'warn')
         
         // 无意义输入，直接返回兜底回复，不进入意图识别
         const response = {
@@ -124,11 +131,13 @@ class FAQEngine {
         await this._logChat(sessionId, text, response, userId, Date.now() - startTime)
         
         if (opts.debug) this._attachDebug(response, sessionId)
+        traceService.endTurn(sessionId, traceSteps, { input: text, output: response.answer, duration: Date.now() - startTime })
         console.log(`[CHAT-END] Duration: ${Date.now() - startTime}ms`)
         console.log(`${'='.repeat(80)}\n`)
         return response
       } else {
         console.log('[RESULT] ✅ 有意义输入，继续处理')
+        _t('无意义检测', { isMeaningless: false })
       }
     }
     
@@ -145,6 +154,7 @@ class FAQEngine {
       console.log('[ROUTE] 处理路由澄清选项:', text)
       const pending = context.pendingRoute
       const choice = this._parseRouteChoice(text)
+      _t('路由澄清待选', { choice: choice || '未识别', pendingTask: pending.taskCode || null })
 
       if (choice === 'task') {
         // 用户选"办理"
@@ -300,6 +310,7 @@ class FAQEngine {
           filledDesc: this._taskFilledDesc(taskState),
         })
         console.log(`[TASK] 路由判定: ${route}`)
+        _t('路由判定', { route, taskState: taskState.taskCode, status: taskState.status }, route === 'clarify' ? 'warn' : 'task')
 
         if (route === 'clarify') {
           // 拿不准：任务中插话无法区分是继续办理还是咨询 → 追问二选一
@@ -314,6 +325,7 @@ class FAQEngine {
         } else if (route === 'faq') {
           // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
           console.log('[TASK] 路由→FAQ，任务挂起')
+          _t('任务挂起（FAQ 插话）', { taskCode: taskState.taskCode })
           const faqResponse = await this._handleRecognize(text, context)
           if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
             this.taskEngine.suspend(sessionId)
@@ -329,10 +341,12 @@ class FAQEngine {
         } else if (route === 'task_new') {
           // 用户想办另一件事 → 中断暂存当前任务，触发新任务
           console.log('[TASK] 路由→新任务，当前任务中断暂存')
+          _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
           await this.taskEngine.stash(sessionId)
           response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true)
         } else {
           // task_continue → 任务对话（原逻辑）
+          _t('进入任务对话', { taskCode: taskState.taskCode, route })
           response = await this._handleTaskTurn(sessionId, text, context)
         }
       }
@@ -346,6 +360,7 @@ class FAQEngine {
           tasks: [...this.taskEngine.taskDefs.values()],
           filledDesc: '',
         })
+        _t('路由判定', { route, hasActiveTask: false }, route === 'clarify' ? 'warn' : 'task')
         if (route === 'task_new') {
           response = await this._tryStartTask(sessionId, text, context, /* fromStash */ false)
         } else if (route === 'clarify') {
@@ -374,6 +389,10 @@ class FAQEngine {
         response = await this._handleRecognize(text, context)
       }
     }
+
+    // ===== 轨迹收尾 =====
+    _t('生成回复', { source: response.source, intent: response.intent_code || null, confidence: response.confidence ?? null }, 'result')
+    traceService.endTurn(sessionId, traceSteps, { input: text, output: response.answer, duration: Date.now() - startTime })
 
     // 记录回复到历史
     context.history.push({ role: 'assistant', text: response.answer, timestamp: Date.now() })

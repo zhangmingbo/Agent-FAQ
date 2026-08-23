@@ -36,6 +36,7 @@ import { createRouter as createDialogueRulesRouter } from './routes/dialogueRule
 import { createRouter as createUploadRouter } from './routes/upload.js'
 import { createRouter as createHealthRouter } from './routes/health.js'
 import { createRouter as createTasksRouter } from './routes/tasks.js'
+import { createRouter as createDebugRouter } from './routes/debug.js'
 import taskEngine from './services/taskflow/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -105,6 +106,7 @@ app.use('/api', createConfigRouter(engine))
 app.use('/api', createDialogueRulesRouter(engine, ruleLoader, dialogueRules))
 app.use('/api', createUploadRouter(engine, UPLOADS_DIR))
 app.use('/api', createTasksRouter())
+app.use('/api', createDebugRouter())
 
 // ========== 错误处理 ==========
 

@@ -89,6 +89,8 @@
     .keyword-tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#e8ecff;border-radius:12px;font-size:12px;margin:2px 4px 2px 0}
     .keyword-tag .remove{cursor:pointer;color:#999;font-size:14px}
     .keyword-tag .remove:hover{color:#e74c3c}
+    .debug-bubble.user{width:24px;height:24px;line-height:24px;text-align:center;background:#a5d8ff;border-radius:50%;font-size:12px;flex-shrink:0}
+    .debug-bubble.bot{width:24px;height:24px;line-height:24px;text-align:center;background:#dee2e6;border-radius:50%;font-size:12px;flex-shrink:0}
     .btn-sm{padding:6px 14px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid #ddd;background:#fff;color:#333}
     .btn-sm:hover{border-color:#4361ee;color:#4361ee}
     .btn-primary{background:#4361ee;color:#fff;border-color:#4361ee}
@@ -505,7 +507,7 @@
     // 创建标签导航（对话规则 | 任务流程 | LLM 智能层）
     var tabs = document.createElement('div');
     tabs.id = 'rules-tabs';
-    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="llm">LLM 智能层</button>';
+    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="llm">LLM 智能层</button><button class="tab-btn" data-tab="debug">会话调试</button>';
     // 把原有内容包进 tab panel
     var rulesPanel = document.createElement('div');
     rulesPanel.className = 'tab-panel active';
@@ -521,11 +523,17 @@
     llmPanel.className = 'tab-panel';
     llmPanel.id = 'tab-llm';
     llmPanel.innerHTML = buildLLMPanelHTML();
+    // 创建会话调试面板
+    var debugPanel = document.createElement('div');
+    debugPanel.className = 'tab-panel';
+    debugPanel.id = 'tab-debug';
+    debugPanel.innerHTML = buildDebugPanelHTML();
     // 组装
     panel.appendChild(tabs);
     panel.appendChild(rulesPanel);
     panel.appendChild(tasksPanel);
     panel.appendChild(llmPanel);
+    panel.appendChild(debugPanel);
     // 标签切换
     tabs.addEventListener('click', function(e) {
       var btn = e.target.closest('.tab-btn');
@@ -536,8 +544,10 @@
       rulesPanel.classList.toggle('active', tab === 'rules');
       tasksPanel.classList.toggle('active', tab === 'tasks');
       llmPanel.classList.toggle('active', tab === 'llm');
+      debugPanel.classList.toggle('active', tab === 'debug');
       if (tab === 'tasks') { loadTasks(); loadSuggestions(); }
       if (tab === 'llm') loadLLMPanel();
+      if (tab === 'debug') loadDebugSessions();
     });
   }
 
@@ -730,6 +740,116 @@
   // 绑定刷新按钮
   document.addEventListener('click', function(e) {
     if (e.target && e.target.id === 'suggest-refresh-btn') { loadSuggestions(); }
+  });
+
+  // ===== 会话调试面板（可视化交互图） =====
+  function buildDebugPanelHTML() {
+    return '<div class="task-panel">' +
+      '<div class="task-header"><h4>会话调试 · 处理轨迹</h4>' +
+        '<button class="btn-sm" id="debug-clear-btn">清空轨迹</button></div>' +
+      '<div style="color:#999;font-size:12px;margin:4px 0 8px">选择会话查看每一轮对话的后端处理逻辑（路由判定、通道选择、挂起/恢复等）。轨迹保存在内存中，重启后清空。</div>' +
+      '<div id="debug-session-list"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
+      '<div id="debug-trace-view" style="margin-top:16px"></div>' +
+    '</div>';
+  }
+
+  // 步骤级别 → 颜色/标签
+  var DEBUG_LEVEL_META = {
+    info:    { label: '信息', color: '#666' },
+    rule:    { label: '规则', color: '#4361ee' },
+    llm:     { label: 'LLM',  color: '#7b2ff7' },
+    task:    { label: '任务', color: '#2f9e44' },
+    warn:    { label: '⚠ 澄清', color: '#e8590c' },
+    error:   { label: '错误', color: '#e03131' },
+    result:  { label: '结果', color: '#0c8599' },
+  };
+
+  function loadDebugSessions() {
+    var area = document.getElementById('debug-session-list');
+    if (!area) return;
+    api('GET', '/api/debug/sessions?limit=20', null, function(res) {
+      if (!res.success) { area.innerHTML = '<div class="task-empty"><div>加载失败</div></div>'; return; }
+      var list = res.data || [];
+      if (!list.length) {
+        area.innerHTML = '<div class="task-empty"><div class="icon">📭</div><div>暂无会话轨迹（先发几条消息再来看）</div></div>';
+        return;
+      }
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead><tr>' +
+        '<th>会话 ID</th><th style="width:60px">轮次</th><th style="width:90px">最后时间</th><th>最后输入</th><th style="width:80px">操作</th></tr></thead><tbody>';
+      list.forEach(function(s) {
+        var t = new Date(s.lastActive);
+        var time = t.getHours() + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
+        html += '<tr>';
+        html += '<td><code>' + esc(s.sessionId) + '</code></td>';
+        html += '<td>' + s.turns + '</td>';
+        html += '<td>' + time + '</td>';
+        html += '<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.lastInput || '-') + '</td>';
+        html += '<td><button class="btn-sm" onclick="viewDebugTrace(\'' + esc(s.sessionId) + '\')">查看</button></td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      area.innerHTML = html;
+    });
+  }
+
+  window.viewDebugTrace = function(sessionId) {
+    api('GET', '/api/debug/session/' + encodeURIComponent(sessionId), null, function(res) {
+      if (!res.success || !res.data) return;
+      renderDebugTrace(sessionId, res.data.turns || []);
+    });
+  };
+
+  // 渲染交互图：时间线式，每轮 = 用户输入 → 处理步骤 → 机器人回复
+  function renderDebugTrace(sessionId, turns) {
+    var view = document.getElementById('debug-trace-view');
+    if (!view) return;
+    if (!turns.length) {
+      view.innerHTML = '<div class="task-empty"><div>该会话暂无轨迹</div></div>';
+      return;
+    }
+    var html = '<div class="debug-header" style="margin-bottom:12px">' +
+      '<h4 style="margin:0">会话 ' + esc(sessionId) + '</h4></div>';
+    turns.forEach(function(turn, ti) {
+      var input = turn.input || '';
+      var output = turn.output || '';
+      var steps = turn.steps || [];
+      var dur = turn.duration ? (turn.duration + 'ms') : '';
+      html += '<div style="border:1px solid #e9ecef;border-radius:8px;margin-bottom:12px;padding:12px;background:#fff">';
+      html += '<div style="font-size:12px;color:#999;margin-bottom:8px">第 ' + (turns.length - ti) + ' 轮 ' + (dur ? '｜耗时 ' + dur : '') + '</div>';
+      // 用户输入
+      html += '<div style="display:flex;align-items:flex-start;margin-bottom:8px">' +
+        '<span class="debug-bubble user">👤</span>' +
+        '<div class="debug-bubble" style="background:#e7f5ff;border:1px solid #a5d8ff;border-radius:8px;padding:6px 10px;margin-left:8px;max-width:70%">' + esc(input) + '</div></div>';
+      // 处理步骤链
+      if (steps.length) {
+        html += '<div style="margin:8px 0 8px 28px;border-left:2px solid #dee2e6;padding-left:12px">';
+        steps.forEach(function(s) {
+          var meta = DEBUG_LEVEL_META[s.level] || DEBUG_LEVEL_META.info;
+          var detail = '';
+          try { if (s.detail && Object.keys(s.detail).length) detail = ' <span style="color:#868e96">' + esc(JSON.stringify(s.detail)) + '</span>'; } catch(e) {}
+          html += '<div style="font-size:12px;margin:3px 0;color:' + meta.color + '">' +
+            '<span style="display:inline-block;min-width:44px;font-weight:600">[' + meta.label + ']</span>' +
+            esc(s.step) + detail + '</div>';
+        });
+        html += '</div>';
+      }
+      // 机器人回复
+      html += '<div style="display:flex;align-items:flex-start">' +
+        '<span class="debug-bubble bot">🤖</span>' +
+        '<div style="background:#f1f3f5;border:1px solid #dee2e6;border-radius:8px;padding:6px 10px;margin-left:8px;max-width:70%;font-size:13px">' + esc(String(output || '').slice(0, 200)) + (String(output||'').length > 200 ? '…' : '') + '</div></div>';
+      html += '</div>';
+    });
+    view.innerHTML = html;
+  }
+
+  // 清空轨迹
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'debug-clear-btn') {
+      if (!confirm('清空所有会话轨迹？')) return;
+      api('POST', '/api/debug/clear', null, function(res) {
+        if (res.success) { loadDebugSessions(); document.getElementById('debug-trace-view').innerHTML = ''; }
+      });
+    }
   });
 
   // ===== 编辑/新建任务弹窗 =====
