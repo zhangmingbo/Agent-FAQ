@@ -2025,7 +2025,7 @@
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
         '</div>' +
         '<div class="form-group"><label>完成动作（可选）</label>' +
-          '<select id="tf-action"><option value="complete_message">仅回复完成话术</option></select>' +
+          '<select id="tf-action"><option value="complete_message">仅回复完成话术</option><option value="flow">动作编排（多步）</option></select>' +
           '<input id="tf-action-msg" placeholder="动作成功后回复（完成话术）" value="' + esc(isEdit ? (task.completion_message || '') : '') + '" style="margin-top:6px">' +
           '<div id="tf-api-action" style="display:none;border:1px solid #e8ecff;border-radius:8px;padding:10px;margin-top:8px;background:#fafbff">' +
             '<div style="font-size:12px;color:#555;margin-bottom:6px"><b>调用接口配置</b>（用户确认后系统自动把收集的字段提交到接口生成工单）</div>' +
@@ -2043,6 +2043,11 @@
               '<div style="flex:1"><div style="font-size:12px;color:#666">超时（毫秒）</div><input id="tf-api-timeout" type="number" min="1000" value="' + esc(isEdit && task.api_action && task.api_action.timeout !== undefined ? task.api_action.timeout : 10000) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
             '</div>' +
             '<div style="font-size:11px;color:#999;margin-top:4px">保存后请点「⚡ 从槽位自动生成」重建流程步骤，完成动作才会真正执行接口调用。</div>' +
+          '</div>' +
+          '<div id="tf-flow-config" style="display:none;border:1px solid #e8ecff;border-radius:8px;padding:10px;margin-top:8px;background:#fafbff">' +
+            '<div style="font-size:12px;color:#555;margin-bottom:6px"><b>动作编排配置</b>（多步接口调用，支持分支与幂等；步骤间用 {result.步骤名.字段} 传值）</div>' +
+            '<textarea id="tf-flow-config-json" rows="7" placeholder=\'{"idempotencyKey":"{sessionId}-{taskCode}-submit","steps":[{"type":"http","name":"check","url":"https://...","body":{"phone":"{slot.phone}"},"result":{"status":"data.status"}},{"type":"branch","when":{"source":"result","ref":"check.status","op":"eq","value":"ok"},"then":[{"type":"http","name":"create","url":"https://...","body":{"phone":"{slot.phone}"}}],"else":[]}]}\' style="width:100%;box-sizing:border-box;font-size:12px;font-family:monospace">' + esc((function() { var oc = task && task.on_complete; if (!oc) return ''; if (typeof oc === 'object') return JSON.stringify(oc, null, 2); if (typeof oc === 'string' && oc.trim().startsWith('{')) { try { return JSON.stringify(JSON.parse(oc), null, 2) } catch(e) {} } return ''; })()) + '</textarea>' +
+            '<div style="font-size:11px;color:#999;margin-top:4px">支持步骤：http（接口调用：url/method/body/result/retries/timeout）、branch（条件分支：when/then/else）。body 与条件引用：{slot.电话}、{var.x}、{result.步骤名.字段}。</div>' +
           '</div>' +
         '</div>' +
         '<div class="form-group"><label>流程步骤（v2 步骤 DSL）</label>' +
@@ -2157,15 +2162,20 @@
       sel.innerHTML = actions.map(function(a) {
         var label = a === 'call_api' ? '调用接口（任务里配置）' : a;
         return '<option value="' + esc(a) + '">' + esc(label) + '</option>';
-      }).join('');
-      if (isEdit && task.on_complete && actions.indexOf(task.on_complete) >= 0) sel.value = task.on_complete;
+      }).join('') + '<option value="flow">动作编排（多步）</option>';
+      var oc = task && task.on_complete;
+      var isFlow = (typeof oc === 'object') || (typeof oc === 'string' && oc.trim().startsWith('{'));
+      if (isFlow) sel.value = 'flow';
+      else if (isEdit && task.on_complete && actions.indexOf(task.on_complete) >= 0) sel.value = task.on_complete;
       toggleApiAction();
     });
-    // 选择"调用接口"时显示接口配置块
+    // 选择"调用接口/动作编排"时显示对应配置块
     function toggleApiAction() {
-      var block = overlay.querySelector('#tf-api-action');
-      if (!block) return;
-      block.style.display = (overlay.querySelector('#tf-action').value === 'call_api') ? '' : 'none';
+      var v = overlay.querySelector('#tf-action').value;
+      var api = overlay.querySelector('#tf-api-action');
+      if (api) api.style.display = v === 'call_api' ? '' : 'none';
+      var flow = overlay.querySelector('#tf-flow-config');
+      if (flow) flow.style.display = v === 'flow' ? '' : 'none';
     }
     overlay.querySelector('#tf-action').addEventListener('change', toggleApiAction);
 
@@ -2226,6 +2236,20 @@
       if (stepErrors.length) {
         alert('流程步骤有误：\n' + stepErrors.map(function(e) { return '· ' + e; }).join('\n'));
         return;
+      }
+      // 完成动作编排配置解析与校验（v3 P3）
+      var onCompleteVal = overlay.querySelector('#tf-action').value || '';
+      if (onCompleteVal === 'flow') {
+        var fc = overlay.querySelector('#tf-flow-config-json').value.trim();
+        if (!fc) { alert('选择"动作编排"后请填写编排配置'); return; }
+        try {
+          var flowObj = JSON.parse(fc);
+          if (!flowObj.steps || !Array.isArray(flowObj.steps) || !flowObj.steps.length) { alert('编排配置需要 steps 数组'); return; }
+          onCompleteVal = JSON.stringify(flowObj);
+        } catch (e) {
+          alert('编排配置不是合法 JSON：' + e.message);
+          return;
+        }
       }
       // 调用接口配置（仅当完成动作选 call_api 时）
       var apiAction = undefined;
@@ -2300,7 +2324,7 @@
           return Object.keys(out).length ? out : undefined;
         })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
-        on_complete: overlay.querySelector('#tf-action').value || '',
+        on_complete: onCompleteVal,
         api_action: apiAction,
         status: 1,
       };
@@ -2393,17 +2417,26 @@
     return [...new Set(keys)];
   }
 
-  // 分支条件行
+  // 分支条件行（v3：判断源 + 操作符扩展 + 组合）
+  var OP_LABELS = { eq: '等于', ne: '不等于', contains: '包含', regex: '匹配', gt: '大于', gte: '大于等于', lt: '小于', lte: '小于等于', empty: '为空', notEmpty: '非空', workday: '工作日', business_hours: '上班时间' };
+  var SOURCE_LABELS = { slot: '槽位', var: '变量', time: '时间', fn: '函数', expr: '表达式' };
   function buildCaseRow(c, stepKeys, slotKeys) {
     c = c || {};
     var when = c.when || {};
+    var source = when.source || 'slot';
+    var ref = when.ref !== undefined ? when.ref : (when.slot || '');
+    var op = when.op || 'eq';
+    var val = when.source === 'expr' ? (when.expr !== undefined ? when.expr : when.value) : when.value;
     return '<div class="case-row">' +
-      '<select class="case-slot" style="width:110px">' + buildSlotOptions(when.slot, slotKeys) + '</select>' +
-      '<select class="case-op" style="width:90px">' + ['eq', 'contains', 'regex'].map(function(op) {
-        return '<option value="' + op + '"' + (when.op === op ? ' selected' : '') + '>' + ({eq:'等于',contains:'包含',regex:'匹配'})[op] + '</option>';
+      '<select class="case-source" style="width:74px">' + Object.keys(SOURCE_LABELS).map(function(s) {
+        return '<option value="' + s + '"' + (source === s ? ' selected' : '') + '>' + SOURCE_LABELS[s] + '</option>';
       }).join('') + '</select>' +
-      '<input class="case-val" value="' + esc(when.value || '') + '" placeholder="条件值" style="width:110px">' +
-      '<select class="case-next" style="width:110px">' + buildStepKeyOptions(c.next, stepKeys, '跳转到…') + '</select>' +
+      '<input class="case-ref" value="' + esc(ref || '') + '" placeholder="槽位/变量/函数名" style="width:100px">' +
+      '<select class="case-op" style="width:96px">' + Object.keys(OP_LABELS).map(function(o) {
+        return '<option value="' + o + '"' + (op === o ? ' selected' : '') + '>' + OP_LABELS[o] + '</option>';
+      }).join('') + '</select>' +
+      '<input class="case-val" value="' + esc(val || '') + '" placeholder="条件值/表达式" style="width:130px">' +
+      '<select class="case-next" style="width:100px">' + buildStepKeyOptions(c.next, stepKeys, '跳转到…') + '</select>' +
       '<button type="button" class="case-del" title="删除条件">&times;</button>' +
     '</div>';
   }
@@ -2572,12 +2605,18 @@
       } else if (type === 'branch') {
         var cases = [];
         row.querySelectorAll('.case-row').forEach(function(crow) {
-          var slot = qr(crow, '.case-slot');
+          var source = qr(crow, '.case-source') || 'slot';
+          var ref = q(crow, '.case-ref');
           var op = qr(crow, '.case-op');
           var val = q(crow, '.case-val');
           var next = qr(crow, '.case-next');
-          if (!slot || !op || !next) return; // 不完整的条件行忽略（保存前校验会提示）
-          cases.push({ when: { slot: slot, op: op, value: val }, next: next });
+          if (!op || !next) return; // 不完整的条件行忽略（保存前校验会提示）
+          var when;
+          if (source === 'fn') when = { source: 'fn', ref: ref, args: val ? val.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [] };
+          else if (source === 'expr') when = { source: 'expr', expr: val };
+          else if (source === 'time') when = { source: 'time', op: op };
+          else when = { source: source, ref: ref, op: op, value: val };
+          cases.push({ when: when, next: next });
         });
         if (cases.length) step.cases = cases;
         var dflt = q(row, '.step-default');
@@ -2615,9 +2654,18 @@
       if (s.type === 'branch') {
         (s.cases || []).forEach(function(c, ci) {
           var cwhere = where + ' 条件' + (ci + 1);
-          if (!c.when || !c.when.slot) errors.push(cwhere + '：未选择槽位');
-          if (!c.when || !c.when.op) errors.push(cwhere + '：未选择操作符');
-          if (!c.when || c.when.value === undefined || c.when.value === '') errors.push(cwhere + '：缺少条件值');
+          var w = c.when || {};
+          if (w.source === 'fn') {
+            if (!w.ref) errors.push(cwhere + '：未填函数名');
+          } else if (w.source === 'expr') {
+            if (!w.expr && (w.value === undefined || w.value === '')) errors.push(cwhere + '：缺少表达式');
+          } else if (w.source === 'time') {
+            if (!['workday', 'business_hours'].includes(w.op)) errors.push(cwhere + '：时间判断操作符须为 workday/business_hours');
+          } else {
+            if (!w.ref && !w.slot) errors.push(cwhere + '：未填判断对象（槽位/变量名）');
+            if (!w.op) errors.push(cwhere + '：未选择操作符');
+            if (!['empty', 'notEmpty'].includes(w.op) && (w.value === undefined || w.value === '')) errors.push(cwhere + '：缺少条件值');
+          }
           if (!c.next) errors.push(cwhere + '：未选择跳转目标');
           else if (!keys.has(c.next)) errors.push(cwhere + '：跳转目标「' + c.next + '」不存在');
         });

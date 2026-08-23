@@ -46,7 +46,7 @@ export async function runAction(name, ctx) {
       retries: lg.retries ?? 0,
       durationMs: Date.now() - start,
     })
-    return { ok, message: (result && result.message) || '完成' }
+    return { ok, message: (result && result.message) || '完成', events: result?.events || [] }
   } catch (e) {
     console.error(`[TaskFlow] 动作 ${name} 执行失败:`, e.message)
     await logAction(ctx, { action: name, status: 'fail', error: e.message, durationMs: Date.now() - start })
@@ -69,20 +69,40 @@ export async function ensureActionLogTable() {
       session_id VARCHAR(100),
       task_code VARCHAR(50),
       action VARCHAR(50),
+      step VARCHAR(50) NULL COMMENT '编排步骤名',
       status VARCHAR(10) COMMENT 'ok=成功 fail=失败',
+      idempotency_key VARCHAR(100) NULL COMMENT '编排幂等键（防重复办业务）',
       url VARCHAR(500),
       payload JSON NULL COMMENT '输出数据快照（不落业务库，仅供联调/补发）',
       response TEXT,
       error VARCHAR(500),
       retries TINYINT DEFAULT 0,
       duration_ms INT DEFAULT 0,
+      message VARCHAR(500) NULL,
       resent_at DATETIME NULL COMMENT '重发成功时间（业务系统恢复后补数据）',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       KEY idx_action_log_session (session_id),
       KEY idx_action_log_task (task_code),
-      KEY idx_action_log_status (status)
+      KEY idx_action_log_status (status),
+      KEY idx_action_log_idem (idempotency_key)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   )
+  // 老表补列（幂等/步骤/消息）
+  try {
+    const [cols] = await pool.execute('SHOW COLUMNS FROM action_log')
+    const has = new Set(cols.map(c => c.Field))
+    const adds = []
+    if (!has.has('idempotency_key')) adds.push('ADD COLUMN idempotency_key VARCHAR(100) NULL AFTER status')
+    if (!has.has('step')) adds.push('ADD COLUMN step VARCHAR(50) NULL AFTER action')
+    if (!has.has('message')) adds.push('ADD COLUMN message VARCHAR(500) NULL AFTER duration_ms')
+    if (!has.has('resent_at')) adds.push('ADD COLUMN resent_at DATETIME NULL AFTER message')
+    for (const a of adds) await pool.execute(`ALTER TABLE action_log ${a}`)
+    if (!has.has('idx_action_log_idem')) {
+      try { await pool.execute('CREATE INDEX idx_action_log_idem ON action_log (idempotency_key)') } catch { /* 忽略重复 */ }
+    }
+  } catch (e) {
+    console.warn('[TaskFlow] action_log 补列失败:', e.message)
+  }
 }
 
 /** 记录一条动作日志 */
@@ -115,8 +135,19 @@ register('complete_message', async (ctx) => {
   return { ok: true, message: ctx.step?.done_message || ctx.task.completion_message || getReply('complete_fallback', { taskName: ctx.task.name }) }
 })
 
-register('transfer_human', async () => {
-  return { ok: true, message: getReply('transfer_human') }
+register('transfer_human', async (ctx) => {
+  // v3 P4：返回「转人工事件」给前端（前端收到后调人工系统接口），当前系统标记任务已转人工结束
+  return {
+    ok: true,
+    message: getReply('transfer_human'),
+    events: [{
+      type: 'transfer_human',
+      sessionId: ctx.sessionId || null,
+      taskCode: ctx.task?.code || null,
+      taskName: ctx.task?.name || null,
+      slots: ctx.slots || {},
+    }],
+  }
 })
 
 /**

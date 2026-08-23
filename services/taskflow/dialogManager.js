@@ -23,6 +23,8 @@ import { TaskState } from './stateMachine.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import { getReply } from '../replyTexts.js'
 import traceService from '../traceService.js'
+import { evaluateCondition } from './condition.js'
+import { runFlow } from './flow.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 const CORRECT_PATTERNS = ['修改', '改成', '换成', '改为', '变更', '改一下']
@@ -151,7 +153,7 @@ class DialogManager {
           break
         }
         case 'branch': {
-          const next = this._evalBranch(step, state.slots)
+          const next = await this._evalBranch(step, state)
           state.currentStep = next
           extracted = true
           alreadyExtracted = true
@@ -566,25 +568,64 @@ class DialogManager {
     const slots = {}
     for (const [key, s] of Object.entries(state.slots)) slots[key] = s.value
 
+    const task = this.defs.get(state.taskCode)
     const ctx = {
       sessionId: state.sessionId,
-      task: this.defs.get(state.taskCode),
+      task,
       state,
       step,
       slots,
       params: step.params || {},
     }
 
-    const result = await runAction(step.action, ctx)
+    let result
+    let events = []
+    // 任务级动作编排优先（v3 P3）
+    if (task?.on_complete && typeof task.on_complete === 'object' && Array.isArray(task.on_complete.steps)) {
+      result = await runFlow(task.on_complete, { sessionId: state.sessionId, task, state, slots })
+      _t('任务对话·执行编排', { ok: result.ok, error: result.error || undefined, idempotent: !!result.idempotent }, result.ok ? 'task' : 'error')
+      if (!result.ok) {
+        state.status = TaskState.COLLECTING
+        return {
+          reply: getReply('action_fail_rule', { message: result.message || result.error }),
+          isComplete: false,
+          extracted: true,
+          reask: false,
+          cancelled: false,
+          taskState: state,
+        }
+      }
+    } else {
+      result = await runAction(step.action, ctx)
+      events = result.events || []
+    }
+
     if (result.ok) {
+      // 转人工（v3 P4）：标记已转人工，任务结束
+      if (step.action === 'transfer_human') {
+        state.status = TaskState.TRANSFERRED
+        const msg = (replyPrefix ? replyPrefix + (result.message ? '\n' : '') : '') + (result.message || '')
+        _t('任务对话·转人工', { taskCode: state.taskCode }, 'task')
+        return {
+          reply: msg,
+          isComplete: true,
+          extracted: true,
+          reask: false,
+          cancelled: false,
+          taskState: state,
+          events,
+        }
+      }
       state.currentStep = step.next
       const message = (replyPrefix ? replyPrefix + (result.message ? '\n' : '') : '') + (result.message || '')
       _t('任务对话·执行动作', { action: step.action, ok: true, message: (result.message || '').slice(0, 60) }, 'task')
       // 子任务完成 → 返回父任务
       if (state.stack && state.stack.length > 0) {
-        return this._popSubtask(state, message, trace)
+        const env = this._popSubtask(state, message, trace)
+        env.events = env.events || events
+        return env
       }
-      return this._finish(state, message, trace)
+      return this._finish(state, message, trace, events)
     }
 
     // 动作失败
@@ -672,7 +713,7 @@ class DialogManager {
 
   // ========== 完成/取消 ==========
 
-  _finish(state, message, trace = null) {
+  _finish(state, message, trace = null, events = []) {
     state.status = TaskState.DONE
     traceService.traceStep(trace, '任务对话·完成任务', { taskCode: state.taskCode }, 'task')
     return {
@@ -682,6 +723,7 @@ class DialogManager {
       reask: false,
       cancelled: false,
       taskState: state,
+      events,
     }
   }
 
@@ -787,17 +829,11 @@ class DialogManager {
     return null
   }
 
-  _evalBranch(step, slots) {
+  /** 分支判断：统一条件求值（condition.js，支持操作符扩展/时间/函数/表达式/组合） */
+  async _evalBranch(step, state) {
+    const ctx = { slots: state.slots, vars: state.vars || {}, result: state.vars || {} }
     for (const c of (step.cases || [])) {
-      const slot = slots[c.when?.slot]
-      const value = slot?.value
-      if (value === undefined || value === null) continue
-      switch (c.when?.op) {
-        case 'eq': if (String(value) === String(c.when.value)) return c.next; break
-        case 'contains': if (String(value).includes(c.when.value)) return c.next; break
-        case 'regex': try { if (new RegExp(c.when.value, 'i').test(String(value))) return c.next } catch { /* ignore */ } break
-        default: break
-      }
+      if (await evaluateCondition(c.when, ctx)) return c.next
     }
     return step.default_next
   }

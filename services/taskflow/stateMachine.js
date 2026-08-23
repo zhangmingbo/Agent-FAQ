@@ -32,6 +32,7 @@ export const TaskState = Object.freeze({
   EXECUTING: 'executing',
   DONE: 'done',
   CANCELLED: 'cancelled',
+  TRANSFERRED: 'transferred', // 已转人工（v3 P4：给前端转人工事件，任务标记结束）
 })
 
 /**
@@ -39,11 +40,12 @@ export const TaskState = Object.freeze({
  */
 const TRANSITIONS = {
   [TaskState.IDLE]: new Set([TaskState.COLLECTING]),
-  [TaskState.COLLECTING]: new Set([TaskState.CONFIRMING, TaskState.CANCELLED]),
-  [TaskState.CONFIRMING]: new Set([TaskState.EXECUTING, TaskState.COLLECTING, TaskState.CANCELLED]),
-  [TaskState.EXECUTING]: new Set([TaskState.DONE, TaskState.COLLECTING]),
+  [TaskState.COLLECTING]: new Set([TaskState.CONFIRMING, TaskState.CANCELLED, TaskState.TRANSFERRED]),
+  [TaskState.CONFIRMING]: new Set([TaskState.EXECUTING, TaskState.COLLECTING, TaskState.CANCELLED, TaskState.TRANSFERRED]),
+  [TaskState.EXECUTING]: new Set([TaskState.DONE, TaskState.COLLECTING, TaskState.TRANSFERRED]),
   [TaskState.DONE]: new Set(),
   [TaskState.CANCELLED]: new Set(),
+  [TaskState.TRANSFERRED]: new Set(),
 }
 
 /**

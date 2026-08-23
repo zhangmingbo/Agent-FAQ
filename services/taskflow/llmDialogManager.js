@@ -13,6 +13,7 @@
 
 import { runAction } from './actionRegistry.js'
 import { executeApiStep } from './apiStep.js'
+import { runFlow } from './flow.js'
 import { TaskState } from './stateMachine.js'
 import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
@@ -205,28 +206,53 @@ class LLMDialogManager {
     }
   }
 
-  /** 完成：用户确认后执行动作（写库/调API） */
+  /** 完成：用户确认后执行（动作编排 / 动作步骤 / 无动作） */
   async _complete(state, trace = null) {
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     const task = this.defs.get(state.taskCode)
     const actionStep = (task?.steps || []).find(s => s.type === 'action')
     const slots = {}
     for (const [k, s] of Object.entries(state.slots)) slots[k] = s.value
+    const baseCtx = { sessionId: state.sessionId, task, state, slots }
 
     let message
-    if (actionStep) {
-      const ctx = { sessionId: state.sessionId, task, state, step: actionStep, slots, params: actionStep.params || {} }
-      const result = await runAction(actionStep.action, ctx)
-      if (result.ok) {
+    let events = []
+    const isFlow = !!(task?.on_complete && typeof task.on_complete === 'object' && Array.isArray(task.on_complete.steps))
+
+    if (isFlow) {
+      // 任务级动作编排（v3 P3）
+      const r = await runFlow(task.on_complete, baseCtx)
+      if (r.ok) {
         state.status = TaskState.DONE
-        message = result.message || actionStep.done_message || getReply('complete_fallback', { taskName: task.name })
+        message = r.message || task.completion_message || getReply('complete_fallback', { taskName: task.name })
+        _t('任务对话·执行编排', { ok: true, steps: task.on_complete.steps.length, idempotent: !!r.idempotent, error: r.error }, 'task')
+      } else {
+        _t('任务对话·执行编排', { ok: false, error: (r.error || r.message || '').slice(0, 80) }, 'error')
+        message = getReply('action_fail_llm', { message: r.message || r.error })
+        state.history.push({ role: 'assistant', text: message })
+        return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state, events }
+      }
+    } else if (actionStep) {
+      const ctx = { ...baseCtx, step: actionStep, params: actionStep.params || {} }
+      const result = await runAction(actionStep.action, ctx)
+      events = result.events || []
+      if (result.ok) {
+        if (actionStep.action === 'transfer_human') {
+          // v3 P4：转人工 → 标记已转人工，任务结束
+          state.status = TaskState.TRANSFERRED
+          message = result.message || getReply('transfer_human')
+          _t('任务对话·转人工', { taskCode: state.taskCode }, 'task')
+        } else {
+          state.status = TaskState.DONE
+          message = result.message || actionStep.done_message || getReply('complete_fallback', { taskName: task.name })
+        }
         _t('任务对话·执行动作', { action: actionStep.action, ok: true, message: (message || '').slice(0, 60) }, 'task')
       } else {
         _t('任务对话·执行动作', { action: actionStep.action, ok: false, message: (result.message || '').slice(0, 60) }, 'error')
         // 动作失败：保持确认态，告知用户
         message = getReply('action_fail_llm', { message: result.message })
         state.history.push({ role: 'assistant', text: message })
-        return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state }
+        return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state, events }
       }
     } else {
       state.status = TaskState.DONE
@@ -242,6 +268,7 @@ class LLMDialogManager {
       reask: false,
       cancelled: false,
       taskState: state,
+      events,
     }
   }
 

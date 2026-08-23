@@ -49,12 +49,22 @@ class TaskDefs {
         arb_faq_min DECIMAL(4,3) NULL COMMENT 'FAQ 侧最低线（任务级，null=用全局）',
         arb_strong_hit DECIMAL(4,3) NULL COMMENT '强命中线（任务级，null=用全局）',
         completion_message TEXT,
-        on_complete VARCHAR(100) DEFAULT '' COMMENT '完成后动作',
+        on_complete TEXT COMMENT '完成后动作（动作名或动作编排 JSON）',
         status TINYINT DEFAULT 1 COMMENT '1=启用 0=禁用',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     )
+    // on_complete 列加宽：动作编排 JSON 可能超 100 字符（v3 P3）
+    try {
+      const [cols] = await pool.execute('SHOW COLUMNS FROM task')
+      const oc = cols.find(c => c.Field === 'on_complete')
+      if (oc && /varchar\(100\)/i.test(oc.Type)) {
+        await pool.execute('ALTER TABLE task MODIFY on_complete TEXT COMMENT \'完成后动作（动作名或动作编排 JSON）\'')
+      }
+    } catch (e) {
+      console.warn('[TaskFlow] on_complete 列加宽失败:', e.message)
+    }
     // 老表补充 v2 列（已存在则忽略错误）
     try {
       await pool.execute('ALTER TABLE task ADD COLUMN steps JSON NULL COMMENT \'流程 DSL（v2）\' AFTER slots')
@@ -149,7 +159,14 @@ class TaskDefs {
       slots,
       steps,
       completion_message: row.completion_message || '',
-      on_complete: row.on_complete || '',
+      // 完成动作：字符串=动作名（兼容）；JSON 字符串（以 { 开头）= 动作编排（v3 P3）
+      on_complete: (() => {
+        const raw = row.on_complete || ''
+        if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+          try { return JSON.parse(raw) } catch { return raw }
+        }
+        return raw
+      })(),
       status: row.status ?? 1,
     }
     return def
@@ -264,6 +281,33 @@ class TaskDefs {
         def.slots.push({ key, label: step?.label || key, required: step?.required !== false })
       }
     }
+
+    // 完成动作编排校验（on_complete 为 JSON 字符串，v3 P3）
+    if (def.on_complete && typeof def.on_complete === 'string' && def.on_complete.trim().startsWith('{')) {
+      try {
+        const flow = JSON.parse(def.on_complete)
+        if (!flow || !Array.isArray(flow.steps) || !flow.steps.length) {
+          errors.push('完成动作编排缺少 steps 数组')
+        } else {
+          const walk = (list, prefix) => {
+            list.forEach((s, i) => {
+              const where = `${prefix}步骤${i + 1}`
+              if (s.type === 'http' && !s.url) errors.push(`${where}：缺少接口地址`)
+              if (s.type === 'branch') {
+                if (!s.when) errors.push(`${where}：缺少分支条件 when`)
+                if (s.then && Array.isArray(s.then)) walk(s.then, where + '.then ')
+                if (s.else && Array.isArray(s.else)) walk(s.else, where + '.else ')
+              }
+              if (!['http', 'branch'].includes(s.type)) errors.push(`${where}：不支持的编排步骤类型 ${s.type || '?'}`)
+            })
+          }
+          walk(flow.steps, '编排')
+        }
+      } catch (e) {
+        errors.push('完成动作编排 JSON 解析失败: ' + e.message)
+      }
+    }
+
     return { ok: errors.length === 0, errors }
   }
 

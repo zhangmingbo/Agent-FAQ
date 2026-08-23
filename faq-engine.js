@@ -210,6 +210,7 @@ class FAQEngine {
           if (def) {
             const state = this.taskEngine.startTask(sessionId, def, traceSteps)
             const taskResult = await this.taskEngine.processInput(sessionId, pending.triggerText, traceSteps)
+            if (taskResult?.events?.length) context.pendingEvents = taskResult.events
             response = {
               intent_code: `task:${def.code}`,
               confidence: 1,
@@ -342,6 +343,7 @@ class FAQEngine {
         // 任务进行中：先让任务对话（LLM 提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
         // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
         const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
+        if (taskResult?.events?.length) context.pendingEvents = taskResult.events
 
         if (taskResult && (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask)) {
           // 任务内：提取到槽位/确认/取消/重问 → 直接用任务回复
@@ -498,6 +500,11 @@ class FAQEngine {
     }
 
     // ===== 轨迹收尾 =====
+    // 任务产生的事件（如转人工）随响应返回给前端
+    if (context.pendingEvents && context.pendingEvents.length) {
+      response.events = context.pendingEvents
+      context.pendingEvents = null
+    }
     _t('生成回复', { source: response.source, intent: response.intent_code || null, confidence: response.confidence ?? null }, 'result')
     traceService.endTurn(sessionId, traceSteps, { input: text, output: response.answer, duration: Date.now() - startTime })
 
@@ -616,6 +623,7 @@ class FAQEngine {
     console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
     const taskState = this.taskEngine.startTask(sessionId, matchedTask, traceSteps)
     const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
+    if (taskResult?.events?.length && context) context.pendingEvents = taskResult.events
     if (taskResult) {
       let answer = taskResult.reply
       // 有被中断的任务时，提示可恢复

@@ -22,11 +22,13 @@
 import { getReply } from '../replyTexts.js'
 import traceService from '../traceService.js'
 
-/** 模板解析：{slot.phone} {var.x} {result.y.z} {idempotencyKey}；{result}（无路径）原样保留，由调用方做主值插值 */
+/** 模板解析：{slot.phone} {var.x} {result.y.z} {idempotencyKey} {sessionId} {taskCode}；{result}（无路径）原样保留，由调用方做主值插值 */
 export function resolveTemplate(str, ctx = {}) {
   if (str === undefined || str === null) return str
-  return String(str).replace(/\{(slot|var|result|idempotencyKey)(?:\.([\w.-]+))?\}/g, (m, kind, path) => {
+  return String(str).replace(/\{(slot|var|result|idempotencyKey|sessionId|taskCode)(?:\.([\w.-]+))?\}/g, (m, kind, path) => {
     if (kind === 'idempotencyKey') return ctx.idempotencyKey || ''
+    if (kind === 'sessionId') return ctx.sessionId || ''
+    if (kind === 'taskCode') return ctx.taskCode || ''
     if (!path) return m // 无路径（如 {result}）：保留原样
     const src = kind === 'slot' ? (ctx.slots || {}) : kind === 'var' ? (ctx.vars || {}) : (ctx.result || {})
     const v = String(path).split('.').reduce((o, k) => (o == null ? o : o[k]), src)
