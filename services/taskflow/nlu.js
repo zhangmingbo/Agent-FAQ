@@ -446,14 +446,18 @@ class TaskNLU {
   // ========== 意图路由（任务通道 vs FAQ 通道） ==========
 
   /**
-   * 新任务意图确定性判定（场景 B 专用：LLM 提取前先判，避免 LLM 吞掉"换任务"意图）
+   * 新任务意图判定（场景 B 专用：LLM 提取前先判，避免 LLM 吞掉仲裁的 task_new 判定）
    *
-   * 只走规则快检（触发词/近义扩展 + 否定防护）与统一语义仲裁（一次编码），
+   * 只走规则快检（触发词/近义扩展 + 否定防护，用于 taskBoost 抬升）与统一语义仲裁（一次编码），
    * 不调用 LLM——保证在任务对话每一轮都零额外大模型成本。
+   *
+   * 重要：本方法**只执行仲裁的原始判定**，不做任何额外业务裁决——
+   * 仲裁判 clarify（任务/FAQ 差距 < 阈值）就返回 null，交由原流程处理；
+   * 触发词是否应采信、阈值怎么调，全部由运营配置决定（arb_* / 任务级覆盖）。
    *
    * @param {string} text - 用户输入
    * @param {Object} ctx - { tasks, currentCode, trace }
-   * @returns {Promise<string|null>} 判定的新任务 code；未判出返回 null
+   * @returns {Promise<string|null>} 仲裁判定切换的新任务 code；未判出返回 null
    */
   async detectNewTask(text, ctx = {}) {
     const t = (text || '').trim()
@@ -466,7 +470,7 @@ class TaskNLU {
       if (trace) traceService.traceStep(trace, '新任务判定·' + step, detail, level)
     }
 
-    // 1) 规则快检（触发词/近义扩展），否定表达不触发
+    // 1) 规则快检（触发词/近义扩展），否定表达不触发——只用于给仲裁的任务侧抬升分
     const byRule = this._matchByRules(lower, tasks, ctx.currentCode || null)
     const negated = this._isNegation(lower)
     let taskBoost = null
@@ -475,7 +479,7 @@ class TaskNLU {
     }
     _t('规则快检', { byRule: byRule ? byRule.code : null, negated, boosted: !!taskBoost })
 
-    // 2) 统一语义仲裁（触发词命中抬升任务侧，但不免检——允许 FAQ 高置信反超）
+    // 2) 统一语义仲裁（触发词命中按配置抬升任务侧，但不免检——允许 FAQ 高置信反超）
     const arb = await this.arbitrateTaskFaq(t, { tasks, taskBoost })
     _t('统一仲裁', {
       channel: arb.channel,
@@ -485,19 +489,8 @@ class TaskNLU {
       faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
     }, arb.channel === 'task_new' ? 'task' : 'info')
 
-    // 3) 判定：仲裁明确 task_new → 切换
+    // 3) 只尊重仲裁判定：明确 task_new 且不是当前任务 → 切换；其余（faq/clarify/域外）一律不切
     if (arb.channel === 'task_new' && arb.taskCode && arb.taskCode !== ctx.currentCode) {
-      return arb.taskCode
-    }
-    // 咨询疑云词（"X收费吗/多少钱"是问知识，不是办理）——触发词采信前先排除
-    const INQUIRY_RE = /(收费|费用|多少钱|价格|贵不贵|免费|怎么收费|要钱|成本|价位|优惠|活动)/
-    // 触发词命中（运营配置的强业务信号）且仲裁未明确判 FAQ、无咨询疑云 → 采信切换。
-    // 典型："我想预约安装净水器"——触发词"预约"命中，FAQ 侧虽高但用户是明确办理意图，
-    // 仲裁因差距小判 clarify；此时任务侧已被触发词抬升，按触发词切换。
-    // 反向保护："我想更换滤芯，怎么预约"（咨询疑云）→ 仲裁判 faq → 不切；
-    // "换表收费吗"（问费用）→ 含咨询疑云词 → 不切；
-    // 触发词指向与语义最高任务不一致（taskCode !== byRule.code）→ boost 未生效 → 不切。
-    if (byRule && !negated && arb.channel !== 'faq' && arb.taskCode === byRule.code && arb.taskCode !== ctx.currentCode && !INQUIRY_RE.test(t)) {
       return arb.taskCode
     }
     return null
