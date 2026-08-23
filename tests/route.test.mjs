@@ -204,3 +204,79 @@ test('route: 否定句不误触发任务，LLM 判 new_task 才触发（"我说�
   const r = await nlu.route('我没说要换表啊，我是说换燃气表', { tasks: [TASK_APPT, TASK_METER] })
   assert.equal(r, 'task_new')
 })
+
+// ========== 同步仲裁（重构后：仲裁无条件前置，两侧同步对比） ==========
+
+// 注入带 FAQ 侧样本的 mock 环境：任务 appt 占 dim1，FAQ selfI_Introduce 占 dim2
+function setupSyncArbEnv() {
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery(text) {
+      const v = [0, 0, 0, 0]
+      if (text === '你是谁') { v[2] = 1 }                    // 命中 FAQ selfI_Introduce
+      else if (text === '我要预约上门服务') { v[1] = 1 }     // 命中任务 appt
+      else if (text === '不相关的话') { v[0] = 0.01; v[1] = 0.01; v[2] = 0.01 } // 双低
+      return v
+    },
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[0, 1, 0, 0]])
+  nlu.setFaqSamples([
+    { intentCode: 'selfI_Introduce', intentName: '业务引导', vector: [0, 0, 1, 0] },
+  ])
+}
+
+test('route: FAQ 高置信 → 直接 faq（"你是谁"不经过 matchTask/澄清）', async () => {
+  setupSyncArbEnv()
+  stubRouteTurn('continue') // 即使 LLM 说 continue，仲裁已判 FAQ 优先
+  const r = await nlu.route('你是谁', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'faq')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})
+
+test('route: 任务显著高 → 直接 task_new（不经 matchTask 重复判定）', async () => {
+  setupSyncArbEnv()
+  stubRouteTurn('faq') // 即使 LLM 说 faq，仲裁已判任务优先
+  const r = await nlu.route('我要预约上门服务', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'task_new')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})
+
+test('route: 仲裁双低 → 走 matchTask，LLM judgeTrigger 判任务 → task_new', async () => {
+  // 双低环境：任务/FAQ 向量都低（查询向量与所有例句正交），但 LLM judgeTrigger 判定为任务
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery() { return [0, 0, 0, 1] }, // 与 appt(dim1)/FAQ(dim2) 正交 → 双低
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[0, 1, 0, 0]])
+  nlu.setFaqSamples([{ intentCode: 'selfI_Introduce', intentName: '业务引导', vector: [0, 0, 1, 0] }])
+  // mock judgeTrigger 返回任务 code（走 matchTask 的 LLM 判定）
+  llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
+  llmClient.judgeTrigger = async () => 'service_appointment'
+  stubRouteTurn(null) // 即使 LLM 三选一拿不准
+  const r = await nlu.route('安排人来安装', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'task_new')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})
+
+test('route: 仲裁双低 + matchTask 未命中 → 落 LLM 三选一（无任务上下文拿不准 → faq 或 clarify）', async () => {
+  // 双低环境 + judgeTrigger 也不命中
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery() { return [0, 0, 0, 1] },
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[0, 1, 0, 0]])
+  nlu.setFaqSamples([{ intentCode: 'selfI_Introduce', intentName: '业务引导', vector: [0, 0, 1, 0] }])
+  llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
+  llmClient.judgeTrigger = async () => null
+  stubRouteTurn('faq') // LLM 三选一判 faq
+  const r = await nlu.route('今天天气怎么样', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'faq')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})
