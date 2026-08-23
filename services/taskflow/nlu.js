@@ -81,8 +81,9 @@ class TaskNLU {
     const lowerText = text.trim().toLowerCase()
 
     // 1) 关键词 + 近义扩展（确定性，所有模式都先走）
+    //    否定表达不触发（"我没说要换表啊"含"换表"但明确否定）
     const byRule = this._matchByRules(lowerText, tasks, currentCode)
-    if (byRule) return byRule
+    if (byRule && !this._isNegation(lowerText)) return byRule
     if (this.mode === 'rule') return null
 
     // 2) LLM 判定（llm 模式优先；hybrid 在规则未命中后尝试）
@@ -103,7 +104,7 @@ class TaskNLU {
     }
 
     // 3) 向量语义（意图例句；仅较长句子，否定句不触发）
-    if (this.nlpEngine && text.trim().length >= 5 && !NEGATION_RE.test(text)) {
+    if (this.nlpEngine && text.trim().length >= 5 && !NEGATION_RE.test(text) && !this._isNegation(lowerText)) {
       const hit = await this._matchByVector(text, tasks, currentCode)
       if (hit) return hit
     }
@@ -295,17 +296,37 @@ class TaskNLU {
       if (slotLabels.some(l => l && l.length >= 2 && t.includes(l))) return 'task_continue'
     }
 
-    // 2) 触发词命中 → 可能新任务，也可能只是咨询（费用/怎么/为什么…）
+    // 2) 新任务意图判定：规则快检（含否定防护）+ 完整 matchTask（触发词/LLM/意图例句向量）
+    //    意图例句向量语义是关键——"安排人来安装"这类表达触发词没覆盖但例句语义命中
     let byRuleHit = false
     let consultHint = false
+    let matchedTask = null
     if (ctx.tasks && ctx.tasks.length > 0) {
+      // 2.1 规则快检（触发词/近义扩展），否定表达不触发（"我没说要换表啊"）
       const byRule = this._matchByRules(lower, ctx.tasks, ctx.taskState?.taskCode || null)
-      if (byRule) {
+      const negated = this._isNegation(lower)
+      if (byRule && !negated) {
         byRuleHit = true
+        matchedTask = byRule
         // 触发词命中但话术像咨询（费用/价格/怎么/为什么…）→ 不武断
         consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
         // 无咨询疑云 → 明确新任务
         if (!consultHint) return 'task_new'
+      }
+
+      // 2.2 规则未命中或被否定 → 走完整 matchTask（LLM 判定 + 意图例句向量语义）
+      //    （任务中途判定"换办别的事"时同样生效）
+      if (!matchedTask && this.mode !== 'rule') {
+        try {
+          const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null)
+          if (hit) {
+            matchedTask = hit
+            consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
+            if (!consultHint) return 'task_new'
+          }
+        } catch (e) {
+          console.error('[TaskNLU] 路由 matchTask 判定失败:', e.message)
+        }
       }
     }
 
@@ -335,6 +356,18 @@ class TaskNLU {
     if (byRuleHit && consultHint) return 'clarify'
     // 有任务上下文且规则拿不准 → 保守继续任务（不丢进度）
     return ctx.taskState ? 'task_continue' : 'faq'
+  }
+
+  /**
+   * 否定句防护：明确否定的表达不触发任务（"我没说要换表啊"、"不用换滤芯"）
+   * 匹配模式：否定词 + 业务意图动词（换/装/修/预约/办理…）
+   * @param {string} lowerText - 小写文本
+   */
+  _isNegation(lowerText) {
+    if (!lowerText) return false
+    // 否定词 + 0~4 个任意字符 + 业务意图词
+    const neg = /(没|不|别|无需|不用|不是|不要|不想|没说|没要|没有|没必要)[^，。！？!?、]{0,4}(要|说|想|打算|预约|办理|申请|安排|换|装|修|拆|移|检测|保养|报修|上门)/
+    return neg.test(lowerText)
   }
 
   /** 取消词快检（规则确定性，任何模式生效） */

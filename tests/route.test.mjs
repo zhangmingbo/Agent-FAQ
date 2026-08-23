@@ -176,3 +176,31 @@ test('route: 触发词+咨询疑云 + LLM 明确 new_task → task_new（明确�
   const r = await nlu.route('能上门换滤芯吗', { tasks: [TASK_APPT, TASK_METER] })
   assert.equal(r, 'task_new')
 })
+
+// ========== 意图例句向量触发（matchTask 完整链路） ==========
+
+test('route: 触发词未覆盖但意图例句命中 → task_new（"安排人来安装"）', async () => {
+  // 注入 mock nlpEngine：对"安排人来安装"返回高相似度（命中 service_appointment 例句）
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery() { return [1, 0, 0] },
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[1, 0, 0]])
+  stubRouteTurn(null) // 即使 LLM 拿不准，语义向量已命中
+  const r = await nlu.route('我家机器到了，什么时候安排人来安装', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'task_new')
+  nlu._vectors.clear()
+})
+
+test('route: 否定句不误触发任务（"我没说要换表啊"）→ 交 LLM，LLM 判 faq', async () => {
+  stubRouteTurn('faq')
+  const r = await nlu.route('我没说要换表啊', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'faq')
+})
+
+test('route: 否定句不误触发任务，LLM 判 new_task 才触发（"我说的是换表"）', async () => {
+  stubRouteTurn('new_task')
+  const r = await nlu.route('我没说要换表啊，我是说换燃气表', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'task_new')
+})
