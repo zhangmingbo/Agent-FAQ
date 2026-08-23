@@ -13,14 +13,15 @@
 
 import { get as getPrompt } from './llmPrompts.js'
 
-/** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖，默认全开=现行为） */
+/** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖，默认全开=现行为）
+ *  注意：模型不在这里配——全系统统一在「连接配置」的全局模型（llm_model）里控制 */
 export const DEFAULT_LLM_NODES = {
-  trigger:     { enabled: true, model: '', temperature: 0,   maxTokens: 20 },   // 任务触发判定
-  extract:     { enabled: true, model: '', temperature: 0,   maxTokens: 200 },  // 槽位提取
-  dialogue:    { enabled: true, model: '', temperature: 0.2, maxTokens: 400 },  // 任务对话
-  route:       { enabled: true, model: '', temperature: 0,   maxTokens: 10 },   // 意图路由兜底
-  meaningless: { enabled: true, model: '', temperature: 0.1, maxTokens: 10 },   // 无意义检测
-  rerank:      { enabled: true, model: '', temperature: 0,   maxTokens: 5 },    // FAQ 意图重排
+  trigger:     { enabled: true, temperature: 0,   maxTokens: 20 },   // 任务触发判定
+  extract:     { enabled: true, temperature: 0,   maxTokens: 200 },  // 槽位提取
+  dialogue:    { enabled: true, temperature: 0.2, maxTokens: 400 },  // 任务对话
+  route:       { enabled: true, temperature: 0,   maxTokens: 10 },   // 意图路由兜底
+  meaningless: { enabled: true, temperature: 0.1, maxTokens: 10 },   // 无意义检测
+  rerank:      { enabled: true, temperature: 0,   maxTokens: 5 },    // FAQ 意图重排
 }
 
 class LLMClient {
@@ -76,7 +77,6 @@ class LLMClient {
       const d = DEFAULT_LLM_NODES[name]
       this.nodes[name] = {
         enabled: n && n.enabled !== undefined ? !!n.enabled : d.enabled,
-        model: n && typeof n.model === 'string' ? n.model : d.model,
         temperature: n && typeof n.temperature === 'number' ? n.temperature : d.temperature,
         maxTokens: n && typeof n.maxTokens === 'number' ? n.maxTokens : d.maxTokens,
       }
@@ -102,19 +102,20 @@ class LLMClient {
 
   /**
    * 解析某用途的"生效节点配置"（任务级 > 全局节点 > 默认值）
+   * 注意：模型不在此解析——全系统统一用「连接配置」的全局模型
    * @param {string} name - 用途名
    * @param {Object|null} taskLlm - 任务定义里的 llm 配置块
    * @returns {{enabled:boolean, model:string, temperature:number, maxTokens:number}}
    */
   resolveEffective(name, taskLlm = null) {
     if (taskLlm && taskLlm.enabled === false) {
-      return { enabled: false, model: '', temperature: 0, maxTokens: 0 }
+      return { enabled: false, model: this.config?.model || 'deepseek-chat', temperature: 0, maxTokens: 0 }
     }
     const t = taskLlm?.[name] || {}
     const g = this.nodes[name] || DEFAULT_LLM_NODES[name] || {}
     return {
       enabled: t.enabled !== undefined ? !!t.enabled : g.enabled !== false,
-      model: typeof t.model === 'string' && t.model ? t.model : (g.model || ''),
+      model: this.config?.model || 'deepseek-chat',
       temperature: typeof t.temperature === 'number' ? t.temperature : (g.temperature ?? 0),
       maxTokens: typeof t.maxTokens === 'number' ? t.maxTokens : (g.maxTokens ?? 100),
     }

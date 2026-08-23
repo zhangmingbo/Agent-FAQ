@@ -759,6 +759,17 @@
               if (tp === null) return; // 含 emoji 等不支持字符，中止保存
               if (Object.keys(tp.replyTexts).length) { payload.replyTexts = tp.replyTexts; any = true; }
               if (Object.keys(tp.matchVocab).length) { payload.matchVocab = tp.matchVocab; any = true; }
+              // LLM 连接（全系统唯一模型控制点）
+              var llmConn = {};
+              var connEnabled = document.getElementById('llm-conn-enabled');
+              if (connEnabled) { llmConn.llmEnabled = connEnabled.checked; any = true; }
+              var connUrl = document.getElementById('llm-conn-url');
+              if (connUrl && connUrl.value.trim()) { llmConn.llmApiUrl = connUrl.value.trim(); any = true; }
+              var connKey = document.getElementById('llm-conn-key');
+              if (connKey && connKey.value.trim()) { llmConn.llmApiKey = connKey.value.trim(); any = true; }
+              var connModel = document.getElementById('llm-conn-model');
+              if (connModel && connModel.value.trim()) { llmConn.llmModel = connModel.value.trim(); any = true; }
+              for (var lk in llmConn) payload[lk] = llmConn[lk];
               if (any) {
                 api('POST', '/api/config', payload, function(res) {
                   if (!res.success) alert('配置保存失败：' + (res.message || '未知错误'));
@@ -896,7 +907,8 @@
         '<button class="cfg-tab-btn" data-tab="arb">任务/FAQ 仲裁</button>' +
         '<button class="cfg-tab-btn" data-tab="adv">高级判定</button>' +
         '<button class="cfg-tab-btn" data-tab="analysis">分析建议</button>' +
-        '<button class="cfg-tab-btn" data-tab="texts">固定话术</button>';
+        '<button class="cfg-tab-btn" data-tab="texts">固定话术</button>' +
+        '<button class="cfg-tab-btn" data-tab="llm">LLM 连接</button>';
       var recog = document.createElement('div');
       recog.className = 'cfg-tab-panel active';
       recog.id = 'cfg-tab-recog';
@@ -913,6 +925,10 @@
       texts.className = 'cfg-tab-panel';
       texts.id = 'cfg-tab-texts';
       texts.innerHTML = '<div class="cfg-panel-desc">所有用户可见的对话文案（含校验提示、动作完成话术、匹配词表）。默认值已自动落库，改完点右上角"保存配置"生效。留空 = 用默认值。<br>注意：数据库为旧版 utf8，不支持 emoji 等 4 字节特殊符号，保存时会校验拦截。</div><div id="texts-form"></div>';
+      var llmConn = document.createElement('div');
+      llmConn.className = 'cfg-tab-panel';
+      llmConn.id = 'cfg-tab-llm';
+      llmConn.innerHTML = '<div id="llm-conn-form"></div>';
 
       // 原生内容（h3 识别参数 + el-form）→ 识别参数面板；三个注入区块 → 各自面板
       while (panel.firstChild) {
@@ -935,7 +951,9 @@
       panel.appendChild(adv);
       panel.appendChild(analysis);
       panel.appendChild(texts);
+      panel.appendChild(llmConn);
       renderTextsForm();
+      renderLLMConnection();
 
       // tab 切换
       tabs.addEventListener('click', function(e) {
@@ -944,7 +962,29 @@
         tabs.querySelectorAll('.cfg-tab-btn').forEach(function(b){ b.classList.remove('active') });
         btn.classList.add('active');
         var tab = btn.getAttribute('data-tab');
-        [recog, arb, adv, analysis, texts].forEach(function(p){ p.classList.toggle('active', p.id === 'cfg-tab-' + tab) });
+        [recog, arb, adv, analysis, texts, llmConn].forEach(function(p){ p.classList.toggle('active', p.id === 'cfg-tab-' + tab) });
+      });
+    }
+
+    // ===== LLM 连接：全系统唯一的模型/接口控制点（节点与任务不再单独配模型） =====
+    function renderLLMConnection() {
+      var box = document.getElementById('llm-conn-form');
+      if (!box) return;
+      api('GET', '/api/config', null, function(cfg) {
+        if (!cfg) return;
+        box.innerHTML =
+          '<div class="cfg-panel-desc">大模型连接配置——<b>全系统唯一的模型控制点</b>：所有 LLM 调用节点（任务触发/槽位提取/任务对话/路由/无意义/重排）都用这里的接口与模型，节点和任务里不再单独配模型。保存与右上角"保存配置"一起生效。</div>' +
+          '<div style="max-width:640px">' +
+            '<div class="cfg-item"><div style="font-size:13px;color:#555;margin-bottom:6px">启用 LLM 总开关</div>' +
+              '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="llm-conn-enabled" ' + (cfg.llmEnabled ? 'checked' : '') + '> 启用（关闭后所有节点都不调 LLM，全部走规则）</label></div>' +
+            '<div class="cfg-item"><div style="font-size:13px;color:#555;margin-bottom:6px">接口地址</div>' +
+              '<input id="llm-conn-url" type="text" value="' + esc(cfg.llmApiUrl || '') + '" placeholder="如 https://api.deepseek.com/chat/completions（OpenAI 兼容）" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+            '<div class="cfg-item"><div style="font-size:13px;color:#555;margin-bottom:6px">API 密钥</div>' +
+              '<input id="llm-conn-key" type="password" placeholder="留空=不修改（已配置的密钥不显示）" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+            '<div class="cfg-item"><div style="font-size:13px;color:#555;margin-bottom:6px">模型名 <span style="color:#999;font-weight:normal">（当前：' + esc(cfg.llmModel || '-') + '）</span></div>' +
+              '<input id="llm-conn-model" type="text" value="' + esc(cfg.llmModel || '') + '" placeholder="如 deepseek-chat" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+              '<div class="cfg-comment">填当前接口供应商的模型名：DeepSeek → deepseek-chat / deepseek-reasoner；通义 → qwen-plus；GLM → glm-4；本地 Ollama → 你拉的模型名。留空默认 deepseek-chat。</div></div>' +
+          '</div>';
       });
     }
 
@@ -1258,11 +1298,10 @@
           '<div class="cfg-comment" style="margin-bottom:8px">' + m.desc + '</div>' +
           '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="ln-' + m.key + '-enabled" ' + (n.enabled === false ? '' : 'checked') + '> 启用此节点</label>' +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px">' +
-            '<div style="margin-bottom:8px"><div style="font-size:12px;color:#888;margin-bottom:2px">模型（留空=全局）</div><input id="ln-' + m.key + '-model" type="text" placeholder="如 deepseek-chat" value="' + esc(n.model || '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
             '<div style="margin-bottom:8px"><div style="font-size:12px;color:#888;margin-bottom:2px">温度</div><input id="ln-' + m.key + '-temperature" type="number" step="0.1" min="0" max="2" value="' + (n.temperature ?? 0) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
             '<div style="margin-bottom:8px"><div style="font-size:12px;color:#888;margin-bottom:2px">最大 token</div><input id="ln-' + m.key + '-maxTokens" type="number" min="1" max="2000" value="' + (n.maxTokens ?? 100) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
           '</div>' +
-          '<div style="font-size:11px;color:#999;margin-top:2px;line-height:1.6">关闭=该环节不调 LLM，自动降级为规则。模型：留空=全局（deepseek-chat）；填当前接口供应商的模型名，如 deepseek-chat / deepseek-reasoner。温度：0=稳定、越高越灵活（建议 0~0.7）。token：单次回复字数上限。</div>' +
+          '<div style="font-size:11px;color:#999;margin-top:2px;line-height:1.6">关闭=该环节不调 LLM，自动降级为规则。温度：0=稳定、越高越灵活（建议 0~0.7）。token：单次回复字数上限。模型统一在「系统配置 → LLM 连接」配置。</div>' +
         '</div>';
       });
       html += '</div>' +
@@ -1279,7 +1318,6 @@
           if (isNaN(t) || isNaN(mt)) { bad.push(m.name); return; }
           payload[m.key] = {
             enabled: document.getElementById('ln-' + m.key + '-enabled').checked,
-            model: document.getElementById('ln-' + m.key + '-model').value.trim(),
             temperature: t,
             maxTokens: mt,
           };
@@ -1730,21 +1768,19 @@
                 '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">任务对话 <span style="color:#999;font-weight:normal;font-size:12px">（每轮回复/槽位提取）</span></div>' +
                 '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-dialogue-enabled" ' + (isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.enabled === false ? '' : 'checked') + '> 启用</label>' +
                 '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-                  '<label style="font-size:12px;color:#666">模型 <input id="tf-llm-dialogue-model" placeholder="如 deepseek-chat" style="width:90px" value="' + esc(isEdit && task.llm && task.llm.dialogue ? (task.llm.dialogue.model || '') : '') + '"></label>' +
                   '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-dialogue-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.temperature != null ? task.llm.dialogue.temperature : '') + '"></label>' +
                   '<label style="font-size:12px;color:#666">token <input id="tf-llm-dialogue-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.maxTokens != null ? task.llm.dialogue.maxTokens : '') + '"></label>' +
                 '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">启用：关掉=本任务对话不调 LLM（走规则）。模型：留空=全局（deepseek-chat）；填当前接口供应商的模型名，如 deepseek-chat / deepseek-reasoner（换供应商则填那家的，如通义 qwen-plus）。温度：0=稳定、越高越灵活。token：单次回复字数上限。</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">启用：关掉=本任务对话不调 LLM（走规则）。温度：0=稳定、越高越灵活。token：单次回复字数上限。模型统一在「系统配置 → LLM 连接」配置。</div>' +
               '</div>' +
               '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
                 '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">槽位提取 <span style="color:#999;font-weight:normal;font-size:12px">（规则提取失败时）</span></div>' +
                 '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-extract-enabled" ' + (isEdit && task.llm && task.llm.extract && task.llm.extract.enabled === false ? '' : 'checked') + '> 启用</label>' +
                 '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-                  '<label style="font-size:12px;color:#666">模型 <input id="tf-llm-extract-model" placeholder="如 deepseek-chat" style="width:90px" value="' + esc(isEdit && task.llm && task.llm.extract ? (task.llm.extract.model || '') : '') + '"></label>' +
                   '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-extract-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.temperature != null ? task.llm.extract.temperature : '') + '"></label>' +
                   '<label style="font-size:12px;color:#666">token <input id="tf-llm-extract-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.maxTokens != null ? task.llm.extract.maxTokens : '') + '"></label>' +
                 '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">启用：关掉=规则提取不到时不再用 LLM 补。模型/温度/token 含义同上（模型留空=全局）。</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">启用：关掉=规则提取不到时不再用 LLM 补。温度/token 含义同上。模型统一在「系统配置 → LLM 连接」配置。</div>' +
               '</div>' +
             '</div>' +
             '<div style="margin-top:10px">' +
@@ -1913,12 +1949,10 @@
         llm: (function() {
           function nodeOf(prefix) {
             var enabledChecked = overlay.querySelector('#tf-llm-' + prefix + '-enabled').checked;
-            var model = overlay.querySelector('#tf-llm-' + prefix + '-model').value.trim();
             var temp = overlay.querySelector('#tf-llm-' + prefix + '-temp').value.trim();
             var tokens = overlay.querySelector('#tf-llm-' + prefix + '-tokens').value.trim();
             var node = {};
             if (!enabledChecked) node.enabled = false;
-            if (model) node.model = model;
             if (temp !== '') { var t = parseFloat(temp); if (!isNaN(t)) node.temperature = t; }
             if (tokens !== '') { var m = parseInt(tokens, 10); if (!isNaN(m)) node.maxTokens = m; }
             return Object.keys(node).length ? node : undefined;
