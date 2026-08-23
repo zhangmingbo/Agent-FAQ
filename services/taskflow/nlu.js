@@ -229,22 +229,27 @@ class TaskNLU {
       return empty
     }
 
-    // 任务侧最高相似度
+    // 任务侧最高相似度 + 全部任务分数（调试用）
     let taskScore = 0
     let taskCode = null
     let taskName = ''
+    const taskScores = [] // [{code, name, score}] 按分排序
     for (const [code, samples] of this._vectors) {
       const def = tasks.find(t => t.code === code)
       if (!def || def.status !== 1) continue
+      let bestSim = 0
       for (const v of samples) {
         const sim = cosineSimilarity(qv, v)
-        if (sim > taskScore) {
-          taskScore = sim
-          taskCode = code
-          taskName = def.name
-        }
+        if (sim > bestSim) bestSim = sim
+      }
+      taskScores.push({ code, name: def.name, score: bestSim })
+      if (bestSim > taskScore) {
+        taskScore = bestSim
+        taskCode = code
+        taskName = def.name
       }
     }
+    taskScores.sort((a, b) => b.score - a.score)
 
     // 触发词命中兜底：仅当仲裁任务侧未锁定任务（向量分过低/短句）时生效。
     // 若仲裁已算出语义更贴的任务（如"更换"命中换表任务，但语义"换滤芯"更贴预约任务），
@@ -258,19 +263,22 @@ class TaskNLU {
       }
     }
 
-    // FAQ 侧最高相似度
+    // FAQ 侧最高相似度 + 全部 FAQ 分数（调试用）
     let faqScore = 0
     let faqCode = null
     let faqName = ''
+    const faqScores = [] // [{code, name, score}] 按分排序
     for (const s of this.faqSamples) {
       if (!s.vector) continue
       const sim = cosineSimilarity(qv, s.vector)
+      faqScores.push({ code: s.intentCode, name: s.intentName, score: sim })
       if (sim > faqScore) {
         faqScore = sim
         faqCode = s.intentCode
         faqName = s.intentName
       }
     }
+    faqScores.sort((a, b) => b.score - a.score)
 
     const diff = taskScore - faqScore
 
@@ -290,29 +298,30 @@ class TaskNLU {
     // → 不构成澄清理由，判域外（由上层走 fallback 业务引导）
     // 注意：empty 场景（taskScore=0 且 faqScore=0，无引擎/双低）不在此列——上层走 matchTask 补判
     const strongHit = this.arbConfig.strongHit ?? 0.72
+    const scores = { taskTop: taskScores.slice(0, 5), faqTop: faqScores.slice(0, 5) }
     if ((taskScore > 0 || faqScore > 0) && taskScore < strongHit && faqScore < strongHit) {
       console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达强命中线(${strongHit}) → 域外`)
-      return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+      return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
     }
 
     // 两者都太低（都未达各自语义线）→ 无法判定
     if (taskScore < taskMin && faqScore < faqMin) {
       console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达线 → clarify`)
-      return empty
+      return { ...empty, scores }
     }
 
     // 差距阈值（运营可配）：任务或 FAQ 显著高时直接选（参照 FAQ 竞争澄清的 0.06）
     if (diff > gap) {
       console.log(`[TaskNLU] 仲裁：任务 ${taskCode}(${taskScore.toFixed(3)}) > FAQ ${faqCode}(${faqScore.toFixed(3)}) → task_new`)
-      return { channel: 'task_new', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+      return { channel: 'task_new', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
     }
     if (-diff > gap) {
       console.log(`[TaskNLU] 仲裁：FAQ ${faqCode}(${faqScore.toFixed(3)}) > 任务 ${taskCode}(${taskScore.toFixed(3)}) → faq`)
-      return { channel: 'faq', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+      return { channel: 'faq', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
     }
 
     console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)} 接近(Δ=${diff.toFixed(3)}) → clarify`)
-    return { channel: 'clarify', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+    return { channel: 'clarify', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
   }
 
   // ========== 槽位提取 ==========
@@ -490,6 +499,9 @@ class TaskNLU {
       //    触发词命中时通过 taskBoost 抬升任务侧，但不免检
       if (this.mode !== 'rule') {
         const arb = await this.arbitrateTaskFaq(t, { ...ctx, taskBoost })
+        // 相似度明细（调试：每个任务/FAQ 的分数）
+        const taskTop = (arb.scores?.taskTop || []).map(s => `${s.name}(${s.score.toFixed(2)})`).join(' ')
+        const faqTop = (arb.scores?.faqTop || []).map(s => `${s.name}(${s.score.toFixed(2)})`).join(' ')
         _t('任务/FAQ 统一仲裁（同步）', {
           taskScore: arb.taskScore ? arb.taskScore.toFixed(3) : null,
           faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
@@ -497,7 +509,9 @@ class TaskNLU {
           faqHit: arb.faqCode ? arb.faqCode + '(' + (arb.faqName || '') + ')' : null,
           channel: arb.channel,
           boosted: !!taskBoost,
-        }, arb.channel === 'clarify' ? 'warn' : 'task')
+          taskTop,
+          faqTop,
+        }, arb.channel === 'clarify' || arb.channel === 'out_of_scope' ? 'warn' : 'task')
         if (arb.channel === 'faq') return 'faq'
         if (arb.channel === 'task_new') return 'task_new'
         // 域外：两侧都未达强命中线（"我家门坏了"0.6级碰巧接近）→ 不澄清，直接业务引导
