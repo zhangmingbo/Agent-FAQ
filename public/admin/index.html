@@ -71,6 +71,13 @@
     .cfg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 44px}
     .cfg-item{margin-bottom:16px}
     .cfg-note{font-size:12px;color:#999;margin-top:10px}
+    /* 固定话术：响应式多列卡片（按屏幕宽度自动 1~3 列） */
+    .texts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px 24px;align-items:start}
+    .text-group{background:#fafbfc;border:1px solid #eef0f4;border-radius:8px;padding:14px 16px}
+    .text-group h4{margin:0 0 12px;font-size:13px;color:#4361ee;padding-bottom:6px;border-bottom:1px solid #e8ecff}
+    .text-group .rt-textarea{width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit}
+    .text-group .rt-textarea:focus{outline:none;border-color:#4361ee}
+    .texts-full{grid-column:1/-1}
     /* 任务管理样式 */
     .task-panel{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px #0000000f}
     .task-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
@@ -974,9 +981,9 @@
         if (!cfg) return;
         var rt = cfg.replyTexts || {};
         var mv = cfg.matchVocab || {};
-        var html = '';
+        var html = '<div class="texts-grid">';
         TEXT_GROUPS.forEach(function(g) {
-          html += '<h4 style="font-size:14px;color:#4361ee;margin:22px 0 10px;border-bottom:1px solid #eef0f4;padding-bottom:6px">' + g.title + '</h4>';
+          html += '<div class="text-group"><h4>' + g.title + '</h4>';
           g.keys.forEach(function(k) {
             var key = k[0], label = k[1], vars = k[2];
             var val = (rt[key] !== undefined && rt[key] !== null) ? rt[key] : '';
@@ -984,23 +991,27 @@
               '<div style="font-size:13px;color:#555;margin-bottom:4px">' + label +
                 (vars ? ' <span style="color:#bbb;font-weight:normal;font-size:12px">可用变量：' + vars + '</span>' : '') +
               '</div>' +
-              '<textarea id="rt-' + key + '" rows="2" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc(val) + '</textarea>' +
+              '<textarea id="rt-' + key + '" rows="2" class="rt-textarea">' + esc(val) + '</textarea>' +
             '</div>';
           });
+          html += '</div>';
         });
-        html += '<h4 style="font-size:14px;color:#4361ee;margin:22px 0 10px;border-bottom:1px solid #eef0f4;padding-bottom:6px">匹配词表</h4>' +
-          '<div style="margin-bottom:14px">' +
-            '<div style="font-size:13px;color:#555;margin-bottom:4px">触发词近义扩展表 <span style="color:#bbb;font-weight:normal;font-size:12px">每行一个词条：词=扩展1,扩展2</span></div>' +
-            '<textarea id="mv-synonyms" rows="6" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc(synonymsToText(mv.triggerSynonyms)) + '</textarea>' +
+        // 匹配词表（整行宽卡片）
+        html += '<div class="text-group texts-full"><h4>匹配词表</h4>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 24px">' +
+            '<div style="margin-bottom:14px">' +
+              '<div style="font-size:13px;color:#555;margin-bottom:4px">触发词近义扩展表 <span style="color:#bbb;font-weight:normal;font-size:12px">每行一个词条：词=扩展1,扩展2</span></div>' +
+              '<textarea id="mv-synonyms" rows="7" class="rt-textarea">' + esc(synonymsToText(mv.triggerSynonyms)) + '</textarea>' +
+            '</div>' +
+            '<div>' +
+              '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 办理 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
+              '<textarea id="mv-rt-task" rows="3" class="rt-textarea">' + esc((mv.routeChoiceTask || []).join(',')) + '</textarea>' +
+              '<div style="font-size:13px;color:#555;margin:14px 0 4px">澄清关键词 · 咨询 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
+              '<textarea id="mv-rt-faq" rows="3" class="rt-textarea">' + esc((mv.routeChoiceFaq || []).join(',')) + '</textarea>' +
+            '</div>' +
           '</div>' +
-          '<div style="margin-bottom:14px">' +
-            '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 办理 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
-            '<textarea id="mv-rt-task" rows="2" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc((mv.routeChoiceTask || []).join(',')) + '</textarea>' +
-          '</div>' +
-          '<div style="margin-bottom:14px">' +
-            '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 咨询 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
-            '<textarea id="mv-rt-faq" rows="2" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc((mv.routeChoiceFaq || []).join(',')) + '</textarea>' +
-          '</div>';
+        '</div>';
+        html += '</div>';
         box.innerHTML = html;
       });
     }
