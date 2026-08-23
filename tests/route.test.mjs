@@ -135,10 +135,11 @@ test('route: 空输入 → faq', async () => {
 
 // ========== clarify（拿不准 → 追问用户二选一） ==========
 
-test('route: 触发词+咨询疑云 + LLM 不可用 → clarify（不武断触发任务）', async () => {
+test('route: 触发词命中 + LLM 不可用 → 仲裁决定（无 nlpEngine 时双低走 matchTask→默认）', async () => {
   llmClient.configure({ enabled: false })
+  // 无 nlpEngine 环境：仲裁双低 → matchTask（LLM 不可用也不命中）→ 默认无任务上下文 faq
   const r = await nlu.route('上门换滤芯收费吗', { tasks: [TASK_APPT, TASK_METER] })
-  assert.equal(r, 'clarify')
+  assert.equal(r, 'faq')
 })
 
 test('route: 无任务 + 触发词+咨询疑云 + LLM 也拿不准(null) → clarify', async () => {
@@ -240,6 +241,32 @@ test('route: 任务显著高 → 直接 task_new（不经 matchTask 重复判定
   stubRouteTurn('faq') // 即使 LLM 说 faq，仲裁已判任务优先
   const r = await nlu.route('我要预约上门服务', { tasks: [TASK_APPT, TASK_METER] })
   assert.equal(r, 'task_new')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})
+
+test('route: 触发词命中但 FAQ 更高 → faq（不再无条件进任务）', async () => {
+  // 环境：任务 appt 触发词含"预约"（规则命中），但语义上更贴 FAQ QY-013（"净水机怎么预约安装？"）
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery(text) {
+      const v = [0, 0, 0, 0]
+      if (text === '如何预约安装') { v[1] = 0.5; v[3] = 1 } // 任务侧 0.447(dim1) + FAQ 0.894(dim3)
+      return v
+    },
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[0, 1, 0, 0]])
+  nlu.setFaqSamples([
+    { intentCode: 'QY-013', intentName: '净水机安装预约', vector: [0, 0, 0, 1] },
+  ])
+  llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
+  llmClient.judgeTrigger = async () => null
+  stubRouteTurn('faq')
+  // "如何预约安装"：触发词"预约"命中 → boost 兜底（但任务侧已有向量分，不覆盖），
+  // FAQ QY-013 相似度 1.0 显著高于任务侧 0.3 → FAQ 胜
+  const r = await nlu.route('如何预约安装', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'faq')
   nlu._vectors.clear()
   nlu.setFaqSamples([])
 })

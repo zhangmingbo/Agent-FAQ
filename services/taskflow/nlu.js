@@ -210,7 +210,8 @@ class TaskNLU {
    *   → FAQ 显著高 → 走 FAQ，不再被任务抢
    *
    * @param {string} text - 用户输入
-   * @param {Object} ctx - { tasks }
+   * @param {Object} ctx - { tasks, taskBoost? }
+   *   taskBoost: 触发词命中时给任务侧的基础分（运营配置的强信号，但允许 FAQ 高置信反超）
    * @returns {Promise<{channel:'task_new'|'faq'|'clarify', taskScore, faqScore, taskCode?, taskName?, faqCode?, faqName?, diff}>}
    */
   async arbitrateTaskFaq(text, ctx = {}) {
@@ -240,6 +241,18 @@ class TaskNLU {
           taskCode = code
           taskName = def.name
         }
+      }
+    }
+
+    // 触发词命中兜底：仅当仲裁任务侧未锁定任务（向量分过低/短句）时生效。
+    // 若仲裁已算出语义更贴的任务（如"更换"命中换表任务，但语义"换滤芯"更贴预约任务），
+    // 以语义任务为准——触发词只是候选信号，不覆盖语义判定。
+    if (ctx.taskBoost && ctx.taskBoost.taskCode && !taskCode) {
+      const boostDef = tasks.find(t => t.code === ctx.taskBoost.taskCode)
+      if (boostDef && boostDef.status === 1) {
+        taskScore = ctx.taskBoost.score
+        taskCode = ctx.taskBoost.taskCode
+        taskName = boostDef.name
       }
     }
 
@@ -445,8 +458,8 @@ class TaskNLU {
 
     // 2) 新任务意图判定：规则快检（含否定防护）+ 任务/FAQ 统一语义仲裁（同步对比）
     let byRuleHit = false
-    let consultHint = false
     let matchedTask = null
+    let taskBoost = null // 触发词命中时给任务侧的基础分（强信号，但允许 FAQ 反超）
     if (ctx.tasks && ctx.tasks.length > 0) {
       // 2.1 规则快检（触发词/近义扩展），否定表达不触发（"我没说要换表啊"）
       const byRule = this._matchByRules(lower, ctx.tasks, ctx.taskState?.taskCode || null)
@@ -455,24 +468,23 @@ class TaskNLU {
       if (byRule && !negated) {
         byRuleHit = true
         matchedTask = byRule
-        // 触发词命中但话术像咨询（费用/价格/怎么/为什么…）→ 不武断
-        consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
-        _t('触发词命中·咨询疑云', { task: byRule.code, consultHint })
-        // 无咨询疑云 → 明确新任务
-        if (!consultHint) return 'task_new'
+        // 触发词命中 → 任务侧强信号（0.92，运营配置的高置信表达），但仍与 FAQ 同步对比。
+        // 注意：taskBoost 指向规则命中的任务；若仲裁算出语义更贴的其他任务（如"更换"命中
+        // 换表但语义是"换滤芯"→预约），仲裁的任务侧最高分会覆盖（见 arbitrateTaskFaq）
+        taskBoost = { taskCode: byRule.code, score: 0.92 }
       }
 
       // 2.2 任务/FAQ 统一语义仲裁（同步对比，谁高选谁，接近则澄清）
-      //    不依赖 matchTask 是否命中——两侧同时打分，避免"任务未命中就漏掉 FAQ"
-      //    （如"你是谁"：任务侧短句跳过向量，但 FAQ 侧 selfI_Introduce 高置信）
+      //    触发词命中时通过 taskBoost 抬升任务侧，但不免检
       if (this.mode !== 'rule') {
-        const arb = await this.arbitrateTaskFaq(t, ctx)
+        const arb = await this.arbitrateTaskFaq(t, { ...ctx, taskBoost })
         _t('任务/FAQ 统一仲裁（同步）', {
           taskScore: arb.taskScore ? arb.taskScore.toFixed(3) : null,
           faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
           taskHit: arb.taskCode || null,
           faqHit: arb.faqCode ? arb.faqCode + '(' + (arb.faqName || '') + ')' : null,
           channel: arb.channel,
+          boosted: !!taskBoost,
         }, arb.channel === 'clarify' ? 'warn' : 'task')
         if (arb.channel === 'faq') return 'faq'
         if (arb.channel === 'task_new') return 'task_new'
@@ -525,9 +537,9 @@ class TaskNLU {
     }
 
     // ===== 降级（LLM 不可用/失败） =====
-    // 触发词+咨询疑云，规则无法区分任务还是咨询 → 追问用户二选一
-    if (byRuleHit && consultHint) {
-      _t('降级：触发词+咨询疑云 → 澄清', { byRuleHit, consultHint }, 'warn')
+    // 触发词命中但仲裁未执行（rule 模式无向量）→ 追问用户二选一
+    if (byRuleHit && this.mode === 'rule') {
+      _t('降级：触发词命中但无仲裁能力 → 澄清', { byRuleHit }, 'warn')
       return 'clarify'
     }
     // 有任务上下文且规则拿不准 → 保守继续任务（不丢进度）
