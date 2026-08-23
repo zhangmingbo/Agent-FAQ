@@ -17,6 +17,7 @@ import { TaskState } from './stateMachine.js'
 import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import { getReply } from '../replyTexts.js'
+import traceService from '../traceService.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 
@@ -53,15 +54,20 @@ class LLMDialogManager {
 
   /**
    * 处理一轮对话（LLM 决策）
+   * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Promise<Object>} 信封（与规则管理器一致，兼容 faq-engine 集成）
    */
-  async processTurn(state, text) {
+  async processTurn(state, text, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     state.turnCount = (state.turnCount || 0) + 1
     state.lastActive = Date.now()
     state.history = state.history || []
 
     // 1) 取消意图（规则快检，便宜可靠）
-    if (this._isCancel(text)) return this._cancel(state)
+    if (this._isCancel(text)) {
+      _t('任务对话·取消意图', { text }, 'rule')
+      return this._cancel(state)
+    }
 
     // 2) 确认态：确认/否认用规则判定（确定性、零成本）
     if (state.status === TaskState.CONFIRMING) {
@@ -69,12 +75,14 @@ class LLMDialogManager {
       const denyR = dialogueRules.isDeny(text)
       const isConfirm = typeof confirmR === 'object' ? confirmR.matched : confirmR
       const isDeny = typeof denyR === 'object' ? denyR.matched : denyR
+      _t('任务对话·确认判定', { isConfirm, isDeny }, isConfirm || isDeny ? 'rule' : 'info')
       if (isConfirm && !isDeny) {
         state.history.push({ role: 'user', text })
-        return await this._complete(state)
+        return await this._complete(state, trace)
       }
       if (isDeny) {
         state.status = TaskState.COLLECTING
+        _t('任务对话·否认确认，回到收集态', {}, 'rule')
         const reply = getReply('modify_prompt_llm')
         state.history.push({ role: 'user', text }, { role: 'assistant', text: reply })
         return { reply, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state }
@@ -90,45 +98,59 @@ class LLMDialogManager {
       history: this._history(state),
       text,
     })
+    _t('任务对话·LLM 决策', {
+      slots: result.slots || {},
+      reply: (result.reply || '').slice(0, 80),
+      question: result.question || null,
+    }, 'llm')
 
     // 4) 应用槽位（业务校验兜底：防 LLM 编造/乱填）
     //    —— 诊断日志：记录 LLM 原始输出与每个槽位的接受/丢弃原因（判定逻辑不变）
     const llmSlots = result.slots || {}
     console.log(`[TaskFlow-LLM] [${state.taskCode}] LLM 原始 slots:`, JSON.stringify(llmSlots))
     let applied = false
+    const appliedList = []
+    const discardedList = []
     for (const [k, v] of Object.entries(llmSlots)) {
       const slot = state.slots[k]
       if (!slot) {
+        discardedList.push(`${k}=${JSON.stringify(v)}：任务中不存在该槽位 key`)
         console.log(`[TaskFlow-LLM]   ✗ 丢弃 ${k}=${JSON.stringify(v)}：任务中不存在该槽位 key`)
         continue
       }
       if (slot.filled && state.status === TaskState.COLLECTING) {
+        discardedList.push(`${k}=${JSON.stringify(v)}：槽位已填（收集态不覆盖）`)
         console.log(`[TaskFlow-LLM]   - 跳过 ${k}=${JSON.stringify(v)}：槽位已填（收集态不覆盖）`)
         continue
       }
       const sDef = this._slotDefByKey(state, k)
       if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) {
+        discardedList.push(`${k}=${JSON.stringify(v)}：值格式与槽位定义不匹配`)
         console.log(`[TaskFlow-LLM]   ✗ 丢弃 ${k}=${JSON.stringify(v)}：值格式与槽位定义不匹配`)
         continue
       }
       const check = this.nlu.validate(sDef, v)
       if (!check.ok) {
+        discardedList.push(`${k}=${JSON.stringify(v)}：校验失败（${check.message || ''}）`)
         console.log(`[TaskFlow-LLM]   ✗ 丢弃 ${k}=${JSON.stringify(v)}：校验失败（${check.message || ''}）`)
         continue
       }
       slot.value = String(v)
       slot.filled = true
       applied = true
+      appliedList.push(`${k}=${String(v)}`)
       console.log(`[TaskFlow-LLM]   ✓ 应用 ${k}=${JSON.stringify(v)}`)
     }
     const filledNow = Object.entries(state.slots).filter(([, s]) => s.filled).map(([k, s]) => `${k}=${s.value}`).join('；') || '(无)'
     const unfilledNow = Object.entries(state.slots).filter(([, s]) => s.required && !s.filled).map(([k, s]) => k).join('、')
     console.log(`[TaskFlow-LLM] [${state.taskCode}] 槽位状态 → 已填: ${filledNow} | 待填: ${unfilledNow || '(全齐)'}`)
+    _t('任务对话·槽位应用', { applied: appliedList, discarded: discardedList }, 'task')
+    _t('任务对话·槽位状态', { filled: filledNow, unfilled: unfilledNow || '(全齐)' }, 'task')
 
     let reply = result.reply || (applied ? '好的，已记录。' : '请继续。')
 
     // 4.5) 中间"调用接口"步骤（确定性触发，不依赖 LLM 信号）：前置槽位填好后自动执行
-    const apiReplies = await this._runPendingApiSteps(state)
+    const apiReplies = await this._runPendingApiSteps(state, trace)
     if (apiReplies.length) reply = reply + (reply ? '\n' : '') + apiReplies.join('\n')
 
     // 4.6) 动作承诺校验：非完成轮次禁止"已转接/已提交/已登记"等完成性宣称。
@@ -136,6 +158,7 @@ class LLMDialogManager {
     //      在收集/确认阶段就宣称"已办理"属于编造，追加系统澄清避免误导用户。
     if (COMPLETE_CLAIM_RE.test(reply)) {
       console.warn('[TaskFlow-LLM] 检测到未执行的完成性承诺，追加澄清:', reply.slice(0, 50))
+      _t('任务对话·完成性承诺校验', { matched: true, reply: reply.slice(0, 50) }, 'warn')
       reply = reply + getReply('claim_clarify_suffix')
     }
 
@@ -145,9 +168,11 @@ class LLMDialogManager {
     const allFilled = Object.values(state.slots).every(s => !s.required || s.filled || systemSlots.has(s.key))
     if (allFilled && state.status !== TaskState.CONFIRMING) {
       state.status = TaskState.CONFIRMING
+      _t('任务对话·完整性检查', { allFilled: true, unfilled: '(全齐)', status: '进入确认态' }, 'rule')
       reply = this._renderConfirm(state, result.reply)
     } else if (state.status === TaskState.CONFIRMING && applied) {
       // 确认态修改了信息 → 重新展示确认清单
+      _t('任务对话·完整性检查', { allFilled: true, unfilled: '(全齐)', status: '确认态信息已更新' }, 'rule')
       reply = this._renderConfirm(state, result.reply)
     }
 
@@ -157,6 +182,7 @@ class LLMDialogManager {
 
     // 6) 提问插话 → 标记 question，由引擎先 FAQ 回答再继续
     if (result.question) {
+      _t('任务对话·提问插话', { question: result.question }, 'llm')
       return {
         reply,
         isComplete: false,
@@ -180,7 +206,8 @@ class LLMDialogManager {
   }
 
   /** 完成：用户确认后执行动作（写库/调API） */
-  async _complete(state) {
+  async _complete(state, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     const task = this.defs.get(state.taskCode)
     const actionStep = (task?.steps || []).find(s => s.type === 'action')
     const slots = {}
@@ -193,7 +220,9 @@ class LLMDialogManager {
       if (result.ok) {
         state.status = TaskState.DONE
         message = result.message || actionStep.done_message || getReply('complete_fallback', { taskName: task.name })
+        _t('任务对话·执行动作', { action: actionStep.action, ok: true, message: (message || '').slice(0, 60) }, 'task')
       } else {
+        _t('任务对话·执行动作', { action: actionStep.action, ok: false, message: (result.message || '').slice(0, 60) }, 'error')
         // 动作失败：保持确认态，告知用户
         message = getReply('action_fail_llm', { message: result.message })
         state.history.push({ role: 'assistant', text: message })
@@ -202,6 +231,7 @@ class LLMDialogManager {
     } else {
       state.status = TaskState.DONE
       message = task.completion_message || getReply('complete_fallback', { taskName: task.name })
+      _t('任务对话·完成任务（无动作）', { taskCode: state.taskCode }, 'task')
     }
 
     state.history.push({ role: 'assistant', text: message })
@@ -287,9 +317,11 @@ class LLMDialogManager {
   /**
    * 执行"待触发的中间 api 步骤"（确定性，不靠 LLM 信号）：
    * 前置 collect 步骤的槽位已填、且结果槽位尚未写入 → 执行，结果写入 resultSlot。
+   * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Promise<string[]>} 各步骤的回显话术
    */
-  async _runPendingApiSteps(state) {
+  async _runPendingApiSteps(state, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     const task = this.defs.get(state.taskCode)
     if (!task?.steps) return []
     const out = []
@@ -297,12 +329,19 @@ class LLMDialogManager {
     for (let i = 0; i < task.steps.length; i++) {
       const step = task.steps[i]
       if (step.type !== 'api') continue
-      if (state.apiSteps[step.key]) continue // 已执行过（防止每轮重复调用）
+      if (state.apiSteps[step.key]) {
+        _t('任务对话·中间接口步骤', { step: step.key, reason: '已执行过，跳过' }, 'info')
+        continue // 已执行过（防止每轮重复调用）
+      }
       // 前置步骤若是 collect，其槽位填好才执行（如：填完电话 → 查订单）
       const prev = i > 0 ? task.steps[i - 1] : null
       const prereqFilled = !prev || prev.type !== 'collect' || !!(state.slots[prev.slot_key] && state.slots[prev.slot_key].filled)
-      if (!prereqFilled) continue
-      const r = await executeApiStep(step, this._slotValues(state))
+      if (!prereqFilled) {
+        _t('任务对话·中间接口步骤', { step: step.key, reason: '前置槽位未填：' + (prev?.slot_key || '?') }, 'info')
+        continue
+      }
+      const r = await executeApiStep(step, this._slotValues(state), trace)
+      _t('任务对话·中间接口步骤', { step: step.key, ok: r.ok, resultSlot: step.resultSlot || null }, r.ok ? 'task' : 'error')
       state.apiSteps[step.key] = true
       if (r.ok && step.resultSlot && state.slots[step.resultSlot]) {
         state.slots[step.resultSlot].value = r.result

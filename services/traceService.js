@@ -57,13 +57,13 @@ export function endTurn(sessionId, steps, { input, output, duration }) {
   }
 }
 
-/** 获取某个会话的完整轨迹（按轮次倒序） */
+/** 获取某个会话的完整轨迹（按时间正序：最早一轮在上，与对话时间顺序一致） */
 export function getSessionTrace(sessionId) {
   const session = store.get(sessionId)
   if (!session) return { sessionId, turns: [] }
   return {
     sessionId,
-    turns: session.turns.slice(-MAX_TURNS_PER_SESSION).reverse(),
+    turns: session.turns.slice(-MAX_TURNS_PER_SESSION),
   }
 }
 

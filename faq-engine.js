@@ -179,7 +179,7 @@ class FAQEngine {
         const hasActiveNow = this.taskEngine.hasActiveTask(sessionId)
         if (pending.suspended && hasActiveNow) {
           // 场景 A：恢复被挂起的任务
-          this.taskEngine.resume(sessionId)
+          this.taskEngine.resume(sessionId, traceSteps)
           const taskState = this.taskEngine.getActiveTask(sessionId)
           const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
           const progressHint = unfilled.length
@@ -208,8 +208,8 @@ class FAQEngine {
           // 场景 C：无任务时澄清 → 触发候选任务（用原始触发句）
           const def = await this.taskEngine.get(pending.taskCode)
           if (def) {
-            const state = this.taskEngine.startTask(sessionId, def)
-            const taskResult = await this.taskEngine.processInput(sessionId, pending.triggerText)
+            const state = this.taskEngine.startTask(sessionId, def, traceSteps)
+            const taskResult = await this.taskEngine.processInput(sessionId, pending.triggerText, traceSteps)
             response = {
               intent_code: `task:${def.code}`,
               confidence: 1,
@@ -234,7 +234,7 @@ class FAQEngine {
           // 有活跃任务（挂起或进行中）→ 附挂起提示
           const taskState = this.taskEngine.getActiveTask(sessionId)
           if (taskState) {
-            this.taskEngine.suspend(sessionId)
+            this.taskEngine.suspend(sessionId, traceSteps)
             response = {
               ...faqResponse,
               answer: faqResponse.answer + this._suspendedHint(taskState),
@@ -270,7 +270,7 @@ class FAQEngine {
         const isResume = typeof resumeR === 'object' ? resumeR.matched : resumeR
         if (isResume) {
           // 用户说"继续/接着办" → 恢复任务并回到任务通道
-          this.taskEngine.resume(sessionId)
+          this.taskEngine.resume(sessionId, traceSteps)
           const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
           const progressHint = unfilled.length
             ? getReply('progress_needed', { labels: unfilled.map(([_, s]) => s.label).join('、') })
@@ -291,7 +291,7 @@ class FAQEngine {
           })
           if (route === 'task_new') {
             // 换办另一件事：中断暂存当前任务，走新任务流程
-            await this.taskEngine.stash(sessionId)
+            await this.taskEngine.stash(sessionId, traceSteps)
             response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
           } else if (route === 'clarify') {
             // 挂起状态下仍拿不准 → 追问（恢复办理 or 继续咨询）
@@ -336,12 +336,12 @@ class FAQEngine {
         if (newTaskCode) {
           console.log(`[TASK] 检测到新任务意图（确定性判定）: ${newTaskCode}，当前任务暂存`)
           _t('新任务意图（确定性判定）', { from: taskState.taskCode, to: newTaskCode }, 'task')
-          await this.taskEngine.stash(sessionId)
+          await this.taskEngine.stash(sessionId, traceSteps)
           response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
         } else {
         // 任务进行中：先让任务对话（LLM 提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
         // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
-        const taskResult = await this.taskEngine.processInput(sessionId, text)
+        const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
 
         if (taskResult && (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask)) {
           // 任务内：提取到槽位/确认/取消/重问 → 直接用任务回复
@@ -401,7 +401,7 @@ class FAQEngine {
             _t('任务挂起（FAQ 插话）', { taskCode: taskState.taskCode })
             const faqResponse = await this._handleRecognize(text, context)
             if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
-              this.taskEngine.suspend(sessionId)
+              this.taskEngine.suspend(sessionId, traceSteps)
               response = {
                 ...faqResponse,
                 answer: faqResponse.answer + this._suspendedHint(taskState),
@@ -422,7 +422,7 @@ class FAQEngine {
             // 用户想办另一件事 → 中断暂存当前任务，触发新任务
             console.log('[TASK] 路由→新任务，当前任务中断暂存')
             _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
-            await this.taskEngine.stash(sessionId)
+            await this.taskEngine.stash(sessionId, traceSteps)
             response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
           } else if (route === 'out_of_scope') {
             // 任务中用户说域外话（"我家门坏了"）→ 不挂起，回任务继续引导（不打断办事）
@@ -614,8 +614,8 @@ class FAQEngine {
     if (!matchedTask) return null
 
     console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
-    const taskState = this.taskEngine.startTask(sessionId, matchedTask)
-    const taskResult = await this.taskEngine.processInput(sessionId, text)
+    const taskState = this.taskEngine.startTask(sessionId, matchedTask, traceSteps)
+    const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
     if (taskResult) {
       let answer = taskResult.reply
       // 有被中断的任务时，提示可恢复

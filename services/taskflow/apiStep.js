@@ -12,6 +12,7 @@
  */
 
 import { getReply } from '../replyTexts.js'
+import traceService from '../traceService.js'
 
 /** 按点路径写入嵌套对象：setPath(obj, 'data.phone', v) → obj.data.phone = v */
 function setPath(obj, path, value) {
@@ -25,7 +26,7 @@ function setPath(obj, path, value) {
   cur[keys[keys.length - 1]] = value
 }
 
-export async function executeApiStep(step, slots) {
+export async function executeApiStep(step, slots, trace = null) {
   if (!step || !step.url) return { ok: false, result: null, message: 'api 步骤未配置接口地址' }
 
   const fieldMap = step.fieldMap || {}
@@ -49,6 +50,12 @@ export async function executeApiStep(step, slots) {
 
   try {
     const method = (step.method || 'POST').toUpperCase()
+    traceService.traceStep(trace, '任务·调用接口', {
+      step: step.key || null,
+      url: step.url,
+      method,
+      payload: JSON.stringify(payload).slice(0, 160),
+    }, 'task')
     const res = await fetch(step.url, {
       method,
       headers: { 'Content-Type': 'application/json', ...(step.headers || {}) },
@@ -56,6 +63,7 @@ export async function executeApiStep(step, slots) {
     })
     if (!res.ok) {
       console.error(`[TaskFlow] api 步骤 HTTP ${res.status}:`, (await res.text()).slice(0, 200))
+      traceService.traceStep(trace, '任务·接口结果', { ok: false, httpStatus: res.status }, 'error')
       return { ok: false, result: null, message: getReply('api_action_fail', { code: res.status }) }
     }
 
@@ -74,9 +82,15 @@ export async function executeApiStep(step, slots) {
     let message = step.done_message || result || getReply('api_action_done')
     message = message.split('{result}').join(result)
     if (step.resultSlot) message = message.split('{' + step.resultSlot + '}').join(result)
+    traceService.traceStep(trace, '任务·接口结果', {
+      ok: true,
+      result: String(result).slice(0, 120),
+      resultSlot: step.resultSlot || null,
+    }, 'task')
     return { ok: true, result, message }
   } catch (e) {
     console.error('[TaskFlow] api 步骤异常:', e.message)
+    traceService.traceStep(trace, '任务·接口异常', { message: e.message }, 'error')
     return { ok: false, result: null, message: getReply('api_action_fail', { code: '' }) }
   }
 }

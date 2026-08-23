@@ -20,6 +20,7 @@ import DialogManager from './dialogManager.js'
 import LLMDialogManager from './llmDialogManager.js'
 import llmClient, { DEFAULT_LLM_NODES } from '../llmClient.js'
 import nlu from './nlu.js'
+import traceService from '../traceService.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
 import * as configRepo from '../../repositories/configRepo.js'
 
@@ -157,9 +158,10 @@ class TaskFlowEngine {
    * 开始一个任务
    * @param {string} sessionId
    * @param {Object} taskDef
+   * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Object} taskState
    */
-  startTask(sessionId, taskDef) {
+  startTask(sessionId, taskDef, trace = null) {
     const state = {
       sessionId,
       taskCode: taskDef.code,
@@ -177,6 +179,7 @@ class TaskFlowEngine {
     }
     this.activeTasks.set(sessionId, state)
     this._persist(sessionId, state)
+    traceService.traceStep(trace, '任务开始', { taskCode: taskDef.code, taskName: taskDef.name }, 'task')
     console.log(`[TaskFlow] 任务开始: ${taskDef.code} (${taskDef.name}) @ session ${sessionId}`)
     return state
   }
@@ -185,28 +188,39 @@ class TaskFlowEngine {
    * 处理一轮任务对话
    * @param {string} sessionId
    * @param {string} text
+   * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Promise<Object|null>} 信封 { reply, isComplete, extracted, reask, cancelled, question, questionText, taskState }
    */
-  async processInput(sessionId, text) {
+  async processInput(sessionId, text, trace = null) {
     const state = this.activeTasks.get(sessionId)
     if (!state || (state.status !== TaskState.COLLECTING && state.status !== TaskState.CONFIRMING)) {
       return null
     }
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
 
     // LLM 驱动对话（llm/hybrid 模式且 LLM 可用，且该任务未关闭 LLM）；失败自动降级回规则版
     const taskDef = this.taskDefs.get(state.taskCode)
     const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid')
       && this.llm.nodeEnabled('dialogue', taskDef?.llm || null)
+    _t('任务对话·模式选择', {
+      taskCode: state.taskCode,
+      mode: useLlmDialog ? 'llm' : 'rule',
+      nluMode: this.nlu.mode,
+      dialogueNodeEnabled: this.llm.nodeEnabled('dialogue', taskDef?.llm || null),
+      taskLlmEnabled: taskDef?.llm ? taskDef.llm.enabled !== false : null,
+      taskLlmConfig: taskDef?.llm ? Object.keys(taskDef.llm) : null,
+    }, useLlmDialog ? 'llm' : 'rule')
     let result = null
     if (useLlmDialog) {
       try {
-        result = await this.llmDialog.processTurn(state, text)
+        result = await this.llmDialog.processTurn(state, text, trace)
       } catch (e) {
         console.error(`[TaskFlow] LLM 对话失败，降级规则模式: ${e.message}`)
-        result = await this.dialog.processTurn(state, text)
+        _t('任务对话·LLM 失败，降级规则模式', { message: e.message }, 'error')
+        result = await this.dialog.processTurn(state, text, trace)
       }
     } else {
-      result = await this.dialog.processTurn(state, text)
+      result = await this.dialog.processTurn(state, text, trace)
     }
 
     if (result.isComplete || result.cancelled) {
@@ -239,23 +253,25 @@ class TaskFlowEngine {
    * 挂起后任务仍在 activeTasks 中，但 faq-engine 路由到 FAQ 通道回答；
    * 用户回复恢复词（继续/接着办…）后 resume() 回到任务通道。
    */
-  suspend(sessionId) {
+  suspend(sessionId, trace = null) {
     const state = this.activeTasks.get(sessionId)
     if (!state) return false
     state.suspended = true
     state.suspendedAt = Date.now()
     this._persist(sessionId, state)
+    traceService.traceStep(trace, '任务挂起', { taskCode: state.taskCode }, 'task')
     console.log(`[TaskFlow] 任务挂起: ${state.taskCode} @ session ${sessionId}`)
     return true
   }
 
   /** 恢复任务（用户说"继续"等恢复词） */
-  resume(sessionId) {
+  resume(sessionId, trace = null) {
     const state = this.activeTasks.get(sessionId)
     if (!state) return false
     state.suspended = false
     state.suspendedAt = null
     this._persist(sessionId, state)
+    traceService.traceStep(trace, '任务恢复', { taskCode: state.taskCode }, 'task')
     console.log(`[TaskFlow] 任务恢复: ${state.taskCode} @ session ${sessionId}`)
     return true
   }
@@ -270,7 +286,7 @@ class TaskFlowEngine {
    * 中断当前任务（用户换办另一件事）：把进度暂存到 store，从 activeTasks 移除。
    * 新任务结束后可 popStashed() 恢复继续。
    */
-  async stash(sessionId) {
+  async stash(sessionId, trace = null) {
     const state = this.activeTasks.get(sessionId)
     if (!state) return false
     state.suspended = true
@@ -283,6 +299,7 @@ class TaskFlowEngine {
       }
     }
     this.activeTasks.delete(sessionId)
+    traceService.traceStep(trace, '任务中断暂存', { taskCode: state.taskCode }, 'task')
     console.log(`[TaskFlow] 任务中断暂存: ${state.taskCode} @ session ${sessionId}`)
     return true
   }
@@ -303,7 +320,7 @@ class TaskFlowEngine {
   }
 
   /** 恢复暂存的任务（回到 activeTasks） */
-  async popStashed(sessionId) {
+  async popStashed(sessionId, trace = null) {
     let state = null
     if (this.store) {
       try {
@@ -317,6 +334,7 @@ class TaskFlowEngine {
     state.suspendedAt = null
     this.activeTasks.set(sessionId, state)
     try { await this.store.del(`taskflow:stash:${sessionId}`) } catch { /* ignore */ }
+    traceService.traceStep(trace, '任务恢复暂存', { taskCode: state.taskCode }, 'task')
     console.log(`[TaskFlow] 恢复暂存任务: ${state.taskCode} @ session ${sessionId}`)
     return state
   }

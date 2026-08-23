@@ -22,6 +22,7 @@ import { executeApiStep } from './apiStep.js'
 import { TaskState } from './stateMachine.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import { getReply } from '../replyTexts.js'
+import traceService from '../traceService.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 const CORRECT_PATTERNS = ['修改', '改成', '换成', '改为', '变更', '改一下']
@@ -40,20 +41,23 @@ class DialogManager {
    * 处理一轮任务对话
    * @param {Object} state - 任务状态（含 stack）
    * @param {string} text - 用户输入
+   * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Promise<Object>} 信封
    */
-  async processTurn(state, text) {
+  async processTurn(state, text, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     state.turnCount = (state.turnCount || 0) + 1
     state.lastActive = Date.now()
 
     // 1) 取消意图
     if (this._isCancel(text)) {
-      return this._cancel(state)
+      _t('任务对话·取消意图', { text }, 'rule')
+      return this._cancel(state, trace)
     }
 
     // 2) 修改等待状态：上一轮用户要求"修改XX"，本轮的输入即新值
     if (state.pendingModify) {
-      return this._applyPendingModify(state, text)
+      return this._applyPendingModify(state, text, trace)
     }
 
     // 3) 槽位纠正（"地址改成XX"带值，直接更新）
@@ -66,6 +70,7 @@ class DialogManager {
       }
       state.skipCount = 0
       console.log(`[TaskFlow] 槽位纠正: ${correction.key} = "${correction.value}"`)
+      _t('任务对话·槽位纠正', { slot: correction.key, value: correction.value }, 'rule')
 
       const prefix = `好的，${state.slots[correction.key].label}已更新为「${correction.value}」。\n`
 
@@ -99,6 +104,7 @@ class DialogManager {
       state.pendingModify = modifyReq
       state.skipCount = 0
       console.log(`[TaskFlow] 修改请求: ${modifyReq}`)
+      _t('任务对话·修改请求', { slot: modifyReq }, 'rule')
       return {
         reply: getReply('modify_prompt', { label: state.slots[modifyReq]?.label || modifyReq }),
         isComplete: false,
@@ -111,14 +117,15 @@ class DialogManager {
 
     // 5) 按当前状态推进
     if (state.status === TaskState.CONFIRMING) {
-      return this._handleConfirmTurn(state, text)
+      return this._handleConfirmTurn(state, text, trace)
     }
-    return this._advanceCollect(state, text, '')
+    return this._advanceCollect(state, text, '', trace)
   }
 
   // ========== 收集阶段 ==========
 
-  async _advanceCollect(state, text, prefix) {
+  async _advanceCollect(state, text, prefix, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     let reply = prefix
     let extracted = false
     let alreadyExtracted = false
@@ -132,7 +139,7 @@ class DialogManager {
       const step = this._currentStep(state)
       if (!step) {
         // 流程结束（无下一步）
-        return this._finish(state, reply || '已完成。')
+        return this._finish(state, reply || '已完成。', trace)
       }
 
       switch (step.type) {
@@ -169,18 +176,19 @@ class DialogManager {
           // 全部必填已填 → 进入确认态
           state.status = TaskState.CONFIRMING
           state.confirmAsked = true
+          _t('任务对话·完整性检查', { allFilled: true, unfilled: '(全齐)', status: '进入确认态' }, 'rule')
           return this._renderConfirm(state, reply)
         }
         case 'action': {
-          const result = await this._execAction(state, step, reply)
+          const result = await this._execAction(state, step, reply, trace)
           if (result) return result // 完成或失败重试（返回信封）
-          return this._finish(state, reply)
+          return this._finish(state, reply, trace)
         }
         case 'api': {
           // 中间/收尾"调用接口"步骤：按步骤机走到即执行，结果写入 resultSlot
           const slots = {}
           for (const [k, s] of Object.entries(state.slots || {})) slots[k] = s.value
-          const r = await executeApiStep(step, slots)
+          const r = await executeApiStep(step, slots, trace)
           if (r.ok && step.resultSlot && state.slots[step.resultSlot]) {
             state.slots[step.resultSlot].value = r.result
             state.slots[step.resultSlot].filled = true
@@ -192,7 +200,7 @@ class DialogManager {
           break
         }
         case 'subtask': {
-          return this._startSubtask(state, step, reply)
+          return this._startSubtask(state, step, reply, trace)
         }
         case 'collect':
         default: {
@@ -200,7 +208,7 @@ class DialogManager {
           const stepDef = this._slotDef(state, step)
           const effMethod = stepDef?.extract?.method || 'text'
           const canText = !(textUsed && effMethod === 'text')
-          const outcome = await this._tryFillSlot(state, step, text, canText, probing)
+          const outcome = await this._tryFillSlot(state, step, text, canText, probing, trace)
           if (outcome.extracted) {
             reply += outcome.note || ''
             extracted = true
@@ -259,7 +267,8 @@ class DialogManager {
   }
 
   /** 尝试从用户输入填充当前槽位 */
-  async _tryFillSlot(state, step, text, canText, probing = false) {
+  async _tryFillSlot(state, step, text, canText, probing = false, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     const slotDef = this._slotDef(state, step)
     if (!slotDef) {
       return { extracted: false, reask: '步骤配置错误：槽位不存在。' }
@@ -349,6 +358,7 @@ class DialogManager {
       required: slotDef.required !== false,
     }
     console.log(`[TaskFlow] 已填槽位 ${slotDef.key} = "${finalValue}"`)
+    _t('任务对话·填入槽位', { slot: slotDef.key, value: finalValue }, 'rule')
     return { extracted: true, note: `已记录：${slotDef.label || slotDef.key}。\n` }
   }
 
@@ -465,46 +475,52 @@ class DialogManager {
 
   // ========== 确认阶段 ==========
 
-  _handleConfirmTurn(state, text) {
+  _handleConfirmTurn(state, text, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     const confirmR = dialogueRules.isConfirm(text)
     const denyR = dialogueRules.isDeny(text)
 
     const isConfirm = typeof confirmR === 'object' ? confirmR.matched : confirmR
     const isDeny = typeof denyR === 'object' ? denyR.matched : denyR
+    _t('任务对话·确认判定', { isConfirm, isDeny }, isConfirm || isDeny ? 'rule' : 'info')
 
     // 同时命中时按分数裁决（如"不是"→deny 分数更高），平局优先 deny
     if (isConfirm && isDeny) {
       const cs = typeof confirmR === 'object' ? (confirmR.score || 0) : 1
       const ds = typeof denyR === 'object' ? (denyR.score || 0) : 1
       if (ds >= cs) {
-        return this._denyConfirm(state)
+        return this._denyConfirm(state, trace)
       }
-      return this._acceptConfirm(state, text)
+      return this._acceptConfirm(state, text, trace)
     }
-    if (isConfirm) return this._acceptConfirm(state, text)
-    if (isDeny) return this._denyConfirm(state)
+    if (isConfirm) return this._acceptConfirm(state, text, trace)
+    if (isDeny) return this._denyConfirm(state, trace)
 
     // 用户在确认态重新提供某个槽位值（"电话换成XX""地址是XX"）
     const slotMatch = this._findSlotByText(state, text)
     if (slotMatch) {
       state.slots[slotMatch.key].value = slotMatch.value.trim()
       state.slots[slotMatch.key].filled = true
+      _t('任务对话·确认态改槽位', { slot: slotMatch.key, value: slotMatch.value.trim() }, 'rule')
       return this._renderConfirm(state, getReply('slot_updated', { label: slotMatch.label, value: slotMatch.value.trim() }))
     }
 
     // 无进展 → FAQ 回退
+    _t('任务对话·确认态无进展，转 FAQ 回退', {}, 'warn')
     return this._renderConfirm(state, '', true)
   }
 
-  _acceptConfirm(state, text) {
+  _acceptConfirm(state, text, trace = null) {
+    traceService.traceStep(trace, '任务对话·确认接受，执行动作', {}, 'rule')
     state.confirmAsked = false
     state.status = TaskState.COLLECTING
     const step = this._currentStep(state)
     state.currentStep = step?.next
-    return this._advanceCollect(state, text, getReply('submitting'))
+    return this._advanceCollect(state, text, getReply('submitting'), trace)
   }
 
-  _denyConfirm(state) {
+  _denyConfirm(state, trace = null) {
+    _t('任务对话·否认确认，回到收集态', {}, 'rule')
     state.confirmAsked = false
     state.status = TaskState.COLLECTING
     const firstUnfilled = Object.entries(state.slots).find(([_, s]) => s.required && !s.filled)
@@ -537,7 +553,8 @@ class DialogManager {
 
   // ========== 动作执行 ==========
 
-  async _execAction(state, step, replyPrefix = '') {
+  async _execAction(state, step, replyPrefix = '', trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     state.status = TaskState.EXECUTING
     const slots = {}
     for (const [key, s] of Object.entries(state.slots)) slots[key] = s.value
@@ -555,17 +572,19 @@ class DialogManager {
     if (result.ok) {
       state.currentStep = step.next
       const message = (replyPrefix ? replyPrefix + (result.message ? '\n' : '') : '') + (result.message || '')
+      _t('任务对话·执行动作', { action: step.action, ok: true, message: (result.message || '').slice(0, 60) }, 'task')
       // 子任务完成 → 返回父任务
       if (state.stack && state.stack.length > 0) {
-        return this._popSubtask(state, message)
+        return this._popSubtask(state, message, trace)
       }
-      return this._finish(state, message)
+      return this._finish(state, message, trace)
     }
 
     // 动作失败
+    _t('任务对话·执行动作', { action: step.action, ok: false, message: (result.message || '').slice(0, 60) }, 'error')
     const onFail = step.on_fail || 'reask'
     if (onFail === 'retry') {
-      return this._execAction(state, step)
+      return this._execAction(state, step, replyPrefix, trace)
     }
     state.status = TaskState.COLLECTING
     return {
@@ -580,11 +599,11 @@ class DialogManager {
 
   // ========== 子任务 ==========
 
-  _startSubtask(state, step, replyPrefix) {
+  _startSubtask(state, step, replyPrefix, trace = null) {
     const childDef = this.defs.get(step.task)
     if (!childDef) {
       state.currentStep = step.next
-      return this._advanceCollect(state, '', replyPrefix + `子任务「${step.task}」不存在。\n`)
+      return this._advanceCollect(state, '', replyPrefix + `子任务「${step.task}」不存在。\n`, trace)
     }
     // 压栈当前任务
     state.stack = state.stack || []
@@ -605,6 +624,7 @@ class DialogManager {
     state.turnCount = 1
     state.skipCount = 0
     console.log(`[TaskFlow] 进入子任务: ${childDef.code}`)
+    traceService.traceStep(trace, '任务对话·进入子任务', { child: childDef.code, parent: state.stack[state.stack.length - 1]?.taskCode }, 'task')
     return {
       reply: replyPrefix + `好的，开始「${childDef.name}」。\n` + (childDef.steps[0]?.prompt || '请提供信息'),
       isComplete: false,
@@ -615,7 +635,7 @@ class DialogManager {
     }
   }
 
-  _popSubtask(state, childDoneMsg) {
+  _popSubtask(state, childDoneMsg, trace = null) {
     const parent = state.stack.pop()
     if (!parent) return null
     state.taskCode = parent.taskCode
@@ -626,6 +646,7 @@ class DialogManager {
     state.status = TaskState.COLLECTING
     state.currentStep = parent.onReturn || parent.currentStep
     console.log(`[TaskFlow] 子任务完成，返回父任务: ${state.taskCode}`)
+    traceService.traceStep(trace, '任务对话·子任务完成返回父任务', { taskCode: state.taskCode }, 'task')
 
     // 返回后提示父任务下一个需要的信息
     const step = this._currentStep(state)
@@ -644,8 +665,9 @@ class DialogManager {
 
   // ========== 完成/取消 ==========
 
-  _finish(state, message) {
+  _finish(state, message, trace = null) {
     state.status = TaskState.DONE
+    traceService.traceStep(trace, '任务对话·完成任务', { taskCode: state.taskCode }, 'task')
     return {
       reply: message || `已为您完成${state.taskName}。`,
       isComplete: true,
@@ -656,8 +678,9 @@ class DialogManager {
     }
   }
 
-  _cancel(state) {
+  _cancel(state, trace = null) {
     state.status = TaskState.CANCELLED
+    traceService.traceStep(trace, '任务对话·取消任务', { taskCode: state.taskCode }, 'rule')
     return {
       reply: getReply('cancel_done'),
       isComplete: false,
@@ -835,14 +858,15 @@ class DialogManager {
   /**
    * 应用修改等待状态：本轮的输入即被修改槽位的新值
    */
-  _applyPendingModify(state, text) {
+  _applyPendingModify(state, text, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
     const key = state.pendingModify
     const slot = state.slots[key]
     state.pendingModify = null
     if (!slot) {
-      return this._advanceCollect(state, '', '')
+      return this._advanceCollect(state, '', '', trace)
     }
-    if (this._isCancel(text)) return this._cancel(state)
+    if (this._isCancel(text)) return this._cancel(state, trace)
 
     let value = text.trim()
     // 清理修饰词/标签前缀："改成139..."、"电话是139..."
@@ -885,6 +909,7 @@ class DialogManager {
     slot.value = value
     slot.filled = true
     console.log(`[TaskFlow] 修改完成 ${key} = "${value}"`)
+    _t('任务对话·修改完成', { slot: key, value }, 'rule')
     const prefix = `好的，${slot.label}已更新为「${value}」。\n`
 
     // 确认态 → 重新展示确认清单
@@ -895,7 +920,7 @@ class DialogManager {
     // 收集态 → 从该槽位步骤之后继续
     const step = this._findStepBySlot(state, key)
     state.currentStep = step?.next || state.currentStep
-    return this._advanceCollect(state, '', prefix)
+    return this._advanceCollect(state, '', prefix, trace)
   }
 
   /** 初始化槽位状态（新任务/子任务） */
