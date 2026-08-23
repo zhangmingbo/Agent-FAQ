@@ -1761,7 +1761,7 @@
         '</div>' +
         '<div class="form-group"><label>LLM 配置（可选，任务级覆盖全局节点；不配=用全局）</label>' +
           '<div style="border:1px solid #e8ecff;border-radius:8px;padding:12px;background:#fafbff">' +
-            '<div style="font-size:12px;color:#999;margin-bottom:10px">本任务要用 LLM 吗？不配就跟随全局（默认全开）。想省成本/要确定性：勾选下面"完全不用 LLM"，或单独关掉某节点。温度建议 0~0.7（0=稳定按规则，越高越灵活发散）。</div>' +
+            '<div style="font-size:12px;color:#999;margin-bottom:10px;line-height:1.8"><b style="color:#666">本任务的 LLM 怎么配？三步走：</b><br>① <b>什么都不改 = 跟随全局（推荐）</b>，全局已在「系统配置 → LLM 连接」配好；<br>② 想省成本/要确定性 → 勾选下面"完全不用 LLM"，或单独关掉某节点；<br>③ 想微调这个任务 → 只改下面温度/token，数字留空 = 用全局默认。</div>' +
             '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tf-llm-enabled" ' + (isEdit && task.llm && task.llm.enabled === false ? 'checked' : '') + '> 本任务完全不用 LLM（对话/提取都走规则）</label>' +
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
               '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
@@ -1771,7 +1771,7 @@
                   '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-dialogue-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.temperature != null ? task.llm.dialogue.temperature : '') + '"></label>' +
                   '<label style="font-size:12px;color:#666">token <input id="tf-llm-dialogue-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.maxTokens != null ? task.llm.dialogue.maxTokens : '') + '"></label>' +
                 '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">启用：关掉=本任务对话不调 LLM（走规则）。温度：0=稳定、越高越灵活。token：单次回复字数上限。模型统一在「系统配置 → LLM 连接」配置。</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 本任务对话不调 LLM（走规则）。<br>· 温度：留空 = 全局(0.2)；想更稳定填 0；想更自然口语填 0.3~0.5；越高越发散。<br>· token：留空 = 全局(400)；单次回复字数上限，一般 200~400 够用。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
               '</div>' +
               '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
                 '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">槽位提取 <span style="color:#999;font-weight:normal;font-size:12px">（规则提取失败时）</span></div>' +
@@ -1780,11 +1780,11 @@
                   '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-extract-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.temperature != null ? task.llm.extract.temperature : '') + '"></label>' +
                   '<label style="font-size:12px;color:#666">token <input id="tf-llm-extract-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.maxTokens != null ? task.llm.extract.maxTokens : '') + '"></label>' +
                 '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.6">启用：关掉=规则提取不到时不再用 LLM 补。温度/token 含义同上。模型统一在「系统配置 → LLM 连接」配置。</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 规则提取不到时不再用 LLM 补（提取容易出错的场景可关）。<br>· 温度：留空 = 全局(0)；提取建议用低温（0~0.1）保证准确。<br>· token：留空 = 全局(200)。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
               '</div>' +
             '</div>' +
             '<div style="margin-top:10px">' +
-              '<div style="font-size:12px;color:#888;margin-bottom:4px">提示词覆盖（可选）：<b>填了=本任务用这份模板替换全局</b>，留空=用全局。占位符：对话 {taskName}{slotDesc}{filledDesc}{history}{text}；提取 {taskName}{examples}{slotDesc}{filledDesc}{text}</div>' +
+              '<div style="font-size:12px;color:#888;margin-bottom:4px;line-height:1.7">提示词覆盖（可选）：<b>不会填就全部留空</b>，用全局模板。<br>· 想给这个任务换专属口吻 → 填「对话系统提示词」，例如：你是沁园净水器售后客服，正在帮用户办理「{taskName}」，请用亲切简洁的口吻，一次只问一个信息。<br>· 占位符：对话 {taskName}{slotDesc}{filledDesc}{history}{text}；提取 {taskName}{examples}{slotDesc}{filledDesc}{text}</div>' +
               '<textarea id="tf-llm-dialogue-system" placeholder="对话系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
               '<textarea id="tf-llm-dialogue-user" placeholder="对话用户模板（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
               '<textarea id="tf-llm-extract-system" placeholder="提取系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
