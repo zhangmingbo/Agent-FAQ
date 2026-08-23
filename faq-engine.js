@@ -223,7 +223,7 @@ class FAQEngine {
       } else {
         // 未识别选项 → 重复澄清
         console.log('[ROUTE] 未识别澄清选项，重复追问')
-        response = this._buildRouteClarifyResponse(pending, /* repeat */ true)
+        response = await this._buildRouteClarifyResponse(pending, /* repeat */ true)
       }
     }
 
@@ -275,7 +275,7 @@ class FAQEngine {
               suspended: true,
               askedAt: Date.now(),
             }
-            response = this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+            response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
           } else {
             // 继续 FAQ 通道（任务保持挂起）
             response = await this._handleRecognize(text, context)
@@ -310,7 +310,7 @@ class FAQEngine {
             triggerText: text,
             askedAt: Date.now(),
           }
-          response = this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+          response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
         } else if (route === 'faq') {
           // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
           console.log('[TASK] 路由→FAQ，任务挂起')
@@ -358,7 +358,7 @@ class FAQEngine {
             triggerText: text,
             askedAt: Date.now(),
           }
-          response = this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+          response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
         }
         // route === 'faq' → 走下方常规 FAQ 流程（response 保持 null）
       }
@@ -519,11 +519,35 @@ class FAQEngine {
     return null
   }
 
-  /** 构建路由澄清话术响应（话术来自运营配置注册表 router.clarify）
+  /** 构建路由澄清话术响应
+   *  优先级：任务定义里的 clarify_question/clarify_options（管理后台任务编辑器配置）
+   *          → 回退全局模板 router.clarify（管理后台「LLM 智能层」可编辑）
    *  注意：与 FAQ 追问确认的 _buildClarifyResponse 是不同机制，勿混用 */
-  _buildRouteClarifyResponse(pending, repeat = false) {
-    const taskName = pending.taskName || '相关业务'
-    const tpl = getPrompt('router.clarify', { taskName })
+  async _buildRouteClarifyResponse(pending, repeat = false) {
+    // 优先取任务级澄清配置
+    let question = ''
+    let options = []
+    if (pending.taskCode) {
+      try {
+        const taskDef = await this.taskEngine.get(pending.taskCode)
+        if (taskDef) {
+          question = taskDef.clarify_question || ''
+          options = Array.isArray(taskDef.clarify_options) ? taskDef.clarify_options : []
+        }
+      } catch { /* 任务不存在则回退全局模板 */ }
+    }
+
+    let tpl
+    if (question && options.length > 0) {
+      // 任务级：自定义话术 + 自定义选项（与 _parseRouteChoice 一致，取前 2 项：1=办理 2=咨询）
+      const opts = options.slice(0, 2)
+      const optText = opts.map((o, i) => `${i + 1}. ${o}`).join('\n')
+      tpl = `${question}\n请回复对应数字：\n${optText}`
+    } else {
+      // 回退全局模板
+      const taskName = pending.taskName || '相关业务'
+      tpl = getPrompt('router.clarify', { taskName })
+    }
     return {
       intent_code: pending.taskCode ? `task:${pending.taskCode}` : null,
       confidence: 1,

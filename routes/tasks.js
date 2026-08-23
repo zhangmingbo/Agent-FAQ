@@ -44,7 +44,7 @@ export function createRouter() {
 
   // 创建/更新任务
   router.post('/tasks', asyncHandler(async (req, res) => {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, completion_message, on_complete, status } = req.body
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, completion_message, on_complete, status } = req.body
 
     if (!code || !name) {
       res.status(400).json({ success: false, message: '编码和名称不能为空' })
@@ -71,6 +71,7 @@ export function createRouter() {
 
     await taskEngine.save({
       code, name, description, trigger_keywords, slots, steps, intent_examples,
+      clarify_question, clarify_options,
       completion_message, on_complete, status,
     })
 

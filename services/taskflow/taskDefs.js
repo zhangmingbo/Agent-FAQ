@@ -61,6 +61,8 @@ class TaskDefs {
         slots JSON COMMENT '槽位定义列表（v1 兼容）',
         steps JSON COMMENT '流程 DSL（v2）',
         intent_examples JSON COMMENT '意图例句（NLU 理解用）',
+        clarify_question VARCHAR(500) DEFAULT '' COMMENT '任务/FAQ 冲突时的追问话术（留空用全局模板）',
+        clarify_options JSON COMMENT '追问选项列表（如 ["预约上门服务","咨询其他问题"]，留空用默认二选一）',
         completion_message TEXT,
         on_complete VARCHAR(100) DEFAULT '' COMMENT '完成后动作',
         status TINYINT DEFAULT 1 COMMENT '1=启用 0=禁用',
@@ -74,6 +76,12 @@ class TaskDefs {
     } catch { /* 列已存在 */ }
     try {
       await pool.execute('ALTER TABLE task ADD COLUMN intent_examples JSON NULL COMMENT \'意图例句（NLU 理解用）\' AFTER steps')
+    } catch { /* 列已存在 */ }
+    try {
+      await pool.execute('ALTER TABLE task ADD COLUMN clarify_question VARCHAR(500) DEFAULT \'\' COMMENT \'任务/FAQ 冲突时的追问话术\' AFTER intent_examples')
+    } catch { /* 列已存在 */ }
+    try {
+      await pool.execute('ALTER TABLE task ADD COLUMN clarify_options JSON NULL COMMENT \'追问选项列表\' AFTER clarify_question')
     } catch { /* 列已存在 */ }
   }
 
@@ -113,6 +121,9 @@ class TaskDefs {
       // 意图例句（NLU 向量/LLM 理解用）
       intent_examples: intentExamples,
       _vectorSources: vectorSources,
+      // 任务/FAQ 冲突追问配置（运营在管理后台任务编辑器配置，留空回退全局模板）
+      clarify_question: row.clarify_question || '',
+      clarify_options: _parseJson(row.clarify_options, null),
       slots,
       steps,
       completion_message: row.completion_message || '',
@@ -187,6 +198,15 @@ class TaskDefs {
       errors.push('intent_examples 必须是数组')
     }
 
+    // 澄清配置（可选）：clarify_question 为字符串，clarify_options 为字符串数组
+    if (def.clarify_question !== undefined && def.clarify_question !== null && typeof def.clarify_question !== 'string') {
+      errors.push('clarify_question 必须是字符串')
+    }
+    if (def.clarify_options !== undefined && def.clarify_options !== null) {
+      if (!Array.isArray(def.clarify_options)) errors.push('clarify_options 必须是数组')
+      else if (def.clarify_options.some(o => typeof o !== 'string')) errors.push('clarify_options 元素必须是字符串')
+    }
+
     const keys = new Set()
     const collectKeys = new Set()
     steps.forEach((step, i) => {
@@ -232,23 +252,27 @@ class TaskDefs {
 
   /** 保存（创建/更新）并刷新缓存 */
   async save(def) {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, completion_message, on_complete, status } = def
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, completion_message, on_complete, status } = def
     await pool.execute(
-      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, completion_message, on_complete, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, completion_message=?, on_complete=?, status=?`,
+      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, completion_message, on_complete, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, completion_message=?, on_complete=?, status=?`,
       [
         code, name, description || null,
         JSON.stringify(trigger_keywords || []),
         JSON.stringify(slots || []),
         JSON.stringify(steps || null),
         JSON.stringify(intent_examples || null),
+        clarify_question || '',
+        JSON.stringify(Array.isArray(clarify_options) ? clarify_options : null),
         completion_message || null, on_complete || '', status ?? 1,
         name, description || null,
         JSON.stringify(trigger_keywords || []),
         JSON.stringify(slots || []),
         JSON.stringify(steps || null),
         JSON.stringify(intent_examples || null),
+        clarify_question || '',
+        JSON.stringify(Array.isArray(clarify_options) ? clarify_options : null),
         completion_message || null, on_complete || '', status ?? 1,
       ]
     )

@@ -707,6 +707,11 @@
           '<input id="tf-example-input" placeholder="用户可能怎么说，如：燃气表坏了需要维修" style="margin-top:6px">' +
           '<div style="color:#999;font-size:12px;margin-top:4px">例句帮助 AI 理解该任务的业务场景，新增业务只需写好例句</div>' +
         '</div>' +
+        '<div class="form-group"><label>冲突澄清话术（可选）</label>' +
+          '<textarea id="tf-clarify-question" placeholder="留空使用全局模板。任务和 FAQ 冲突时追问用户，如：您是想预约上门服务，还是想咨询相关问题呢？" style="width:100%;box-sizing:border-box">' + esc(isEdit ? (task.clarify_question || '') : '') + '</textarea>' +
+          '<div style="color:#999;font-size:12px;margin-top:4px">追问选项（每行一个，最多两项，第一项=办理/第二项=咨询；留空用默认"1.办理 2.咨询其他问题"）</div>' +
+          '<textarea id="tf-clarify-options" placeholder="' + esc('预约上门服务\n咨询其他问题') + '" style="width:100%;box-sizing:border-box;margin-top:4px">' + esc(isEdit && Array.isArray(task.clarify_options) ? task.clarify_options.join('\n') : '') + '</textarea>' +
+        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -848,6 +853,13 @@
         slots: slots,
         steps: steps.length ? steps : undefined,
         intent_examples: examples.length ? examples : undefined,
+        // 冲突澄清配置（可选）
+        clarify_question: overlay.querySelector('#tf-clarify-question').value.trim() || undefined,
+        clarify_options: (function() {
+          var v = overlay.querySelector('#tf-clarify-options').value.trim();
+          if (!v) return undefined;
+          return v.split('\n').map(function(x) { return x.trim(); }).filter(Boolean);
+        })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: overlay.querySelector('#tf-action').value || '',
         status: 1,
