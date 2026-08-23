@@ -1026,45 +1026,23 @@ class FAQEngine {
   }
 
   /**
-   * 处理未匹配情况
+   * 处理未匹配情况（方案 A：不用 LLM 兜底，识别为业务域外）
+   * 任务和 FAQ 都没匹配上 → 大概率与客服业务无关（"习近平是谁"/天气/闲聊），
+   * 不浪费 LLM 资源去答域外问题，直接给业务边界引导。
    */
   async _handleFallback(text, context, result) {
-    // ===== [STEP 4.3.1] 尝试大模型兜底 =====
-    console.log('[STEP 4.3.1] 检查大模型配置...')
-    
-    // 尝试大模型兜底
-    if (this.llmConfig.enabled) {
-      console.log(`[LLM] ✅ 已启用，调用大模型: ${this.llmConfig.model || 'default'}`)
-      try {
-        const llmAnswer = await this._callLLM(text, context)
-        console.log(`[LLM] ✅ 成功获取回答 (${llmAnswer.length} chars)`)
-        return {
-          matched: false,
-          confidence: result?.confidence || 0,
-          intent_code: null,
-          intent_name: null,
-          answer: llmAnswer,
-          source: 'llm',
-        }
-      } catch (e) {
-        console.error(`[LLM]  调用失败: ${e.message}`)
-      }
-    } else {
-      console.log('[LLM] ⚠️ 未启用，使用默认兜底回复')
-    }
-
-    // ===== [STEP 4.3.2] 默认兜底回复 =====
-    console.log('[STEP 4.3.2] 返回默认兜底回复')
+    // ===== [STEP 4.3.1] 业务域外识别 =====
+    console.log('[STEP 4.3.1] 任务/FAQ 均未匹配，判定为业务域外')
     const fallbackResponse = {
       matched: false,
       confidence: result?.confidence || 0,
       intent_code: null,
       intent_name: null,
-      answer: '抱歉，我暂时无法回答这个问题。\n\n您可以尝试：\n1. 换一种方式描述您的问题\n2. 输入"转人工"联系人工客服\n\n常见问题推荐：',
+      answer: '我是沁园净水器售后客服，主要帮您处理安装预约、滤芯更换、报修、费用咨询等净水器相关问题。您刚才的问题超出了我的服务范围～\n\n您可以试试：\n1. 描述具体的净水器问题（如"滤芯多久换"、"机器不出水"）\n2. 输入"转人工"联系人工客服',
       source: 'fallback',
-      related: ['怎么交燃气费', '营业厅在哪里', '天然气多少钱一方'],
+      related: ['怎么预约上门服务', '滤芯多久换一次', '机器不出水怎么办'],
     }
-    
+
     console.log(`[OUTPUT] Source: fallback | Answer Length: ${fallbackResponse.answer.length}`)
     return fallbackResponse
   }

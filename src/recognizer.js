@@ -169,6 +169,51 @@ class IntentRecognizer {
       throw new Error('未添加任何意图，请先调用 addIntent() 添加')
     }
 
+    // ===== [STEP 3.0] 短句防护 =====
+    // 短句（<4字）向量匹配不可靠："习近平"(3字) vs "查明细"(3字) 相似度 0.826。
+    // 短句只接受"例句包含原词"或正则命中（确定性），不做纯向量相似猜测——
+    // 避免域外短词（人名/地名）被强行塞进最像的意图。
+    const SHORT_TEXT_LEN = 4
+    const isShort = text.trim().length < SHORT_TEXT_LEN
+    if (isShort) {
+      const t = text.trim()
+      const exactHits = []
+      for (const sample of this.allSamples) {
+        // 正则命中
+        if (sample.isRegex && sample.regex.test(t)) {
+          exactHits.push({ ...sample, similarity: 0.95, _exact: true })
+        } else if (!sample.isRegex && sample.questionText && sample.questionText.includes(t)) {
+          // 例句包含原词（"换芯"出现在例句"安排个上门换滤芯"里 → 确定匹配）
+          exactHits.push({ ...sample, similarity: 0.9, _exact: true })
+        }
+      }
+      if (exactHits.length > 0) {
+        exactHits.sort((a, b) => b.similarity - a.similarity)
+        const best = exactHits[0]
+        console.log(`[STEP 3.0] 短句 "${t}" 确定性匹配 → ${best.intentCode} (${best.intentName})`)
+        return {
+          matched: true,
+          intent_code: best.intentCode,
+          intent_name: best.intentName,
+          confidence: best.similarity,
+          top_results: exactHits.slice(0, this.topK).map(r => ({
+            intentCode: r.intentCode,
+            intentName: r.intentName,
+            questionText: r.questionText,
+            similarity: r.similarity,
+          })),
+        }
+      }
+      console.log(`[STEP 3.0] 短句 "${t}" 无确定性匹配，跳过向量（避免短词噪声误匹配）`)
+      return {
+        matched: false,
+        intent_code: null,
+        intent_name: null,
+        confidence: 0,
+        top_results: [],
+      }
+    }
+
     // ===== [STEP 3.1] 编码查询文本 =====
     console.log(`[STEP 3.1] 编码查询文本: "${text}"`)
     const queryVector = await this.nlpEngine.encodeQuery(text)
