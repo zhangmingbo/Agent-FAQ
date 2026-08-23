@@ -1390,7 +1390,6 @@
     document.body.appendChild(overlay);
     overlay.querySelector('#llm-modal-close').onclick = function(){ overlay.remove(); };
     overlay.querySelector('#llm-prompt-cancel').onclick = function(){ overlay.remove(); };
-    overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
     overlay.querySelector('#llm-prompt-reset').onclick = function(){
       overlay.querySelector('#llm-prompt-value').value = p.default || '';
     };
@@ -1852,9 +1851,17 @@
     });
 
     // 事件绑定
-    overlay.querySelector('#task-modal-close').onclick = function(){ overlay.remove(); };
-    overlay.querySelector('#tf-cancel').onclick = function(){ overlay.remove(); };
-    overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
+    var dirty = false;
+    // 记录"是否有未保存的修改"（输入/勾选/下拉都算）
+    overlay.addEventListener('input', function(){ dirty = true; });
+    overlay.addEventListener('change', function(){ dirty = true; });
+    function closeTaskModal() {
+      if (dirty && !confirm('有未保存的修改，确定关闭吗？')) return;
+      overlay.remove();
+    }
+    overlay.querySelector('#task-modal-close').onclick = closeTaskModal;
+    overlay.querySelector('#tf-cancel').onclick = closeTaskModal;
+    // 注意：刻意不支持"点背景关闭"——编辑时误点弹窗外的遮罩会直接丢数据
 
     // 标签删除委托：初始渲染的例句/关键词标签（build*Tags 生成）的 × 也能删除
     // （此前只给 Enter 新建的标签绑定了 onclick，导致编辑已有任务时删不掉标签）
