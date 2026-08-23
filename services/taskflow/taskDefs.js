@@ -66,6 +66,7 @@ class TaskDefs {
         arb_gap DECIMAL(4,3) NULL COMMENT '仲裁差距阈值（任务级，null=用全局 sys_config）',
         arb_task_min DECIMAL(4,3) NULL COMMENT '任务侧最低线（任务级，null=用全局）',
         arb_faq_min DECIMAL(4,3) NULL COMMENT 'FAQ 侧最低线（任务级，null=用全局）',
+        arb_strong_hit DECIMAL(4,3) NULL COMMENT '强命中线（任务级，null=用全局）',
         completion_message TEXT,
         on_complete VARCHAR(100) DEFAULT '' COMMENT '完成后动作',
         status TINYINT DEFAULT 1 COMMENT '1=启用 0=禁用',
@@ -94,6 +95,9 @@ class TaskDefs {
     } catch { /* 列已存在 */ }
     try {
       await pool.execute('ALTER TABLE task ADD COLUMN arb_faq_min DECIMAL(4,3) NULL COMMENT \'FAQ 侧最低线（任务级）\' AFTER arb_task_min')
+    } catch { /* 列已存在 */ }
+    try {
+      await pool.execute('ALTER TABLE task ADD COLUMN arb_strong_hit DECIMAL(4,3) NULL COMMENT \'强命中线（任务级）\' AFTER arb_faq_min')
     } catch { /* 列已存在 */ }
   }
 
@@ -136,10 +140,11 @@ class TaskDefs {
       // 任务/FAQ 冲突追问配置（运营在管理后台任务编辑器配置，留空回退全局模板）
       clarify_question: row.clarify_question || '',
       clarify_options: _parseJson(row.clarify_options, null),
-      // 任务级仲裁阈值（null=用全局 sys_config 的 arb_gap/arb_task_min/arb_faq_min）
+      // 任务级仲裁阈值（null=用全局 sys_config 的 arb_gap/arb_task_min/arb_faq_min/arb_strong_hit）
       arb_gap: row.arb_gap === null || row.arb_gap === undefined ? null : parseFloat(row.arb_gap),
       arb_task_min: row.arb_task_min === null || row.arb_task_min === undefined ? null : parseFloat(row.arb_task_min),
       arb_faq_min: row.arb_faq_min === null || row.arb_faq_min === undefined ? null : parseFloat(row.arb_faq_min),
+      arb_strong_hit: row.arb_strong_hit === null || row.arb_strong_hit === undefined ? null : parseFloat(row.arb_strong_hit),
       slots,
       steps,
       completion_message: row.completion_message || '',
@@ -224,7 +229,7 @@ class TaskDefs {
     }
 
     // 任务级仲裁阈值（可选，0~1 之间；留空=用全局）
-    for (const key of ['arb_gap', 'arb_task_min', 'arb_faq_min']) {
+    for (const key of ['arb_gap', 'arb_task_min', 'arb_faq_min', 'arb_strong_hit']) {
       const v = def[key]
       if (v === undefined || v === null || v === '') continue
       const n = parseFloat(v)
@@ -276,7 +281,7 @@ class TaskDefs {
 
   /** 保存（创建/更新）并刷新缓存 */
   async save(def) {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, completion_message, on_complete, status } = def
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, completion_message, on_complete, status } = def
     // 任务级仲裁阈值：null/undefined/'' → 存 NULL（表示用全局）
     const arbNum = (v) => {
       if (v === null || v === undefined || v === '') return null
@@ -284,9 +289,9 @@ class TaskDefs {
       return isNaN(n) ? null : n
     }
     await pool.execute(
-      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, completion_message, on_complete, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, arb_gap=?, arb_task_min=?, arb_faq_min=?, completion_message=?, on_complete=?, status=?`,
+      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, completion_message, on_complete, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, arb_gap=?, arb_task_min=?, arb_faq_min=?, arb_strong_hit=?, completion_message=?, on_complete=?, status=?`,
       [
         code, name, description || null,
         JSON.stringify(trigger_keywords || []),
@@ -295,7 +300,7 @@ class TaskDefs {
         JSON.stringify(intent_examples || null),
         clarify_question || '',
         JSON.stringify(Array.isArray(clarify_options) ? clarify_options : null),
-        arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min),
+        arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min), arbNum(arb_strong_hit),
         completion_message || null, on_complete || '', status ?? 1,
         name, description || null,
         JSON.stringify(trigger_keywords || []),
@@ -304,7 +309,7 @@ class TaskDefs {
         JSON.stringify(intent_examples || null),
         clarify_question || '',
         JSON.stringify(Array.isArray(clarify_options) ? clarify_options : null),
-        arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min),
+        arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min), arbNum(arb_strong_hit),
         completion_message || null, on_complete || '', status ?? 1,
       ]
     )

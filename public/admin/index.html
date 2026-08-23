@@ -1001,6 +1001,7 @@
             '<label style="font-size:12px;color:#666">差距阈值 <input id="tf-arb-gap" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_gap != null ? task.arb_gap : '') + '" placeholder="如 0.08" style="width:80px"></label>' +
             '<label style="font-size:12px;color:#666">任务最低线 <input id="tf-arb-task-min" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_task_min != null ? task.arb_task_min : '') + '" placeholder="如 0.45" style="width:80px"></label>' +
             '<label style="font-size:12px;color:#666">FAQ 最低线 <input id="tf-arb-faq-min" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_faq_min != null ? task.arb_faq_min : '') + '" placeholder="如 0.55" style="width:80px"></label>' +
+            '<label style="font-size:12px;color:#666">强命中线 <input id="tf-arb-strong-hit" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_strong_hit != null ? task.arb_strong_hit : '') + '" placeholder="如 0.72" style="width:80px"></label>' +
           '</div>' +
           '<div style="color:#999;font-size:12px;margin-top:4px">任务与 FAQ 语义相似度接近时的判定：差距超过阈值选高者，否则澄清让用户选。此配置只对本任务生效，优先级高于系统配置。</div>' +
         '</div>' +
@@ -1156,6 +1157,7 @@
         arb_gap: (function() { var v = overlay.querySelector('#tf-arb-gap').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_task_min: (function() { var v = overlay.querySelector('#tf-arb-task-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_faq_min: (function() { var v = overlay.querySelector('#tf-arb-faq-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
+        arb_strong_hit: (function() { var v = overlay.querySelector('#tf-arb-strong-hit').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: overlay.querySelector('#tf-action').value || '',
         status: 1,

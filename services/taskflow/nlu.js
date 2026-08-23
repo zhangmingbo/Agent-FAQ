@@ -251,10 +251,15 @@ class TaskNLU {
     }
     taskScores.sort((a, b) => b.score - a.score)
 
-    // 触发词命中兜底：仅当仲裁任务侧未锁定任务（向量分过低/短句）时生效。
-    // 若仲裁已算出语义更贴的任务（如"更换"命中换表任务，但语义"换滤芯"更贴预约任务），
-    // 以语义任务为准——触发词只是候选信号，不覆盖语义判定。
-    if (ctx.taskBoost && ctx.taskBoost.taskCode && !taskCode) {
+    // 触发词命中兜底：触发词命中的任务与仲裁语义最高任务一致时，抬升到 boost 分
+    // （"请个师父上门来看看吧"触发词'上门'→service_appointment 且语义最高也是它 → 抬到 0.92）
+    // 若触发词命中的任务 ≠ 语义最高任务（"更换"命中换表但语义"换滤芯"更贴预约），
+    // 以语义任务为准，不 boost（触发词只是候选信号，不覆盖语义判定）
+    if (ctx.taskBoost && ctx.taskBoost.taskCode && taskCode === ctx.taskBoost.taskCode) {
+      taskScore = Math.max(taskScore, ctx.taskBoost.score)
+      taskName = tasks.find(t => t.code === taskCode)?.name || taskName
+    } else if (ctx.taskBoost && ctx.taskBoost.taskCode && !taskCode) {
+      // 仲裁未锁定任务（短句/向量双低）→ 用触发词命中的任务兜底
       const boostDef = tasks.find(t => t.code === ctx.taskBoost.taskCode)
       if (boostDef && boostDef.status === 1) {
         taskScore = ctx.taskBoost.score
@@ -283,34 +288,52 @@ class TaskNLU {
     const diff = taskScore - faqScore
 
     // 阈值三级优先级：任务级配置（任务定义里的 arb_*）> 全局配置（sys_config）> 代码默认
-    let { gap, taskMin, faqMin } = this.arbConfig
+    let { gap, taskMin, faqMin, strongHit } = this.arbConfig
     if (taskCode) {
       const def = tasks.find(t => t.code === taskCode)
       if (def) {
         if (def.arb_gap !== null && def.arb_gap !== undefined) gap = def.arb_gap
         if (def.arb_task_min !== null && def.arb_task_min !== undefined) taskMin = def.arb_task_min
         if (def.arb_faq_min !== null && def.arb_faq_min !== undefined) faqMin = def.arb_faq_min
+        if (def.arb_strong_hit !== null && def.arb_strong_hit !== undefined) strongHit = def.arb_strong_hit
       }
     }
 
-    // 强命中线（运营可配）：至少一侧达到此值才算"真实业务命中"。
-    // 两侧都只是弱匹配（0.5~0.7 的碰巧接近，如"我家门坏了"任务0.64/FAQ0.61）
-    // → 不构成澄清理由，判域外（由上层走 fallback 业务引导）
-    // 注意：empty 场景（taskScore=0 且 faqScore=0，无引擎/双低）不在此列——上层走 matchTask 补判
-    const strongHit = this.arbConfig.strongHit ?? 0.72
     const scores = { taskTop: taskScores.slice(0, 5), faqTop: faqScores.slice(0, 5) }
-    if ((taskScore > 0 || faqScore > 0) && taskScore < strongHit && faqScore < strongHit) {
-      console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达强命中线(${strongHit}) → 域外`)
+
+    // ===== 判定逻辑（三个阈值各司其职，均读配置） =====
+    // 最低线 taskMin/faqMin：候选门槛——任务/FAQ 各自低于此线不算"有候选"
+    // 强命中线 strongHit：确定性分界——无触发词时两侧都低于此线 = 弱匹配（域外）
+    // 差距 gap：强命中后两侧差 > gap 才判胜出，否则澄清
+    //
+    // 流程：
+    //   ① 任务 < taskMin 且 FAQ < faqMin → 无任何候选 → 域外
+    //   ② 无触发词 且 两侧都 < strongHit → 弱匹配无确定信号 → 域外
+    //      （"我家门坏了"任务0.64/FAQ0.61 都 < 0.72 → 域外）
+    //   ③ 触发词命中（确定性业务信号）或一侧达强命中 → 按差距细分（task_new/faq/澄清）
+    //      （"请个师父上门来看看吧"触发词豁免 → 澄清；"我想更换滤芯"FAQ 0.99 → faq）
+    const noCandidate = taskScore < taskMin && faqScore < faqMin
+    const bothWeak = taskScore < strongHit && faqScore < strongHit
+
+    // ① 无任何候选（都低于各自最低线）→ 域外
+    //    注意：taskScore=0 且 faqScore=0（无引擎/编码失败）不在此列——返回 empty，
+    //    route 层走 matchTask 补判（LLM judgeTrigger 可能判定任务）
+    if (noCandidate && (taskScore > 0 || faqScore > 0)) {
+      console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)}<${taskMin} FAQ=${faqScore.toFixed(3)}<${faqMin}，无候选 → 域外`)
       return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
     }
-
-    // 两者都太低（都未达各自语义线）→ 无法判定
-    if (taskScore < taskMin && faqScore < faqMin) {
-      console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达线 → clarify`)
+    if (noCandidate) {
+      console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达线 → empty（走 matchTask 补判）`)
       return { ...empty, scores }
     }
 
-    // 差距阈值（运营可配）：任务或 FAQ 显著高时直接选（参照 FAQ 竞争澄清的 0.06）
+    // ② 无触发词 + 弱匹配 → 域外（"我家门坏了"）
+    if (!ctx.taskBoost && bothWeak) {
+      console.log(`[TaskNLU] 仲裁：无触发词，任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)} 均未达强命中线(${strongHit}) → 域外`)
+      return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
+    }
+
+    // ③ 触发词命中或一侧达强命中 → 按差距细分
     if (diff > gap) {
       console.log(`[TaskNLU] 仲裁：任务 ${taskCode}(${taskScore.toFixed(3)}) > FAQ ${faqCode}(${faqScore.toFixed(3)}) → task_new`)
       return { channel: 'task_new', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
@@ -489,10 +512,10 @@ class TaskNLU {
       if (byRule && !negated) {
         byRuleHit = true
         matchedTask = byRule
-        // 触发词命中 → 任务侧强信号（0.92，运营配置的高置信表达），但仍与 FAQ 同步对比。
-        // 注意：taskBoost 指向规则命中的任务；若仲裁算出语义更贴的其他任务（如"更换"命中
-        // 换表但语义是"换滤芯"→预约），仲裁的任务侧最高分会覆盖（见 arbitrateTaskFaq）
-        taskBoost = { taskCode: byRule.code, score: 0.92 }
+        // 触发词命中 → 任务侧强信号（0.85）：运营配置的高置信表达，仍允许 FAQ 例句原话(0.9+)反超。
+        // 触发词指向与语义最高任务一致时抬升（"请个师父上门来看看吧"→任务），
+        // 若语义更贴其他任务（"更换"命中换表但语义"换滤芯"→预约）不覆盖语义判定
+        taskBoost = { taskCode: byRule.code, score: 0.85 }
       }
 
       // 2.2 任务/FAQ 统一语义仲裁（同步对比，谁高选谁，接近则澄清）

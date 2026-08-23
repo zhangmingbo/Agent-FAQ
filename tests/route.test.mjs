@@ -251,7 +251,7 @@ test('route: 触发词命中但 FAQ 更高 → faq（不再无条件进任务）
     async encodeTexts() { return [] },
     async encodeQuery(text) {
       const v = [0, 0, 0, 0]
-      if (text === '如何预约安装') { v[1] = 0.5; v[3] = 1 } // 任务侧 0.447(dim1) + FAQ 0.894(dim3)
+      if (text === '如何预约安装') { v[1] = 0.3; v[3] = 2 } // 任务侧 0.3 低分 + FAQ 0.989 高分
       return v
     },
   })
@@ -263,8 +263,8 @@ test('route: 触发词命中但 FAQ 更高 → faq（不再无条件进任务）
   llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
   llmClient.judgeTrigger = async () => null
   stubRouteTurn('faq')
-  // "如何预约安装"：触发词"预约"命中 → boost 兜底（但任务侧已有向量分，不覆盖），
-  // FAQ QY-013 相似度 1.0 显著高于任务侧 0.3 → FAQ 胜
+  // "如何预约安装"：触发词"预约"命中 → boost 0.85（触发词任务=语义任务），
+  // FAQ QY-013 相似度 0.989 显著高于 0.85 → FAQ 胜
   const r = await nlu.route('如何预约安装', { tasks: [TASK_APPT, TASK_METER] })
   assert.equal(r, 'faq')
   nlu._vectors.clear()
@@ -326,7 +326,7 @@ test('route: 两侧弱匹配（0.6级碰巧接近）→ out_of_scope（不澄清
   nlu.setFaqSamples([])
 })
 
-test('route: 触发词命中豁免域外——弱匹配但含触发词 → clarify 而非 out_of_scope', async () => {
+test('route: 触发词命中豁免域外——弱匹配但含触发词 → task_new 而非 out_of_scope', async () => {
   // "请个师父上门来看看吧"：含触发词"上门"（taskBoost 生效），分数弱但属确定性业务信号
   nlu.setNlpEngine({
     async encodeTexts() { return [] },
@@ -338,9 +338,9 @@ test('route: 触发词命中豁免域外——弱匹配但含触发词 → clari
   llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
   llmClient.judgeTrigger = async () => null
   stubRouteTurn('faq')
-  // "上门"是 TASK_APPT 触发词 → taskBoost 生效 → 不判域外 → 弱匹配但有分 → clarify
+  // "上门"是 TASK_APPT 触发词 → taskBoost 生效 → 不判域外 → 触发词任务抬到 0.85 > FAQ 0.5 → task_new
   const r = await nlu.route('请个师父上门来看看吧', { tasks: [TASK_APPT, TASK_METER] })
-  assert.equal(r, 'clarify')
+  assert.equal(r, 'task_new')
   nlu._vectors.clear()
   nlu.setFaqSamples([])
 })
