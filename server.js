@@ -37,6 +37,7 @@ import { createRouter as createUploadRouter } from './routes/upload.js'
 import { createRouter as createHealthRouter } from './routes/health.js'
 import { createRouter as createTasksRouter } from './routes/tasks.js'
 import { createRouter as createDebugRouter } from './routes/debug.js'
+import { createRouter as createActionLogRouter } from './routes/actionLogs.js'
 import taskEngine from './services/taskflow/index.js'
 import taskSuggestService from './services/taskSuggestService.js'
 import { initReplyTexts, getAllReplyTexts, DEFAULT_REPLY_TEXTS } from './services/replyTexts.js'
@@ -135,6 +136,7 @@ app.use('/api', createDialogueRulesRouter(engine, ruleLoader, dialogueRules))
 app.use('/api', createUploadRouter(engine, UPLOADS_DIR))
 app.use('/api', createTasksRouter())
 app.use('/api', createDebugRouter())
+app.use('/api', createActionLogRouter())
 
 // ========== 错误处理 ==========
 

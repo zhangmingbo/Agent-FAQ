@@ -21,6 +21,7 @@ import LLMDialogManager from './llmDialogManager.js'
 import llmClient, { DEFAULT_LLM_NODES } from '../llmClient.js'
 import nlu from './nlu.js'
 import traceService from '../traceService.js'
+import { ensureActionLogTable } from './actionRegistry.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
 import * as configRepo from '../../repositories/configRepo.js'
 
@@ -78,6 +79,9 @@ class TaskFlowEngine {
 
     // 1) 表结构（含 v2 steps 列与 intent_examples 意图例句）
     await TaskDefs.ensureTable()
+
+    // 1.5) 动作输出审计表（action_log）
+    await ensureActionLogTable()
 
     // 2) 加载任务定义（含 v1 → v2 迁移）
     const count = await TaskDefs.loadTasks()

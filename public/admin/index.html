@@ -1788,6 +1788,145 @@
   })();
 
 
+  // ===== 动作输出日志（流程引擎审计：接口/事件输出记录，可重发补数据） =====
+  window.openActionLogOverlay = function() {
+    var old = document.getElementById('actionlog-overlay');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'actionlog-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999999;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;width:92vw;max-width:1200px;height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<div style="padding:16px 24px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">' +
+        '<h3 style="margin:0;font-size:16px">📡 动作输出日志</h3>' +
+        '<button class="btn-sm" id="al-close">&times; 关闭</button>' +
+      '</div>' +
+      '<div style="padding:8px 24px;font-size:12px;color:#999">流程引擎不记录业务数据；用户确认任务后，动作把收集的数据输出到外部接口，这里记录每次输出（成功/失败）。业务系统恢复后，失败记录可点「重发」补数据。</div>' +
+      '<div style="padding:8px 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<select id="al-filter-task" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"><option value="">全部任务</option></select>' +
+        '<select id="al-filter-status" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"><option value="">全部状态</option><option value="ok">成功</option><option value="fail">失败</option></select>' +
+        '<input id="al-filter-session" placeholder="会话 ID" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:180px">' +
+        '<button class="btn-sm" id="al-filter-btn">查询</button>' +
+      '</div>' +
+      '<div style="flex:1;overflow-y:auto;padding:8px 24px 16px">' +
+        '<div id="al-log-list"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
+        '<div id="al-log-detail" style="margin-top:12px"></div>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#al-close').onclick = function() { overlay.remove(); };
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#al-filter-btn').onclick = function() { loadActionLogs(); };
+    // 任务筛选下拉
+    api('GET', '/api/tasks?status=1', null, function(res) {
+      var tasks = (res.data && (res.data.data || res.data)) || [];
+      var sel = overlay.querySelector('#al-filter-task');
+      tasks.forEach(function(t) {
+        var o = document.createElement('option');
+        o.value = t.code; o.textContent = t.code + ' (' + (t.name || '') + ')';
+        sel.appendChild(o);
+      });
+    });
+    loadActionLogs();
+  };
+
+  window.loadActionLogs = function() {
+    var overlay = document.getElementById('actionlog-overlay');
+    var area = document.getElementById('al-log-list');
+    if (!area) return;
+    var q = '?limit=20';
+    if (overlay) {
+      var task = overlay.querySelector('#al-filter-task').value;
+      var status = overlay.querySelector('#al-filter-status').value;
+      var session = overlay.querySelector('#al-filter-session').value.trim();
+      if (task) q += '&task=' + encodeURIComponent(task);
+      if (status) q += '&status=' + encodeURIComponent(status);
+      if (session) q += '&session=' + encodeURIComponent(session);
+    }
+    api('GET', '/api/action-logs' + q, null, function(res) {
+      if (!res.success) { area.innerHTML = '<div class="task-empty"><div>加载失败</div></div>'; return; }
+      var items = (res.data && res.data.items) || [];
+      if (!items.length) {
+        area.innerHTML = '<div class="task-empty"><div class="icon">📭</div><div>暂无动作日志（用户确认任务后，动作的输出会记录在这里）</div></div>';
+        return;
+      }
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead><tr>' +
+        '<th style="width:50px">ID</th><th style="width:110px">任务</th><th style="width:90px">动作</th><th style="width:56px">状态</th><th>接口地址</th><th style="width:64px">耗时</th><th style="width:110px">时间</th><th style="width:110px">操作</th>' +
+        '</tr></thead><tbody>';
+      items.forEach(function(s) {
+        var stCls = s.status === 'ok' ? 'on' : 'danger';
+        var stTxt = s.status === 'ok' ? '成功' : '失败';
+        var t = new Date(s.created_at);
+        var time = (t.getMonth() + 1) + '-' + t.getDate() + ' ' + t.getHours() + ':' + String(t.getMinutes()).padStart(2, '0') + ':' + String(t.getSeconds()).padStart(2, '0');
+        html += '<tr>' +
+          '<td><code>' + s.id + '</code></td>' +
+          '<td>' + esc(s.task_code || '-') + '</td>' +
+          '<td>' + esc(s.action || '-') + '</td>' +
+          '<td><span class="status-tag ' + stCls + '">' + stTxt + '</span></td>' +
+          '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.url || '') + '">' + esc(s.url || '-') + '</td>' +
+          '<td>' + (s.duration_ms || 0) + 'ms</td>' +
+          '<td>' + time + '</td>' +
+          '<td><button class="btn-sm" onclick="viewActionLog(' + s.id + ')">详情</button> ' +
+          (s.status === 'fail' ? '<button class="btn-sm" onclick="resendActionLog(' + s.id + ')">重发</button>' : '') +
+          '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '<div style="color:#999;font-size:12px;margin-top:6px">共 ' + (res.data.total || items.length) + ' 条｜失败记录可在业务系统恢复后点「重发」补数据</div>';
+      area.innerHTML = html;
+    });
+  };
+
+  window.viewActionLog = function(id) {
+    api('GET', '/api/action-logs/' + id, null, function(res) {
+      if (!res.success || !res.data) return;
+      var s = res.data;
+      var detail = document.getElementById('al-log-detail');
+      var t = new Date(s.created_at);
+      var html = '<div style="border:1px solid #e9ecef;border-radius:8px;padding:12px;background:#fafbfc">' +
+        '<div style="font-weight:600;margin-bottom:8px">动作日志 #' + s.id + ' <span class="status-tag ' + (s.status === 'ok' ? 'on' : 'danger') + '">' + (s.status === 'ok' ? '成功' : '失败') + '</span></div>' +
+        '<div style="font-size:12px;color:#666;margin-bottom:6px">任务: ' + esc(s.task_code || '-') + '｜动作: ' + esc(s.action || '-') + '｜会话: ' + esc(s.session_id || '-') + '｜重试: ' + (s.retries || 0) + ' 次｜耗时: ' + (s.duration_ms || 0) + 'ms｜时间: ' + t.toLocaleString() + '</div>' +
+        (s.resent_at ? '<div style="font-size:12px;color:#2f9e44;margin-bottom:6px">✅ 已于 ' + new Date(s.resent_at).toLocaleString() + ' 重发成功</div>' : '') +
+        (s.error ? '<div style="font-size:12px;color:#e03131;margin-bottom:6px">错误: ' + esc(s.error) + '</div>' : '') +
+        '<div style="font-size:12px;color:#666">接口: <code>' + esc(s.url || '-') + '</code></div>' +
+        '<div style="font-size:12px;color:#666;margin-top:6px">输出数据（payload）:</div>' +
+        '<pre style="background:#f1f3f5;border-radius:6px;padding:8px;font-size:11px;overflow:auto;max-height:200px;white-space:pre-wrap;word-break:break-all">' + esc(typeof s.payload === 'string' ? s.payload : JSON.stringify(s.payload, null, 2)) + '</pre>' +
+        '<div style="font-size:12px;color:#666;margin-top:6px">接口响应:</div>' +
+        '<pre style="background:#f1f3f5;border-radius:6px;padding:8px;font-size:11px;overflow:auto;max-height:150px;white-space:pre-wrap;word-break:break-all">' + esc(s.response || '(无)') + '</pre>' +
+        '</div>';
+      detail.innerHTML = html;
+    });
+  };
+
+  window.resendActionLog = function(id) {
+    if (!confirm('用日志里的输出数据重新投递到原接口？\n（用于业务系统恢复后补数据）')) return;
+    api('POST', '/api/action-logs/' + id + '/resend', null, function(res) {
+      alert(res.message || (res.success ? '已重发' : '重发失败'));
+      if (res.success) { loadActionLogs(); window.viewActionLog(id); }
+    });
+  };
+
+  // 侧边栏「动作日志」菜单注入
+  function injectActionLogMenu() {
+    var menu = document.querySelector('.el-menu');
+    if (!menu || menu.querySelector('.el-menu-item[data-actionlog-menu]')) return;
+    var item = document.createElement('li');
+    item.className = 'el-menu-item';
+    item.setAttribute('data-actionlog-menu', '1');
+    item.setAttribute('style', 'cursor:pointer');
+    item.innerHTML = '<i class="el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M512 64a448 448 0 1 0 0 896 448 448 0 0 0 0-896zm0 128a320 320 0 1 1 0 640 320 320 0 0 1 0-640zm-16 96h80v272l192 128-40 60-232-156V288z"/></svg></i><span>动作日志</span>';
+    item.onclick = function() {
+      menu.querySelectorAll('.el-menu-item').forEach(function(m) { m.classList.remove('is-active'); });
+      item.classList.add('is-active');
+      window.openActionLogOverlay();
+    };
+    menu.appendChild(item);
+  }
+  var alMenuObserver = new MutationObserver(injectActionLogMenu);
+  alMenuObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
+  injectActionLogMenu();
+
+
   // ===== 编辑/新建任务弹窗 =====
   window.editTask = function(code) {
     api('GET', '/api/tasks/' + code, null, function(res) {
@@ -1898,7 +2037,11 @@
               '</select></div>' +
             '<div style="font-size:12px;color:#888;margin-bottom:4px">字段映射（每行：槽位key=接口字段名；留空=传全部收集字段）</div>' +
             '<textarea id="tf-api-fieldmap" rows="3" placeholder="phone=phone&#10;customer_name=name&#10;service_type=serviceType" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:6px">' + esc(isEdit && task.api_action && task.api_action.fieldMap ? Object.entries(task.api_action.fieldMap).map(function(x){ return x[0] + '=' + x[1]; }).join('\n') : '') + '</textarea>' +
-            '<input id="tf-api-success-msg" placeholder="成功话术（留空用默认：已为您提交成功；支持 {orderNo} 占位符）" value="' + esc(isEdit && task.api_action ? (task.api_action.successMessage || '') : '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+            '<input id="tf-api-success-msg" placeholder="成功话术（留空用默认：已为您提交成功；支持 {orderNo} 占位符）" value="' + esc(isEdit && task.api_action ? (task.api_action.successMessage || '') : '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:6px">' +
+            '<div style="display:flex;gap:8px;margin-bottom:6px">' +
+              '<div style="flex:1"><div style="font-size:12px;color:#666">失败重试次数</div><input id="tf-api-retry" type="number" min="0" max="10" value="' + esc(isEdit && task.api_action && task.api_action.retries !== undefined ? task.api_action.retries : 3) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+              '<div style="flex:1"><div style="font-size:12px;color:#666">超时（毫秒）</div><input id="tf-api-timeout" type="number" min="1000" value="' + esc(isEdit && task.api_action && task.api_action.timeout !== undefined ? task.api_action.timeout : 10000) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+            '</div>' +
             '<div style="font-size:11px;color:#999;margin-top:4px">保存后请点「⚡ 从槽位自动生成」重建流程步骤，完成动作才会真正执行接口调用。</div>' +
           '</div>' +
         '</div>' +
@@ -2097,11 +2240,15 @@
           var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
           if (k) fieldMap[k] = v;
         });
+        var retryVal = parseInt(overlay.querySelector('#tf-api-retry').value, 10);
+        var timeoutVal = parseInt(overlay.querySelector('#tf-api-timeout').value, 10);
         apiAction = {
           url: apiUrl,
           method: overlay.querySelector('#tf-api-method').value || 'POST',
           fieldMap: Object.keys(fieldMap).length ? fieldMap : undefined,
           successMessage: overlay.querySelector('#tf-api-success-msg').value.trim() || undefined,
+          retries: !isNaN(retryVal) && retryVal >= 0 ? retryVal : 3,
+          timeout: !isNaN(timeoutVal) && timeoutVal >= 1000 ? timeoutVal : 10000,
         };
       }
       var data = {
