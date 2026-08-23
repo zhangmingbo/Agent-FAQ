@@ -58,6 +58,19 @@
     #rules-tabs .tab-btn.active{color:#4361ee;border-bottom-color:#4361ee}
     .tab-panel{display:none}
     .tab-panel.active{display:block}
+    /* 系统配置分区排版 */
+    #config-tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #eee}
+    #config-tabs .cfg-tab-btn{padding:10px 22px;cursor:pointer;font-size:14px;font-weight:500;color:#666;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;background:none;border-top:none;border-left:none;border-right:none}
+    #config-tabs .cfg-tab-btn:hover{color:#4361ee}
+    #config-tabs .cfg-tab-btn.active{color:#4361ee;border-bottom-color:#4361ee}
+    .cfg-tab-panel{display:none;background:#fff;border:1px solid #eef0f4;border-radius:10px;padding:24px 28px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+    .cfg-tab-panel.active{display:block}
+    .cfg-tab-panel h3{font-size:15px !important;color:#333 !important;margin:0 0 6px !important}
+    .cfg-tab-panel .cfg-panel-desc{font-size:12px;color:#999;margin-bottom:16px}
+    .cfg-tab-panel .el-form{max-width:640px !important}
+    .cfg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 44px}
+    .cfg-item{margin-bottom:16px}
+    .cfg-note{font-size:12px;color:#999;margin-top:10px}
     /* 任务管理样式 */
     .task-panel{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px #0000000f}
     .task-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
@@ -640,6 +653,7 @@
       injectArbThresholds(panel);
       injectAdvThresholds(panel);
       injectAnalysisThresholds(panel);
+      restructureConfigLayout(panel);
       injectNativeTips(panel);
       placeTopRightSave();
     });
@@ -666,7 +680,7 @@
         if (!cfg) return;
         ensureArbTipStyle();
         var row = function(label, id, val, desc) {
-          return '<div style="margin-bottom:18px">' +
+          return '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
               ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
               '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
@@ -675,6 +689,7 @@
           '</div>';
         };
         var html =
+          '<div class="cfg-grid">' +
           row('差距阈值', 'arb-gap', cfg.arbGap,
             '作用：决定"任务"和"FAQ"两边相似度差多少时直接判定胜出，而不是追问用户。<br>举例：用户说"我要预约上门服务"，任务侧 0.92、FAQ 侧 0.70，差 0.22 &gt; 0.08 → 直接进入任务。<br>调大：更倾向追问确认（保守）；调小：更倾向直接判定（果断）。<br>典型值：0.06~0.15，建议 0.08。') +
           row('任务侧最低线', 'arb-task-min', cfg.arbTaskMin,
@@ -687,7 +702,8 @@
             '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（触发词没覆盖但说法像例句的场景）。<br>举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 触发预约任务。<br>调大：减少语义误触发；调小：更多口语化表达能触发。<br>典型值：0.40~0.55，建议 0.45。') +
           row('触发词基础分', 'arb-task-boost', cfg.arbTaskBoost,
             '作用：话术命中任务触发词（如"预约""上门"）时，任务侧相似度抬升到此值——触发词是运营明确配置的信号。<br>举例："请个师父上门来看看吧"命中"上门" → 任务侧抬到 0.85，压过 FAQ 0.72 → 进入预约任务。<br>调大：触发词命中后更坚定走任务；调小：更易被 FAQ 反超。<br>典型值：0.80~0.92，建议 0.85。') +
-          '<div style="font-size:12px;color:#999;margin-top:4px">以上阈值与上方识别参数共用右上角"保存配置"按钮，一起保存生效。</div>';
+          '</div>' +
+          '<div class="cfg-note">以上各分区参数共用右上角"保存配置"按钮，一起保存生效。</div>';
         box.innerHTML = html;
         // 与右上角"保存配置"按钮联动：点击时把仲裁/高级判定/分析建议阈值一并提交
         if (!window.__arbLinked) {
@@ -754,7 +770,7 @@
         ensureArbTipStyle();
         var row = function(label, id, val, desc, o) {
           o = o || {};
-          return '<div style="margin-bottom:18px">' +
+          return '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
               ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
               '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
@@ -763,6 +779,7 @@
           '</div>';
         };
         box.innerHTML =
+          '<div class="cfg-grid">' +
           row('候选竞争判定上限', 'faq-compete-ceiling', cfg.faqCompeteCeiling,
             '作用：FAQ 候选 top1 与 top2 是不同意图，且 top1 相似度低于此值时，才进入"候选竞争追问"（列 1/2/3 让用户选）。<br>top1 ≥ 此值视为答案确定，直接回答不追问。<br>调大：更少列选项追问（认为够确定）；调小：更易进入候选竞争。<br>典型值：0.90~0.98，建议 0.95。') +
           row('候选竞争差距阈值', 'faq-compete-gap', cfg.faqCompeteGap,
@@ -776,7 +793,8 @@
           row('短句包含命中分', 'short-contains-hit', cfg.shortContainsHit,
             '作用：短句原文出现在某 FAQ 例句里（"换芯"在"上门换滤芯"）时给的相似度。<br>典型值：0.85~0.95，建议 0.90。') +
           row('任务向量最短长度', 'task-vec-min-len', cfg.taskVecMinLen,
-            '作用：任务意图例句的向量语义触发只对长度≥此值的输入生效（太短只走触发词，避免短句噪声误触发任务）。<br>调大：更少语义触发（只靠触发词）；调小：更多短句也能语义触发。<br>典型值：4~8，建议 5。', { min: 2, max: 15, step: 1 });
+            '作用：任务意图例句的向量语义触发只对长度≥此值的输入生效（太短只走触发词，避免短句噪声误触发任务）。<br>调大：更少语义触发（只靠触发词）；调小：更多短句也能语义触发。<br>典型值：4~8，建议 5。', { min: 2, max: 15, step: 1 }) +
+          '</div>';
       });
     }
 
@@ -802,7 +820,7 @@
         ensureArbTipStyle();
         var row = function(label, id, val, desc, o) {
           o = o || {};
-          return '<div style="margin-bottom:18px">' +
+          return '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
               ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
               '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
@@ -811,6 +829,7 @@
           '</div>';
         };
         box.innerHTML =
+          '<div class="cfg-grid">' +
           row('加相似问建议线', 'analysis-recommend-threshold', cfg.analysisRecommendThreshold,
             '作用：问题分析页里，FAQ 命中且相似度高于此值 → 建议"加入该 FAQ 相似问"；低于则建议新建。<br>调大：更保守地建议加入；调小：更多建议加入。<br>典型值：0.20~0.40，建议 0.30。') +
           row('低置信过滤上限', 'analysis-max-confidence', cfg.analysisMaxConfidence,
@@ -820,7 +839,63 @@
           row('挖掘相似度线', 'suggest-sim-threshold', cfg.suggestSimThreshold,
             '作用：候选表达与任务例句的语义相似度低于此值 → 不算"像该任务"，不入建议。<br>调大：建议更保守（可能漏）；调小：更多候选（噪声多）。<br>典型值：0.45~0.65，建议 0.55。') +
           row('触发词最低分', 'suggest-keyword-min-score', cfg.suggestKeywordMinScore,
-            '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。');
+            '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。') +
+          '</div>';
+      });
+    }
+
+    // 系统配置页整体分区排版：原生识别参数 + 三个注入区块 → 四个 tab 卡片
+    function restructureConfigLayout(panel) {
+      // 建 tab 栏 + 4 个面板容器
+      var tabs = document.createElement('div');
+      tabs.id = 'config-tabs';
+      tabs.innerHTML =
+        '<button class="cfg-tab-btn active" data-tab="recog">识别参数</button>' +
+        '<button class="cfg-tab-btn" data-tab="arb">任务/FAQ 仲裁</button>' +
+        '<button class="cfg-tab-btn" data-tab="adv">高级判定</button>' +
+        '<button class="cfg-tab-btn" data-tab="analysis">分析建议</button>';
+      var recog = document.createElement('div');
+      recog.className = 'cfg-tab-panel active';
+      recog.id = 'cfg-tab-recog';
+      var arb = document.createElement('div');
+      arb.className = 'cfg-tab-panel';
+      arb.id = 'cfg-tab-arb';
+      var adv = document.createElement('div');
+      adv.className = 'cfg-tab-panel';
+      adv.id = 'cfg-tab-adv';
+      var analysis = document.createElement('div');
+      analysis.className = 'cfg-tab-panel';
+      analysis.id = 'cfg-tab-analysis';
+
+      // 原生内容（h3 识别参数 + el-form）→ 识别参数面板；三个注入区块 → 各自面板
+      while (panel.firstChild) {
+        var node = panel.firstChild;
+        if (node.id === 'arb-threshold-block') { arb.appendChild(node); node.style.marginTop = '0'; node.style.maxWidth = 'none'; continue; }
+        if (node.id === 'adv-threshold-block') { adv.appendChild(node); node.style.marginTop = '0'; node.style.maxWidth = 'none'; continue; }
+        if (node.id === 'analysis-threshold-block') { analysis.appendChild(node); node.style.marginTop = '0'; node.style.maxWidth = 'none'; continue; }
+        recog.appendChild(node);
+      }
+      // 识别参数面板加一行说明
+      var recogDesc = document.createElement('div');
+      recogDesc.className = 'cfg-panel-desc';
+      recogDesc.innerHTML = '作用于 FAQ 意图识别与会话层（最低门槛 / 追问 / 候选数 / 无意义检测 / 会话超时）。';
+      recog.insertBefore(recogDesc, recog.querySelector('h3') ? recog.querySelector('h3').nextSibling : recog.firstChild);
+
+      // 组装
+      panel.appendChild(tabs);
+      panel.appendChild(recog);
+      panel.appendChild(arb);
+      panel.appendChild(adv);
+      panel.appendChild(analysis);
+
+      // tab 切换
+      tabs.addEventListener('click', function(e) {
+        var btn = e.target.closest('.cfg-tab-btn');
+        if (!btn) return;
+        tabs.querySelectorAll('.cfg-tab-btn').forEach(function(b){ b.classList.remove('active') });
+        btn.classList.add('active');
+        var tab = btn.getAttribute('data-tab');
+        [recog, arb, adv, analysis].forEach(function(p){ p.classList.toggle('active', p.id === 'cfg-tab-' + tab) });
       });
     }
 
