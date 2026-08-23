@@ -31,6 +31,13 @@ class TaskNLU {
     this.mode = 'hybrid'
     this.nlpEngine = null
     this.vectorThreshold = 0.45
+    /**
+     * 任务/FAQ 统一语义仲裁阈值（运营可配，管理后台写入 sys_config）
+     *   gap       差距阈值：任务与 FAQ 相似度差 > gap 才判显著胜出，否则澄清
+     *   taskMin   任务侧最低线：低于此值不算"像任务"
+     *   faqMin    FAQ 侧最低线：低于此值不算"像 FAQ"
+     */
+    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55 }
     /** @type {Map<string, Array>} code -> 意图例句向量 */
     this._vectors = new Map()
     /**
@@ -39,6 +46,20 @@ class TaskNLU {
      * 用于"任务 vs FAQ"统一语义仲裁
      */
     this.faqSamples = []
+  }
+
+  /** 设置仲裁阈值（运营配置，sys_config 读取后调用） */
+  setArbConfig(cfg = {}) {
+    const num = (v, d) => {
+      const n = parseFloat(v)
+      return isNaN(n) ? d : n
+    }
+    this.arbConfig = {
+      gap: num(cfg.gap, this.arbConfig.gap ?? 0.08),
+      taskMin: num(cfg.taskMin, this.arbConfig.taskMin ?? 0.45),
+      faqMin: num(cfg.faqMin, this.arbConfig.faqMin ?? 0.55),
+    }
+    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin}`)
   }
 
   /** 设置模式 */
@@ -228,19 +249,29 @@ class TaskNLU {
 
     const diff = taskScore - faqScore
 
+    // 阈值三级优先级：任务级配置（任务定义里的 arb_*）> 全局配置（sys_config）> 代码默认
+    let { gap, taskMin, faqMin } = this.arbConfig
+    if (taskCode) {
+      const def = tasks.find(t => t.code === taskCode)
+      if (def) {
+        if (def.arb_gap !== null && def.arb_gap !== undefined) gap = def.arb_gap
+        if (def.arb_task_min !== null && def.arb_task_min !== undefined) taskMin = def.arb_task_min
+        if (def.arb_faq_min !== null && def.arb_faq_min !== undefined) faqMin = def.arb_faq_min
+      }
+    }
+
     // 两者都太低（都未达语义线）→ 无法判定
-    if (taskScore < 0.45 && faqScore < 0.55) {
+    if (taskScore < taskMin && faqScore < faqMin) {
       console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达线 → clarify`)
       return empty
     }
 
-    // 差距阈值：任务或 FAQ 显著高时直接选（参照 FAQ 竞争澄清的 0.06）
-    const GAP = 0.08
-    if (diff > GAP) {
+    // 差距阈值（运营可配）：任务或 FAQ 显著高时直接选（参照 FAQ 竞争澄清的 0.06）
+    if (diff > gap) {
       console.log(`[TaskNLU] 仲裁：任务 ${taskCode}(${taskScore.toFixed(3)}) > FAQ ${faqCode}(${faqScore.toFixed(3)}) → task_new`)
       return { channel: 'task_new', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
     }
-    if (-diff > GAP) {
+    if (-diff > gap) {
       console.log(`[TaskNLU] 仲裁：FAQ ${faqCode}(${faqScore.toFixed(3)}) > 任务 ${taskCode}(${taskScore.toFixed(3)}) → faq`)
       return { channel: 'faq', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
     }

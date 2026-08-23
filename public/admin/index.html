@@ -561,12 +561,39 @@
   }
 
   function loadLLMPanel() {
-    // 状态概览
+    // 状态概览 + 仲裁阈值配置
     api('GET', '/api/config', null, function(cfg) {
       var el = document.getElementById('llm-status');
       if (!el) return;
       var st = cfg.llmEnabled ? '<span class="status-tag on">已启用</span>' : '<span class="status-tag off">未启用</span>';
-      el.innerHTML = st + ' ｜ 模型：' + esc(cfg.llmModel || '-') + ' ｜ 接口：' + esc(cfg.llmApiUrl || '-') + ' ｜ 理解模式：' + esc(cfg.nluMode || 'hybrid');
+      var arb = (cfg.arbGap !== undefined)
+        ? '<div style="margin-top:10px;padding:10px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px">' +
+            '<div style="font-weight:600;margin-bottom:6px">任务/FAQ 统一语义仲裁阈值</div>' +
+            '<div style="font-size:12px;color:#666;margin-bottom:8px">用户输入同时命中任务和 FAQ 时，对比相似度：差距超过阈值选显著高的一方；接近则追问用户二选一。</div>' +
+            '<table style="font-size:13px;width:100%"><tr><td style="padding:3px 0">差距阈值（相似度差 &gt; 此值才判胜出，越小越倾向澄清）</td>' +
+            '<td style="text-align:right"><input id="arb-gap" type="number" step="0.01" min="0" max="1" value="' + cfg.arbGap + '" style="width:80px"></td></tr>' +
+            '<tr><td style="padding:3px 0">任务侧最低线（低于此值不算"像任务"）</td>' +
+            '<td style="text-align:right"><input id="arb-task-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbTaskMin + '" style="width:80px"></td></tr>' +
+            '<tr><td style="padding:3px 0">FAQ 侧最低线（低于此值不算"像 FAQ"）</td>' +
+            '<td style="text-align:right"><input id="arb-faq-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbFaqMin + '" style="width:80px"></td></tr>' +
+            '<tr><td colspan="2" style="text-align:right;padding-top:8px"><button class="btn-sm" id="arb-save-btn">保存阈值</button></td></tr>' +
+          '</div>'
+        : '';
+      el.innerHTML = st + ' ｜ 模型：' + esc(cfg.llmModel || '-') + ' ｜ 接口：' + esc(cfg.llmApiUrl || '-') + ' ｜ 理解模式：' + esc(cfg.nluMode || 'hybrid') + arb;
+      // 保存仲裁阈值
+      var saveBtn = document.getElementById('arb-save-btn');
+      if (saveBtn) {
+        saveBtn.onclick = function() {
+          var gap = parseFloat(document.getElementById('arb-gap').value);
+          var taskMin = parseFloat(document.getElementById('arb-task-min').value);
+          var faqMin = parseFloat(document.getElementById('arb-faq-min').value);
+          if (isNaN(gap) || isNaN(taskMin) || isNaN(faqMin)) { alert('请输入有效数字'); return; }
+          api('POST', '/api/config', { arbGap: gap, arbTaskMin: taskMin, arbFaqMin: faqMin }, function(res) {
+            if (res.success) { alert('阈值已保存并生效'); loadLLMPanel(); }
+            else alert(res.message || '保存失败');
+          });
+        };
+      }
     });
     // 调用点清单
     api('GET', '/api/config/llm-prompts', null, function(res) {
@@ -889,6 +916,14 @@
           '<div style="color:#999;font-size:12px;margin-top:4px">追问选项（每行一个，最多两项，第一项=办理/第二项=咨询；留空用默认"1.办理 2.咨询其他问题"）</div>' +
           '<textarea id="tf-clarify-options" placeholder="' + esc('预约上门服务\n咨询其他问题') + '" style="width:100%;box-sizing:border-box;margin-top:4px">' + esc(isEdit && Array.isArray(task.clarify_options) ? task.clarify_options.join('\n') : '') + '</textarea>' +
         '</div>' +
+        '<div class="form-group"><label>仲裁阈值（可选，任务级覆盖全局；留空=用系统配置）</label>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+            '<label style="font-size:12px;color:#666">差距阈值 <input id="tf-arb-gap" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_gap != null ? task.arb_gap : '') + '" placeholder="如 0.08" style="width:80px"></label>' +
+            '<label style="font-size:12px;color:#666">任务最低线 <input id="tf-arb-task-min" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_task_min != null ? task.arb_task_min : '') + '" placeholder="如 0.45" style="width:80px"></label>' +
+            '<label style="font-size:12px;color:#666">FAQ 最低线 <input id="tf-arb-faq-min" type="number" step="0.01" min="0" max="1" value="' + esc(isEdit && task.arb_faq_min != null ? task.arb_faq_min : '') + '" placeholder="如 0.55" style="width:80px"></label>' +
+          '</div>' +
+          '<div style="color:#999;font-size:12px;margin-top:4px">任务与 FAQ 语义相似度接近时的判定：差距超过阈值选高者，否则澄清让用户选。此配置只对本任务生效，优先级高于系统配置。</div>' +
+        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -1037,6 +1072,10 @@
           if (!v) return undefined;
           return v.split('\n').map(function(x) { return x.trim(); }).filter(Boolean);
         })(),
+        // 任务级仲裁阈值（留空 → undefined → 存 NULL 用全局）
+        arb_gap: (function() { var v = overlay.querySelector('#tf-arb-gap').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
+        arb_task_min: (function() { var v = overlay.querySelector('#tf-arb-task-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
+        arb_faq_min: (function() { var v = overlay.querySelector('#tf-arb-faq-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: overlay.querySelector('#tf-action').value || '',
         status: 1,

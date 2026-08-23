@@ -62,3 +62,52 @@ test('仲裁：均未达线 → clarify', async () => {
   const r = await nlu.arbitrateTaskFaq('今天天气不错', { tasks: TASKS })
   assert.equal(r.channel, 'clarify')
 })
+
+test('仲裁：阈值可配置——gap 调小后"小差距表达"从 clarify 变 task_new', async () => {
+  // 扩展 mock：新增"小差距表达"（任务 0.584 vs FAQ 0.564，差 0.019）
+  nlu.setNlpEngine({
+    async encodeQuery(text) {
+      const v = [0, 0, 0, 0]
+      if (text === '查一下用气量') { v[2] = 1 }
+      else if (text === '我要预约上门服务') { v[1] = 1 }
+      else if (text === '模糊表达') { v[1] = 1; v[3] = 1 }
+      else if (text === '小差距表达') { v[0] = 0.6; v[1] = 0.6; v[2] = 0.58 } // task 0.584 vs faq 0.564
+      else { v[0] = 0.01; v[1] = 0.01; v[2] = 0.01; v[3] = 0.01 }
+      return v
+    },
+  })
+  // 默认 gap=0.08 → 小差距表达仍澄清
+  nlu.setArbConfig({ gap: 0.08 })
+  const before = await nlu.arbitrateTaskFaq('小差距表达', { tasks: TASKS })
+  assert.equal(before.channel, 'clarify')
+  // gap 调到 0.01 → 小差距表达判任务
+  nlu.setArbConfig({ gap: 0.01 })
+  const after = await nlu.arbitrateTaskFaq('小差距表达', { tasks: TASKS })
+  assert.equal(after.channel, 'task_new')
+  // 恢复默认
+  nlu.setArbConfig({ gap: 0.08 })
+})
+
+test('仲裁：任务级阈值优先于全局（任务配 gap 大 → 全局 gap 小也不覆盖）', async () => {
+  // 全局 gap=0.01（宽松），但 service_appointment（命中的任务）配 arb_gap=0.5（严格）
+  nlu.setArbConfig({ gap: 0.01 })
+  const TASKS_TASKLEVEL = [
+    { ...TASK_APPT, arb_gap: 0.5, arb_task_min: 0.4, arb_faq_min: 0.5 }, // 任务级：gap 严格
+    { ...TASK_METER },
+  ]
+  // "小差距表达" 任务侧最高 service_appointment 0.584 vs FAQ 0.564，差 0.019
+  // 全局 gap=0.01 → 判 task_new；但命中任务配了任务级 gap=0.5 → 澄清
+  const r = await nlu.arbitrateTaskFaq('小差距表达', { tasks: TASKS_TASKLEVEL })
+  assert.equal(r.channel, 'clarify')
+  assert.equal(r.taskCode, 'service_appointment')
+  // 恢复
+  nlu.setArbConfig({ gap: 0.08 })
+})
+
+test('仲裁：任务未配任务级阈值 → 用全局（兜底）', async () => {
+  // 所有任务无 arb_* → 全局 gap=0.01 生效 → 判 task_new
+  nlu.setArbConfig({ gap: 0.01 })
+  const r = await nlu.arbitrateTaskFaq('小差距表达', { tasks: TASKS })
+  assert.equal(r.channel, 'task_new')
+  nlu.setArbConfig({ gap: 0.08 })
+})
