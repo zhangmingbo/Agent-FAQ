@@ -270,11 +270,12 @@ class FAQEngine {
             taskState,
             tasks: [...this.taskEngine.taskDefs.values()],
             filledDesc: this._taskFilledDesc(taskState),
+            trace: traceSteps,
           })
           if (route === 'task_new') {
             // 换办另一件事：中断暂存当前任务，走新任务流程
             await this.taskEngine.stash(sessionId)
-            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true)
+            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
           } else if (route === 'clarify') {
             // 挂起状态下仍拿不准 → 追问（恢复办理 or 继续咨询）
             console.log('[ROUTE] 挂起中拿不准，追问用户')
@@ -308,6 +309,7 @@ class FAQEngine {
           taskState,
           tasks: [...this.taskEngine.taskDefs.values()],
           filledDesc: this._taskFilledDesc(taskState),
+          trace: traceSteps,
         })
         console.log(`[TASK] 路由判定: ${route}`)
         _t('路由判定', { route, taskState: taskState.taskCode, status: taskState.status }, route === 'clarify' ? 'warn' : 'task')
@@ -343,7 +345,7 @@ class FAQEngine {
           console.log('[TASK] 路由→新任务，当前任务中断暂存')
           _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
           await this.taskEngine.stash(sessionId)
-          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true)
+          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
         } else {
           // task_continue → 任务对话（原逻辑）
           _t('进入任务对话', { taskCode: taskState.taskCode, route })
@@ -359,14 +361,16 @@ class FAQEngine {
           taskState: null,
           tasks: [...this.taskEngine.taskDefs.values()],
           filledDesc: '',
+          trace: traceSteps,
         })
         _t('路由判定', { route, hasActiveTask: false }, route === 'clarify' ? 'warn' : 'task')
         if (route === 'task_new') {
-          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ false)
+          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ false, traceSteps)
         } else if (route === 'clarify') {
           // 无法区分任务还是咨询（触发词+咨询疑云混杂）→ 追问二选一
           console.log('[ROUTE] 无法区分任务/咨询，追问用户')
-          const candTask = await this.taskEngine.matchTask(text)
+          _t('路由拿不准，追问用户二选一', {}, 'warn')
+          const candTask = await this.taskEngine.matchTask(text, null, traceSteps)
           context.pendingRoute = {
             taskCode: candTask ? candTask.code : null,
             taskName: candTask ? candTask.name : '',
@@ -480,9 +484,10 @@ class FAQEngine {
   /**
    * 尝试发起新任务（无活跃任务时，或从挂起中断后换办新任务时）
    * @param {boolean} fromStash - 是否有被中断的任务可恢复
+   * @param {Array|null} traceSteps - 轨迹步骤数组（调试用，可选）
    */
-  async _tryStartTask(sessionId, text, context, fromStash = false) {
-    const matchedTask = await this.taskEngine.matchTask(text)
+  async _tryStartTask(sessionId, text, context, fromStash = false, traceSteps = null) {
+    const matchedTask = await this.taskEngine.matchTask(text, null, traceSteps)
     if (!matchedTask) return null
 
     console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)

@@ -95,6 +95,12 @@ class TaskFlowEngine {
       this.llm.configure(this.llm.resolveFromDb(dbConfig))
       if (dbConfig.nlu_mode) nlu.setMode(dbConfig.nlu_mode)
       else nlu.setMode(options.nluMode || process.env.NLU_MODE || 'hybrid')
+      // 任务/FAQ 统一仲裁阈值（运营在管理后台配置，sys_config 存储）
+      nlu.setArbConfig({
+        gap: dbConfig.arb_gap,
+        taskMin: dbConfig.arb_task_min,
+        faqMin: dbConfig.arb_faq_min,
+      })
     } catch (e) {
       console.warn('[TaskFlow] LLM 配置读取失败，使用规则模式:', e.message)
     }
@@ -129,8 +135,8 @@ class TaskFlowEngine {
    * @param {string|null} currentCode - 进行中的任务（排除自身重复触发）
    * @returns {Promise<Object|null>} 任务定义
    */
-  async matchTask(text, currentCode = null) {
-    return nlu.matchTask(text, [...this.taskDefs.values()], currentCode)
+  async matchTask(text, currentCode = null, trace = null) {
+    return nlu.matchTask(text, [...this.taskDefs.values()], currentCode, trace)
   }
 
   /**

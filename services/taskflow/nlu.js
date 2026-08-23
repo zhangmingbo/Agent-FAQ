@@ -21,6 +21,7 @@ import llmClient from './llm.js'
 import { cosineSimilarity } from '../../src/similarity.js'
 import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
+import traceService from '../traceService.js'
 
 /** 否定句防护（避免"没坏/不用修"触发任务） */
 const NEGATION_RE = /没(有)?(坏|问题|故障|事|毛病)|不(是|用|要|想)(报修|维修|修)|没(有)?必要/
@@ -106,15 +107,20 @@ class TaskNLU {
    * @param {string} text
    * @param {Array} tasks - 全部任务定义
    * @param {string|null} currentCode - 当前进行中的任务（排除自身重复触发）
+   * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Promise<Object|null>}
    */
-  async matchTask(text, tasks, currentCode = null) {
+  async matchTask(text, tasks, currentCode = null, trace = null) {
     if (!text) return null
     const lowerText = text.trim().toLowerCase()
+    const _t = (step, detail = {}, level = 'info') => {
+      if (trace) traceService.traceStep(trace, '触发·' + step, detail, level)
+    }
 
     // 1) 关键词 + 近义扩展（确定性，所有模式都先走）
     //    否定表达不触发（"我没说要换表啊"含"换表"但明确否定）
     const byRule = this._matchByRules(lowerText, tasks, currentCode)
+    _t('触发词规则', { hit: byRule ? byRule.code : null, negated: this._isNegation(lowerText) })
     if (byRule && !this._isNegation(lowerText)) return byRule
     if (this.mode === 'rule') return null
 
@@ -123,6 +129,7 @@ class TaskNLU {
       try {
         const candidates = tasks.filter(t => t.status === 1 && t.code !== currentCode)
         const code = await llmClient.judgeTrigger(text, candidates)
+        _t('LLM 判定（judgeTrigger）', { result: code || 'null' }, code ? 'llm' : 'llm')
         if (code) {
           const hit = tasks.find(t => t.code === code)
           if (hit) {
@@ -138,7 +145,10 @@ class TaskNLU {
     // 3) 向量语义（意图例句；仅较长句子，否定句不触发）
     if (this.nlpEngine && text.trim().length >= 5 && !NEGATION_RE.test(text) && !this._isNegation(lowerText)) {
       const hit = await this._matchByVector(text, tasks, currentCode)
+      _t('意图例句向量', { hit: hit ? hit.code : null }, hit ? 'rule' : 'info')
       if (hit) return hit
+    } else {
+      _t('跳过向量语义', { reason: !this.nlpEngine ? '无模型' : (text.trim().length < 5 ? '太短' : '否定句') })
     }
 
     return null
@@ -401,22 +411,36 @@ class TaskNLU {
     const t = (text || '').trim()
     if (!t) return 'faq'
     const lower = t.toLowerCase()
+    // 轨迹埋点：faq-engine 传入当前轮 steps，route 内部逐步记录判断过程
+    const trace = ctx.trace
+    const _t = (step, detail = {}, level = 'info') => {
+      if (trace) traceService.traceStep(trace, '路由·' + step, detail, level)
+    }
 
     // ===== 规则快检 =====
     // 1) 当前任务中的确定性表达：确认/否认/取消 → 继续任务
     if (ctx.taskState) {
       const state = ctx.taskState
+      _t('有任务上下文', { taskCode: state.taskCode, status: state.status })
       if (state.status === 'confirming') {
         const confirmR = dialogueRules.isConfirm(t)
         const denyR = dialogueRules.isDeny(t)
         const isConfirm = typeof confirmR === 'object' ? confirmR.matched : confirmR
         const isDeny = typeof denyR === 'object' ? denyR.matched : denyR
+        _t('确认态词快检', { isConfirm, isDeny })
         if (isConfirm || isDeny) return 'task_continue'
       }
-      if (this._isCancel(lower)) return 'task_continue'
+      if (this._isCancel(lower)) {
+        _t('取消词快检', { matched: true })
+        return 'task_continue'
+      }
       // 话术直接点名槽位标签（"电话是X" "地址改X"）→ 继续任务
       const slotLabels = Object.values(state.slots || {}).map(s => s.label || s.key).filter(Boolean)
-      if (slotLabels.some(l => l && l.length >= 2 && t.includes(l))) return 'task_continue'
+      const labelHit = slotLabels.find(l => l && l.length >= 2 && t.includes(l))
+      _t('槽位标签快检', { matched: labelHit || null })
+      if (labelHit) return 'task_continue'
+    } else {
+      _t('无任务上下文')
     }
 
     // 2) 新任务意图判定：规则快检（含否定防护）+ 完整 matchTask（触发词/LLM/意图例句向量）
@@ -428,11 +452,13 @@ class TaskNLU {
       // 2.1 规则快检（触发词/近义扩展），否定表达不触发（"我没说要换表啊"）
       const byRule = this._matchByRules(lower, ctx.tasks, ctx.taskState?.taskCode || null)
       const negated = this._isNegation(lower)
+      _t('触发词规则快检', { byRule: byRule ? byRule.code : null, negated })
       if (byRule && !negated) {
         byRuleHit = true
         matchedTask = byRule
         // 触发词命中但话术像咨询（费用/价格/怎么/为什么…）→ 不武断
         consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
+        _t('触发词命中·咨询疑云', { task: byRule.code, consultHint })
         // 无咨询疑云 → 明确新任务
         if (!consultHint) return 'task_new'
       }
@@ -441,11 +467,20 @@ class TaskNLU {
       //    命中后必须与 FAQ 统一仲裁（同一模型对比相似度，谁高选谁），
       //    防止"查一下用气量"这类 FAQ 例句原话被任务例句语义误抢
       if (!matchedTask && this.mode !== 'rule') {
+        _t('走完整 matchTask（LLM 判定 + 意图例句向量）')
         try {
-          const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null)
+          const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null, trace)
+          _t('matchTask 结果', { hit: hit ? hit.code : null })
           if (hit) {
             // 语义/LLM 命中任务 → 与 FAQ 仲裁
             const arb = await this.arbitrateTaskFaq(t, ctx)
+            _t('任务/FAQ 统一仲裁', {
+              taskScore: arb.taskScore ? arb.taskScore.toFixed(3) : null,
+              faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
+              taskHit: arb.taskCode || null,
+              faqHit: arb.faqCode ? arb.faqCode + '(' + (arb.faqName || '') + ')' : null,
+              channel: arb.channel,
+            }, arb.channel === 'clarify' ? 'warn' : 'task')
             if (arb.channel === 'faq') return 'faq'
             if (arb.channel === 'clarify') return 'clarify'
             // arb.task_new → 任务胜出
@@ -454,19 +489,24 @@ class TaskNLU {
             if (!consultHint) return 'task_new'
           }
         } catch (e) {
+          _t('matchTask 异常', { message: e.message }, 'error')
           console.error('[TaskNLU] 路由 matchTask 判定失败:', e.message)
         }
       }
+    } else {
+      _t('无候选任务')
     }
 
     // ===== LLM 兜底（规则拿不准：任务中插话 / 触发词+咨询疑云 / 无任务咨询疑云） =====
     if (llmClient.enabled) {
+      _t('走 LLM 三选一兜底（router 提示词）')
       try {
         const decision = await llmClient.routeTurn({
           taskName: ctx.taskState?.taskName || '',
           taskContext: ctx.filledDesc || '',
           text: t,
         })
+        _t('LLM 路由判定', { decision: decision || 'null(拿不准)' }, decision ? 'llm' : 'warn')
         if (decision === 'faq') return 'faq'
         if (decision === 'new_task') return 'task_new'
         if (decision === 'continue') {
@@ -476,15 +516,21 @@ class TaskNLU {
         // LLM 返回 null（拿不准）→ 追问用户
         return 'clarify'
       } catch (e) {
+        _t('LLM 路由判定异常', { message: e.message }, 'error')
         console.error('[TaskNLU] LLM 路由判定失败:', e.message)
       }
     }
 
     // ===== 降级（LLM 不可用/失败） =====
     // 触发词+咨询疑云，规则无法区分任务还是咨询 → 追问用户二选一
-    if (byRuleHit && consultHint) return 'clarify'
+    if (byRuleHit && consultHint) {
+      _t('降级：触发词+咨询疑云 → 澄清', { byRuleHit, consultHint }, 'warn')
+      return 'clarify'
+    }
     // 有任务上下文且规则拿不准 → 保守继续任务（不丢进度）
-    return ctx.taskState ? 'task_continue' : 'faq'
+    const fallback = ctx.taskState ? 'task_continue' : 'faq'
+    _t('降级默认', { fallback })
+    return fallback
   }
 
   /**
