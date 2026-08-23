@@ -1,29 +1,38 @@
-import { get as getPrompt } from '../llmPrompts.js'
-
 /**
- * LLM 智能层客户端（OpenAI 兼容接口）
+ * LLM 智能层客户端（共享模块，全系统唯一 LLM 出口）
  *
- * 配置来源：sys_config 的 llm_enabled / llm_api_url / llm_api_key / llm_model
- * （与 FAQ 引擎的大模型兜底共用同一套配置，管理后台可改）
+ * 设计：
+ *   - 连接配置（总开关 + apiUrl/apiKey/model）与「调用节点」配置分离
+ *   - 每个用途（trigger/extract/dialogue/route/meaningless/rerank）是一个可配置节点：
+ *     { enabled, model, temperature, maxTokens }，管理后台可视化编辑，sys_config.llm_nodes 存储
+ *   - 各业务方法先查 nodeEnabled(用途) 再调用；未启用或失败返回 null/空，上层自行降级
  *
  * 提示词来源：运营配置注册表 llmPrompts（管理后台「LLM 智能层」可编辑，默认值兜底）
- *
- * 能力：
- *   extractSlots()  从自由文本一次性抽取所有槽位（JSON 输出），理解任意口语表达
- *   judgeTrigger()  判断用户输入是否意图触发某个任务（口语化触发）
- *
- * 未配置 / 调用失败时：enabled=false，上层自动降级为规则提取。
- * 兼容任意 OpenAI 格式的服务：DeepSeek API、通义千问、智谱 GLM、Ollama 等。
+ * 兼容任意 OpenAI 格式服务：DeepSeek / 通义千问 / 智谱 GLM / Ollama 等
  */
+
+import { get as getPrompt } from './llmPrompts.js'
+
+/** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖，默认全开=现行为） */
+export const DEFAULT_LLM_NODES = {
+  trigger:     { enabled: true, model: '', temperature: 0,   maxTokens: 20 },   // 任务触发判定
+  extract:     { enabled: true, model: '', temperature: 0,   maxTokens: 200 },  // 槽位提取
+  dialogue:    { enabled: true, model: '', temperature: 0.2, maxTokens: 400 },  // 任务对话
+  route:       { enabled: true, model: '', temperature: 0,   maxTokens: 10 },   // 意图路由兜底
+  meaningless: { enabled: true, model: '', temperature: 0.1, maxTokens: 10 },   // 无意义检测
+  rerank:      { enabled: true, model: '', temperature: 0,   maxTokens: 5 },    // FAQ 意图重排
+}
 
 class LLMClient {
   constructor() {
-    /** @type {{enabled:boolean, apiUrl:string, apiKey:string, model:string}|null} */
+    /** @type {{enabled:boolean, apiUrl:string, apiKey:string, model:string, systemPrompt:string}|null} */
     this.config = null
+    /** @type {Object<string, {enabled:boolean, model:string, temperature:number, maxTokens:number}>} */
+    this.nodes = {}
     this.timeoutMs = 15000
   }
 
-  /** 配置（启动时从 sys_config 加载，或后台保存后调用） */
+  /** 连接配置（启动时从 sys_config 加载，或后台保存后调用） */
   configure(cfg = {}) {
     this.config = {
       enabled: !!cfg.enabled && !!(cfg.apiUrl && cfg.apiKey),
@@ -33,7 +42,7 @@ class LLMClient {
       systemPrompt: cfg.systemPrompt || '',
     }
     if (this.config.enabled) {
-      console.log(`[TaskFlow-LLM] 已启用: ${this.config.model} @ ${this.config.apiUrl}`)
+      console.log(`[LLM] 已启用: ${this.config.model} @ ${this.config.apiUrl}`)
     }
   }
 
@@ -42,7 +51,7 @@ class LLMClient {
   }
 
   /**
-   * 从数据库配置解析 LLM 配置，环境变量兜底：
+   * 从数据库配置解析 LLM 连接配置，环境变量兜底：
    *   DEEPSEEK_API_KEY（或 LLM_API_KEY）存在时自动启用
    *   LLM_API_URL / LLM_MODEL 可覆盖默认值
    * @param {Object} dbConfig - configRepo.getAll() 结果
@@ -60,10 +69,37 @@ class LLMClient {
     }
   }
 
+  /** 设置调用节点配置（启动加载 / 后台保存，缺省合并默认值） */
+  setNodes(nodes = {}) {
+    for (const name of Object.keys(DEFAULT_LLM_NODES)) {
+      const n = nodes?.[name]
+      const d = DEFAULT_LLM_NODES[name]
+      this.nodes[name] = {
+        enabled: n && n.enabled !== undefined ? !!n.enabled : d.enabled,
+        model: n && typeof n.model === 'string' ? n.model : d.model,
+        temperature: n && typeof n.temperature === 'number' ? n.temperature : d.temperature,
+        maxTokens: n && typeof n.maxTokens === 'number' ? n.maxTokens : d.maxTokens,
+      }
+    }
+  }
+
+  /** 获取全部节点配置（管理后台编辑用） */
+  getNodes() {
+    return { ...this.nodes }
+  }
+
+  /** 某用途是否可调用 LLM（总开关 && 节点开关；节点未设置时按默认 true） */
+  nodeEnabled(name) {
+    if (!this.enabled) return false
+    const n = this.nodes[name]
+    if (n) return n.enabled !== false
+    return DEFAULT_LLM_NODES[name]?.enabled !== false
+  }
+
   /**
-   * 通用 chat 调用
+   * 底层统一 chat 调用
    * @param {Array<{role:string, content:string}>} messages
-   * @param {Object} opts - { maxTokens, temperature }
+   * @param {Object} opts - { model?, maxTokens, temperature }
    * @returns {Promise<string>}
    */
   async chat(messages, opts = {}) {
@@ -78,7 +114,7 @@ class LLMClient {
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
-          model: this.config.model,
+          model: opts.model || this.config.model,
           messages,
           max_tokens: opts.maxTokens || 300,
           temperature: opts.temperature ?? 0.1,
@@ -97,17 +133,21 @@ class LLMClient {
     }
   }
 
+  // ==================== 业务方法（每个节点一个） ====================
+
   /**
-   * LLM 驱动对话：单轮决策（agentic dialogue）
-   * @param {string} system - 系统提示词（已填充）
-   * @param {string} user - 用户消息（已填充）
+   * LLM 驱动对话：单轮决策（agentic dialogue）——节点 dialogue
    * @returns {Promise<Object>} { slots, reply, ask_confirm, question }
    */
   async dialogueTurn(system, user) {
+    if (!this.nodeEnabled('dialogue')) {
+      return { slots: {}, reply: '', ask_confirm: false, question: null }
+    }
+    const n = this.nodes.dialogue
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { maxTokens: 400, temperature: 0.2 })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
 
     const obj = this._parseJson(raw)
     if (!obj || typeof obj !== 'object') return { slots: {}, reply: '', ask_confirm: false, question: null }
@@ -120,14 +160,12 @@ class LLMClient {
   }
 
   /**
-   * 从用户输入一次性抽取所有未填槽位
-   * @param {string} text - 用户输入
-   * @param {Object} task - 任务定义
-   * @param {Object} slotsSpec - { key: {label, type, rule, required} }
-   * @param {Object} state - 任务状态
-   * @returns {Promise<Object>} { key: value }
+   * 从用户输入一次性抽取所有未填槽位——节点 extract
+   * @returns {Promise<Object>} { key: value }（未启用/失败返回 {}）
    */
   async extractSlots(text, task, slotsSpec, state) {
+    if (!this.nodeEnabled('extract')) return {}
+    const n = this.nodes.extract
     const slotDesc = Object.entries(slotsSpec)
       .map(([k, s]) => `${k}: ${s.label}${s.type === 'regex' && s.rule ? `（格式：${s.rule}）` : ''}${s.type === 'enum' && s.rule ? `（可选：${s.rule}）` : ''}`)
       .join('；')
@@ -142,7 +180,6 @@ class LLMClient {
       ? `\n业务场景例句（用户可能这么说）：${task.intent_examples.slice(0, 8).join('；')}`
       : ''
 
-    // 提示词来自运营配置注册表（管理后台可编辑，默认值兜底）
     const system = getPrompt('extract_slots.system')
     const user = getPrompt('extract_slots.user', {
       taskName: task.name,
@@ -155,20 +192,17 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { maxTokens: 200, temperature: 0 })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
 
     return this._parseJson(raw)
   }
 
   /**
-   * 提取单个槽位值（LLM 兜底用）
-   * @param {string} text - 用户输入
-   * @param {Object} slotDef - 槽位定义
-   * @param {Object} ctx - { taskCode, state, task }
+   * 提取单个槽位值（LLM 兜底用）——节点 extract
    * @returns {Promise<string|null>}
    */
   async extractSlot(text, slotDef, ctx = {}) {
-    if (!slotDef?.key) return null
+    if (!this.nodeEnabled('extract') || !slotDef?.key) return null
     const task = ctx.task || { name: '当前任务' }
     const result = await this.extractSlots(text, task, {
       [slotDef.key]: {
@@ -183,13 +217,12 @@ class LLMClient {
   }
 
   /**
-   * 判断用户输入是否意图触发某个任务（口语化触发判定）
-   * @param {string} text - 用户输入
-   * @param {Array<{code:string, name:string, trigger_keywords:Array}>} tasks - 候选任务
+   * 判断用户输入是否意图触发某个任务（口语化触发判定）——节点 trigger
    * @returns {Promise<string|null>} 触发的任务 code，未触发返回 null
    */
   async judgeTrigger(text, tasks) {
-    if (!this.enabled || tasks.length === 0) return null
+    if (!this.nodeEnabled('trigger') || !tasks || tasks.length === 0) return null
+    const n = this.nodes.trigger
     const taskDesc = tasks.map(t =>
       `${t.code}（${t.name}）：触发表达如 ${(t.trigger_keywords || []).filter(k => typeof k === 'string').slice(0, 5).join('、')}`
     ).join('\n')
@@ -200,7 +233,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { maxTokens: 20, temperature: 0 })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
 
     const trimmed = raw.replace(/["'`\s]/g, '')
     if (!trimmed || trimmed === 'null' || trimmed === '无' || trimmed === '没有') return null
@@ -209,25 +242,69 @@ class LLMClient {
   }
 
   /**
-   * 意图路由判定：用户输入该走哪条通道（规则拿不准时由 LLM 兜底）
-   * @param {Object} opts - { taskName, taskContext, text }
+   * 意图路由判定：用户输入该走哪条通道（规则拿不准时由 LLM 兜底）——节点 route
    * @returns {Promise<string>} 'continue' | 'new_task' | 'faq' | null
    */
   async routeTurn({ taskName, taskContext, text }) {
-    if (!this.enabled) return null
+    if (!this.nodeEnabled('route')) return null
+    const n = this.nodes.route
     const system = getPrompt('router.system', { taskName, taskContext })
     const user = getPrompt('router.user', { taskName, taskContext, text })
 
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { maxTokens: 10, temperature: 0 })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
 
     const trimmed = raw.trim().toLowerCase()
     if (trimmed.startsWith('continue')) return 'continue'
     if (trimmed.startsWith('new_task')) return 'new_task'
     if (trimmed.startsWith('faq')) return 'faq'
     return null
+  }
+
+  /**
+   * 无意义检测（FAQ 侧）——节点 meaningless
+   * @returns {Promise<boolean|null>} true=无意义 false=有意义 null=未启用/失败（调用方降级）
+   */
+  async isMeaningless(text) {
+    if (!this.nodeEnabled('meaningless')) return null
+    const n = this.nodes.meaningless
+    try {
+      const raw = await this.chat([
+        { role: 'system', content: getPrompt('meaningless.system') },
+        { role: 'user', content: text },
+      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+      // 大模型返回 false 表示无意义
+      return raw.trim().toLowerCase() === 'false'
+    } catch (e) {
+      console.error('[LLM] 无意义判断失败:', e.message)
+      return null
+    }
+  }
+
+  /**
+   * FAQ 意图重排（FAQ 侧）——节点 rerank
+   * @param {string} text - 用户输入
+   * @param {Array<{intentCode?, intent_code?, intentName?, questionText?}>} candidates - 候选意图
+   * @returns {Promise<string|null>} 重排后更优的意图 code，失败/未启用返回 null
+   */
+  async rerankIntent(text, candidates) {
+    if (!this.nodeEnabled('rerank') || !candidates || candidates.length === 0) return null
+    const n = this.nodes.rerank
+    try {
+      const list = candidates.map((c, i) => `${i + 1}. ${c.intentName || c.intentCode}（${(c.questionText || '').slice(0, 30)}）`).join('\n')
+      const raw = await this.chat([
+        { role: 'system', content: getPrompt('llm_rerank.system') },
+        { role: 'user', content: getPrompt('llm_rerank.user', { list, text }) },
+      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+      const idx = parseInt(raw.trim(), 10) - 1
+      const hit = candidates[idx]
+      return hit ? (hit.intentCode || hit.intent_code) : null
+    } catch (e) {
+      console.error('[LLM] 意图重排失败:', e.message)
+      return null
+    }
   }
 
   /** 解析 LLM 返回的 JSON（容忍 ```json 包裹与前后噪声） */
@@ -242,7 +319,7 @@ class LLMClient {
       const obj = JSON.parse(s)
       return obj && typeof obj === 'object' ? obj : {}
     } catch {
-      console.warn('[TaskFlow-LLM] JSON 解析失败:', raw.slice(0, 120))
+      console.warn('[LLM] JSON 解析失败:', raw.slice(0, 120))
       return {}
     }
   }

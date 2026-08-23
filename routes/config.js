@@ -10,6 +10,7 @@ import llmPrompts from '../services/llmPrompts.js'
 import taskSuggestService from '../services/taskSuggestService.js'
 import { getAllReplyTexts, setReplyTexts } from '../services/replyTexts.js'
 import { getAllMatchVocab, setMatchVocab } from '../services/matchVocab.js'
+import llmClient from '../services/llmClient.js'
 
 export function createRouter(engine) {
   const router = Router()
@@ -28,10 +29,6 @@ export function createRouter(engine) {
       return
     }
     await llmPrompts.updatePrompts(prompts)
-    // 同步 FAQ 引擎兜底回答的系统提示词
-    if (engine.llmConfig) {
-      engine.llmConfig.systemPrompt = llmPrompts.get('faq_answer.system')
-    }
     res.json({ success: true, message: '提示词已保存' })
   }))
 
@@ -76,6 +73,8 @@ export function createRouter(engine) {
       // 固定话术 / 匹配词表（运营可配，sys_config 存储）
       replyTexts: getAllReplyTexts(),
       matchVocab: getAllMatchVocab(),
+      // LLM 调用节点（可视化编辑，sys_config.llm_nodes 存储）
+      llmNodes: llmClient.getNodes(),
     })
   }))
 
@@ -192,16 +191,16 @@ export function createRouter(engine) {
         apiKey: cfg.llm_api_key || '',
         model: cfg.llm_model || 'deepseek-chat',
       }
-      // 同步任务引擎 LLM 层（配置即激活）
+      // 同步共享 LLM 模块（配置即激活；taskEngine.setLlmConfig 配置的就是同一实例）
       if (engine.taskEngine?.setLlmConfig) {
         engine.taskEngine.setLlmConfig(llmCfg)
       }
-      // 同步 FAQ 引擎大模型兜底
-      if (llmCfg.enabled) {
-        engine.llmConfig = { enabled: true, apiUrl: llmCfg.apiUrl, apiKey: llmCfg.apiKey, model: llmCfg.model }
-      } else {
-        engine.llmConfig = { enabled: false }
-      }
+    }
+
+    // LLM 调用节点配置（可视化编辑，保存即生效）
+    if (req.body.llmNodes !== undefined) {
+      await configRepo.set('llm_nodes', JSON.stringify(req.body.llmNodes))
+      llmClient.setNodes(req.body.llmNodes)
     }
 
     res.json({

@@ -1226,10 +1226,71 @@
   // ===== LLM 智能层面板（提示词运营配置） =====
   function buildLLMPanelHTML() {
     return '<div class="llm-panel">' +
-      '<div class="task-header"><h4>LLM 智能层 · 提示词运营配置</h4></div>' +
+      '<div class="task-header"><h4>LLM 智能层 · 调用节点与提示词</h4></div>' +
       '<div id="llm-status" style="padding:8px 0;font-size:13px;color:#555">加载中...</div>' +
-      '<div id="llm-calls"></div>' +
+      '<div id="llm-nodes" style="margin-top:16px"></div>' +
+      '<div id="llm-calls" style="margin-top:24px"></div>' +
     '</div>';
+  }
+
+  // LLM 调用节点元信息（可视化编辑：独立开关 + 模型 + 温度 + 最大token）
+  var LLM_NODES_META = [
+    { key: 'trigger', name: '任务触发判定', desc: '规则触发词没命中时，LLM 判断是否口语触发了任务' },
+    { key: 'extract', name: '槽位提取', desc: '规则提取不到时，LLM 从口语中抽取槽位（电话/姓名/地址等）' },
+    { key: 'dialogue', name: '任务对话', desc: '任务对话轮次由 LLM 驱动（回复 + 提取 + 提问插话）' },
+    { key: 'route', name: '意图路由兜底', desc: '任务/FAQ 拿不准时，LLM 三选一（继续 / 新任务 / 咨询）' },
+    { key: 'meaningless', name: '无意义检测', desc: '判断闲聊/语气词是否无意义（无意义检测选 llm 模式时）' },
+    { key: 'rerank', name: 'FAQ 意图重排', desc: 'FAQ 候选多且分数不高时，LLM 重排选最优' },
+  ];
+
+  function renderLLMNodes() {
+    var box = document.getElementById('llm-nodes');
+    if (!box) return;
+    api('GET', '/api/config', null, function(cfg) {
+      if (!cfg) return;
+      var nodes = cfg.llmNodes || {};
+      var html = '<h4 style="font-size:14px;color:#4361ee;margin:0 0 6px">LLM 调用节点</h4>' +
+        '<div style="font-size:12px;color:#999;margin-bottom:12px">每个"要用 LLM 的环节"是一个节点：可独立开关、配置模型（留空=全局模型）、温度、最大 token。保存即生效；关闭的节点自动降级为规则/不调用。</div>' +
+        '<div class="texts-grid">';
+      LLM_NODES_META.forEach(function(m) {
+        var n = nodes[m.key] || {};
+        html += '<div class="text-group"><h4>' + m.name + '</h4>' +
+          '<div class="cfg-comment" style="margin-bottom:8px">' + m.desc + '</div>' +
+          '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="ln-' + m.key + '-enabled" ' + (n.enabled === false ? '' : 'checked') + '> 启用此节点</label>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px">' +
+            '<div style="margin-bottom:8px"><div style="font-size:12px;color:#888;margin-bottom:2px">模型（留空=全局）</div><input id="ln-' + m.key + '-model" type="text" value="' + esc(n.model || '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+            '<div style="margin-bottom:8px"><div style="font-size:12px;color:#888;margin-bottom:2px">温度</div><input id="ln-' + m.key + '-temperature" type="number" step="0.1" min="0" max="2" value="' + (n.temperature ?? 0) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+            '<div style="margin-bottom:8px"><div style="font-size:12px;color:#888;margin-bottom:2px">最大 token</div><input id="ln-' + m.key + '-maxTokens" type="number" min="1" max="2000" value="' + (n.maxTokens ?? 100) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
+          '</div>' +
+        '</div>';
+      });
+      html += '</div>' +
+        '<button id="llm-nodes-save" class="btn-sm btn-primary" style="padding:8px 24px;margin-top:14px">保存节点配置</button>' +
+        '<span id="llm-nodes-msg" style="margin-left:10px;font-size:12px;color:#2e7d32"></span>';
+      box.innerHTML = html;
+      var saveBtn = document.getElementById('llm-nodes-save');
+      if (saveBtn) saveBtn.onclick = function() {
+        var payload = {};
+        var bad = [];
+        LLM_NODES_META.forEach(function(m) {
+          var t = parseFloat(document.getElementById('ln-' + m.key + '-temperature').value);
+          var mt = parseInt(document.getElementById('ln-' + m.key + '-maxTokens').value, 10);
+          if (isNaN(t) || isNaN(mt)) { bad.push(m.name); return; }
+          payload[m.key] = {
+            enabled: document.getElementById('ln-' + m.key + '-enabled').checked,
+            model: document.getElementById('ln-' + m.key + '-model').value.trim(),
+            temperature: t,
+            maxTokens: mt,
+          };
+        });
+        if (bad.length) { alert('以下节点参数格式错误：' + bad.join('、')); return; }
+        api('POST', '/api/config', { llmNodes: payload }, function(res) {
+          var msg = document.getElementById('llm-nodes-msg');
+          if (res.success) { if (msg) msg.textContent = '✓ 已保存并生效'; }
+          else alert('节点配置保存失败：' + (res.message || '未知错误'));
+        });
+      };
+    });
   }
 
   function loadLLMPanel() {
@@ -1240,6 +1301,8 @@
       var st = cfg.llmEnabled ? '<span class="status-tag on">已启用</span>' : '<span class="status-tag off">未启用</span>';
       el.innerHTML = st + ' ｜ 模型：' + esc(cfg.llmModel || '-') + ' ｜ 接口：' + esc(cfg.llmApiUrl || '-') + ' ｜ 理解模式：' + esc(cfg.nluMode || 'hybrid');
     });
+    // 调用节点配置（可视化编辑）
+    renderLLMNodes();
     // 调用点清单
     api('GET', '/api/config/llm-prompts', null, function(res) {
       var el = document.getElementById('llm-calls');

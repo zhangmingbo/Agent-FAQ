@@ -18,7 +18,7 @@ import { getStore, closeStore } from './store.js'
 import TaskDefs from './taskDefs.js'
 import DialogManager from './dialogManager.js'
 import LLMDialogManager from './llmDialogManager.js'
-import llmClient from './llm.js'
+import llmClient, { DEFAULT_LLM_NODES } from '../llmClient.js'
 import nlu from './nlu.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
 import * as configRepo from '../../repositories/configRepo.js'
@@ -93,6 +93,16 @@ class TaskFlowEngine {
     try {
       const dbConfig = await configRepo.getAll()
       this.llm.configure(this.llm.resolveFromDb(dbConfig))
+      // 调用节点配置（llm_nodes 首次自动落库，之后以库为准）
+      try {
+        if (dbConfig.llm_nodes) this.llm.setNodes(JSON.parse(dbConfig.llm_nodes))
+        else {
+          this.llm.setNodes()
+          await configRepo.set('llm_nodes', JSON.stringify(DEFAULT_LLM_NODES))
+        }
+      } catch (e) {
+        console.warn('[TaskFlow] 解析 llm_nodes 失败，使用默认节点配置:', e.message)
+      }
       if (dbConfig.nlu_mode) nlu.setMode(dbConfig.nlu_mode)
       else nlu.setMode(options.nluMode || process.env.NLU_MODE || 'hybrid')
       // 任务/FAQ 统一仲裁阈值（运营在管理后台配置，sys_config 存储）
@@ -184,7 +194,7 @@ class TaskFlowEngine {
     }
 
     // LLM 驱动对话（llm/hybrid 模式且 LLM 可用）；LLM 失败自动降级回规则版
-    const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid') && this.llm.enabled
+    const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid') && this.llm.nodeEnabled('dialogue')
     let result = null
     if (useLlmDialog) {
       try {

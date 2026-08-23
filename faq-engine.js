@@ -22,6 +22,7 @@ import FaqService from './services/faqService.js'
 import * as statsService from './services/statsService.js'
 import * as chatLogRepo from './repositories/chatLogRepo.js'
 import { get as getPrompt } from './services/llmPrompts.js'
+import llmClient from './services/llmClient.js'
 import { getReply } from './services/replyTexts.js'
 import { getRouteChoiceWords } from './services/matchVocab.js'
 import traceService from './services/traceService.js'
@@ -43,7 +44,6 @@ class FAQEngine {
    */
   constructor(options = {}) {
     this.clarifyThreshold = options.clarifyThreshold ?? 0.65
-    this.llmConfig = options.llm || { enabled: false }
     this.meaninglessDetectionMode = 'rule' // 'rule' 或 'llm'
 
     // 开放给运营的判定参数（sys_config 可配，routes/config.js 热更新）
@@ -731,40 +731,10 @@ class FAQEngine {
    * 调用大模型判断用户输入是否是有意义的咨询问题
    */
   async _isMeaninglessByLLM(text) {
-    if (!this.llmConfig.enabled || !this.llmConfig.apiUrl || !this.llmConfig.apiKey) {
-      // 大模型未配置，降级为规则模式
-      return this._isMeaninglessByRule(text)
-    }
-
-    try {
-      const response = await fetch(this.llmConfig.apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.llmConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.llmConfig.model,
-          messages: [
-            {
-              role: 'system',
-              content: getPrompt('meaningless.system'),
-            },
-            { role: 'user', content: text }
-          ],
-          max_tokens: 10,
-          temperature: 0.1,
-        }),
-      })
-
-      const data = await response.json()
-      const result = data.choices?.[0]?.message?.content?.trim().toLowerCase()
-      // 大模型返回 false 表示无意义
-      return result === 'false'
-    } catch (e) {
-      console.error('[FAQ引擎] 大模型无意义判断失败，降级为规则模式:', e.message)
-      return this._isMeaninglessByRule(text)
-    }
+    // 统一走共享 LLM 模块（节点 meaningless）；未启用或失败 → 降级规则模式
+    const r = await llmClient.isMeaningless(text)
+    if (r === null) return this._isMeaninglessByRule(text)
+    return r
   }
 
   /**
@@ -825,7 +795,7 @@ class FAQEngine {
 
     if (result.matched) {
       // ===== [STEP 3.5] LLM 意图重排（可选，配置启用且置信度不高时） =====
-      if (this.llmConfig?.enabled && result.confidence < this.llmRerankCeiling && (result.top_results?.length || 0) >= 2) {
+      if (llmClient.nodeEnabled('rerank') && result.confidence < this.llmRerankCeiling && (result.top_results?.length || 0) >= 2) {
         const choice = await this._llmRerankIntent(text, result.top_results.slice(0, 5))
         if (choice && choice !== result.intent_code) {
           const alt = result.top_results.find(r => (r.intentCode || r.intent_code) === choice)
@@ -973,33 +943,8 @@ class FAQEngine {
    * @returns {Promise<string|null>} 意图 code
    */
   async _llmRerankIntent(text, candidates) {
-    try {
-      const list = candidates.map((c, i) => `${i + 1}. ${c.intentName || c.intentCode}（${(c.questionText || '').slice(0, 30)}）`).join('\n')
-      const response = await fetch(this.llmConfig.apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.llmConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.llmConfig.model,
-          messages: [
-            { role: 'system', content: getPrompt('llm_rerank.system') },
-            { role: 'user', content: getPrompt('llm_rerank.user', { list, text }) },
-          ],
-          max_tokens: 5,
-          temperature: 0,
-        }),
-      })
-      const data = await response.json()
-      const content = (data.choices?.[0]?.message?.content || '').trim()
-      const idx = parseInt(content, 10) - 1
-      const hit = candidates[idx]
-      return hit ? (hit.intentCode || hit.intent_code) : null
-    } catch (e) {
-      console.error('[LLM] 意图重排失败:', e.message)
-      return null
-    }
+    // 统一走共享 LLM 模块（节点 rerank）
+    return llmClient.rerankIntent(text, candidates)
   }
 
   /**
@@ -1096,43 +1041,6 @@ class FAQEngine {
 
     console.log(`[OUTPUT] Source: fallback | Answer Length: ${fallbackResponse.answer.length}`)
     return fallbackResponse
-  }
-
-  /**
-   * 调用大模型（可选功能）
-   */
-  async _callLLM(text, context) {
-    if (!this.llmConfig.apiUrl || !this.llmConfig.apiKey) {
-      throw new Error('大模型配置不完整')
-    }
-
-    // 构建上下文消息（系统提示词来自运营配置注册表，可后台覆盖）
-    const messages = [
-      { role: 'system', content: this.llmConfig.systemPrompt || getPrompt('faq_answer.system') },
-    ]
-
-    // 加入最近 5 轮对话作为上下文
-    const recentHistory = context.history.slice(-10)
-    for (const msg of recentHistory) {
-      messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.text })
-    }
-
-    const response = await fetch(this.llmConfig.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.llmConfig.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.llmConfig.model,
-        messages,
-        max_tokens: 500,
-        temperature: 0.7,
-      }),
-    })
-
-    const data = await response.json()
-    return data.choices?.[0]?.message?.content || '抱歉，暂时无法回答。'
   }
 
   /**

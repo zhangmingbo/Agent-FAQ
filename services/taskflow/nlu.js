@@ -17,7 +17,7 @@
 
 import extractor from './extractor.js'
 import { validateSlot } from './validator.js'
-import llmClient from './llm.js'
+import llmClient from '../llmClient.js'
 import { cosineSimilarity } from '../../src/similarity.js'
 import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
@@ -132,7 +132,7 @@ class TaskNLU {
     if (this.mode === 'rule') return null
 
     // 2) LLM 判定（llm 模式优先；hybrid 在规则未命中后尝试）
-    if (llmClient.enabled && text.trim().length >= 3) {
+    if (llmClient.nodeEnabled('trigger') && text.trim().length >= 3) {
       try {
         const candidates = tasks.filter(t => t.status === 1 && t.code !== currentCode)
         const code = await llmClient.judgeTrigger(text, candidates)
@@ -367,7 +367,7 @@ class TaskNLU {
    */
   async extractSlotValue(text, slotDef, ctx = {}, opts = {}) {
     const method = slotDef.extract?.method || 'text'
-    const llmFirst = this.mode === 'llm' && llmClient.enabled && !opts.labelOnly && method === 'text'
+    const llmFirst = this.mode === 'llm' && llmClient.nodeEnabled('extract') && !opts.labelOnly && method === 'text'
     let value = null
     let source = null
 
@@ -388,7 +388,7 @@ class TaskNLU {
     }
 
     // LLM 兜底（hybrid 模式：规则未提取到时）
-    if (value === null && !llmFirst && this.mode !== 'rule' && llmClient.enabled && !opts.labelOnly) {
+    if (value === null && !llmFirst && this.mode !== 'rule' && llmClient.nodeEnabled('extract') && !opts.labelOnly) {
       try {
         value = await llmClient.extractSlot(text, slotDef, ctx)
         source = value !== null ? 'llm' : null
@@ -404,7 +404,7 @@ class TaskNLU {
    * @returns {Promise<Object|null>} { key: value }
    */
   async extractSlotsBatch(text, task, slotsSpec, state) {
-    if (this.mode === 'rule' || !llmClient.enabled) return null
+    if (this.mode === 'rule' || !llmClient.nodeEnabled('extract')) return null
     try {
       return await llmClient.extractSlots(text, task, slotsSpec, state)
     } catch (e) {
@@ -427,7 +427,7 @@ class TaskNLU {
    * @returns {Promise<{slots:Object, reply:string, ask_confirm:boolean, question:string|null}>}
    */
   async dialogue({ task, slotDesc, filledDesc, history, text }) {
-    if (!llmClient.enabled) throw new Error('LLM 未配置，无法执行 LLM 对话')
+    if (!llmClient.nodeEnabled('dialogue')) throw new Error('LLM 对话节点未启用')
     const system = getPrompt('dialogue.system', {
       brand: '沁园',
       taskName: task.name,
@@ -623,7 +623,7 @@ class TaskNLU {
     }
 
     // ===== LLM 兜底（规则拿不准：任务中插话 / 触发词+咨询疑云 / 无任务咨询疑云） =====
-    if (llmClient.enabled) {
+    if (llmClient.nodeEnabled('route')) {
       _t('走 LLM 三选一兜底（router 提示词）')
       try {
         const decision = await llmClient.routeTurn({

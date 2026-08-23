@@ -14,7 +14,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import nlu from '../services/taskflow/nlu.js'
-import llmClient from '../services/taskflow/llm.js'
+import llmClient from '../services/llmClient.js'
 import { TaskState } from '../services/taskflow/stateMachine.js'
 
 // 任务上下文 mock
