@@ -1720,6 +1720,38 @@
           '</div>' +
           '<div style="color:#999;font-size:12px;margin-top:4px">任务与 FAQ 语义相似度接近时的判定：差距超过阈值选高者，否则澄清让用户选。此配置只对本任务生效，优先级高于系统配置。</div>' +
         '</div>' +
+        '<div class="form-group"><label>LLM 配置（可选，任务级覆盖全局节点；不配=用全局）</label>' +
+          '<div style="border:1px solid #e8ecff;border-radius:8px;padding:12px;background:#fafbff">' +
+            '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tf-llm-enabled" ' + (isEdit && task.llm && task.llm.enabled === false ? 'checked' : '') + '> 本任务完全不用 LLM（对话/提取都走规则）</label>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
+              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
+                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">任务对话 <span style="color:#999;font-weight:normal;font-size:12px">（每轮回复/槽位提取）</span></div>' +
+                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-dialogue-enabled" ' + (isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.enabled === false ? '' : 'checked') + '> 启用</label>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                  '<label style="font-size:12px;color:#666">模型 <input id="tf-llm-dialogue-model" placeholder="留空=全局" style="width:90px" value="' + esc(isEdit && task.llm && task.llm.dialogue ? (task.llm.dialogue.model || '') : '') + '"></label>' +
+                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-dialogue-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.temperature != null ? task.llm.dialogue.temperature : '') + '"></label>' +
+                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-dialogue-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.maxTokens != null ? task.llm.dialogue.maxTokens : '') + '"></label>' +
+                '</div>' +
+              '</div>' +
+              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
+                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">槽位提取 <span style="color:#999;font-weight:normal;font-size:12px">（规则提取失败时）</span></div>' +
+                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-extract-enabled" ' + (isEdit && task.llm && task.llm.extract && task.llm.extract.enabled === false ? '' : 'checked') + '> 启用</label>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                  '<label style="font-size:12px;color:#666">模型 <input id="tf-llm-extract-model" placeholder="留空=全局" style="width:90px" value="' + esc(isEdit && task.llm && task.llm.extract ? (task.llm.extract.model || '') : '') + '"></label>' +
+                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-extract-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.temperature != null ? task.llm.extract.temperature : '') + '"></label>' +
+                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-extract-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.maxTokens != null ? task.llm.extract.maxTokens : '') + '"></label>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="margin-top:10px">' +
+              '<div style="font-size:12px;color:#888;margin-bottom:4px">提示词覆盖（可选，留空=用全局模板。占位符：对话 {taskName}{slotDesc}{filledDesc}{history}{text}；提取 {taskName}{examples}{slotDesc}{filledDesc}{text}）</div>' +
+              '<textarea id="tf-llm-dialogue-system" placeholder="对话系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
+              '<textarea id="tf-llm-dialogue-user" placeholder="对话用户模板（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
+              '<textarea id="tf-llm-extract-system" placeholder="提取系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
+              '<textarea id="tf-llm-extract-user" placeholder="提取用户模板（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractUser || '') : '') + '</textarea>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -1873,6 +1905,35 @@
         arb_task_min: (function() { var v = overlay.querySelector('#tf-arb-task-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_faq_min: (function() { var v = overlay.querySelector('#tf-arb-faq-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_strong_hit: (function() { var v = overlay.querySelector('#tf-arb-strong-hit').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
+        // 任务级 LLM 配置（未改动 → undefined → 不覆盖全局；勾选/填值 → 只存差异项）
+        llm: (function() {
+          function nodeOf(prefix) {
+            var enabledChecked = overlay.querySelector('#tf-llm-' + prefix + '-enabled').checked;
+            var model = overlay.querySelector('#tf-llm-' + prefix + '-model').value.trim();
+            var temp = overlay.querySelector('#tf-llm-' + prefix + '-temp').value.trim();
+            var tokens = overlay.querySelector('#tf-llm-' + prefix + '-tokens').value.trim();
+            var node = {};
+            if (!enabledChecked) node.enabled = false;
+            if (model) node.model = model;
+            if (temp !== '') { var t = parseFloat(temp); if (!isNaN(t)) node.temperature = t; }
+            if (tokens !== '') { var m = parseInt(tokens, 10); if (!isNaN(m)) node.maxTokens = m; }
+            return Object.keys(node).length ? node : undefined;
+          }
+          var out = {};
+          if (overlay.querySelector('#tf-llm-enabled').checked) out.enabled = false;
+          var dlg = nodeOf('dialogue');
+          if (dlg) out.dialogue = dlg;
+          var ext = nodeOf('extract');
+          if (ext) out.extract = ext;
+          var prompts = {};
+          ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
+            var key = id.split('-').map(function(w, i) { return i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join('');
+            var v = overlay.querySelector('#tf-llm-' + id).value.trim();
+            if (v) prompts[key] = v;
+          });
+          if (Object.keys(prompts).length) out.prompts = prompts;
+          return Object.keys(out).length ? out : undefined;
+        })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: overlay.querySelector('#tf-action').value || '',
         status: 1,

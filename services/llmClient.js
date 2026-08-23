@@ -89,11 +89,44 @@ class LLMClient {
   }
 
   /** 某用途是否可调用 LLM（总开关 && 节点开关；节点未设置时按默认 true） */
-  nodeEnabled(name) {
+  nodeEnabled(name, taskLlm = null) {
     if (!this.enabled) return false
+    // 任务级总开关：本任务完全不用 LLM
+    if (taskLlm && taskLlm.enabled === false) return false
+    const t = taskLlm?.[name]
+    if (t && t.enabled !== undefined) return !!t.enabled
     const n = this.nodes[name]
     if (n) return n.enabled !== false
     return DEFAULT_LLM_NODES[name]?.enabled !== false
+  }
+
+  /**
+   * 解析某用途的"生效节点配置"（任务级 > 全局节点 > 默认值）
+   * @param {string} name - 用途名
+   * @param {Object|null} taskLlm - 任务定义里的 llm 配置块
+   * @returns {{enabled:boolean, model:string, temperature:number, maxTokens:number}}
+   */
+  resolveEffective(name, taskLlm = null) {
+    if (taskLlm && taskLlm.enabled === false) {
+      return { enabled: false, model: '', temperature: 0, maxTokens: 0 }
+    }
+    const t = taskLlm?.[name] || {}
+    const g = this.nodes[name] || DEFAULT_LLM_NODES[name] || {}
+    return {
+      enabled: t.enabled !== undefined ? !!t.enabled : g.enabled !== false,
+      model: typeof t.model === 'string' && t.model ? t.model : (g.model || ''),
+      temperature: typeof t.temperature === 'number' ? t.temperature : (g.temperature ?? 0),
+      maxTokens: typeof t.maxTokens === 'number' ? t.maxTokens : (g.maxTokens ?? 100),
+    }
+  }
+
+  /** 填充占位符 {xxx}（任务级提示词覆盖用） */
+  _fill(template, vars = {}) {
+    let t = String(template || '')
+    for (const [k, v] of Object.entries(vars)) {
+      t = t.split(`{${k}}`).join(v ?? '')
+    }
+    return t
   }
 
   /**
@@ -137,17 +170,20 @@ class LLMClient {
 
   /**
    * LLM 驱动对话：单轮决策（agentic dialogue）——节点 dialogue
+   * @param {string} system - 系统提示词（已填充；任务级覆盖时由调用方传入覆盖模板）
+   * @param {string} user - 用户消息（已填充）
+   * @param {Object} [cfg] - 生效节点配置（任务级解析结果；缺省用全局节点）
    * @returns {Promise<Object>} { slots, reply, ask_confirm, question }
    */
-  async dialogueTurn(system, user) {
-    if (!this.nodeEnabled('dialogue')) {
+  async dialogueTurn(system, user, cfg = null) {
+    const eff = cfg || this.resolveEffective('dialogue')
+    if (!eff.enabled) {
       return { slots: {}, reply: '', ask_confirm: false, question: null }
     }
-    const n = this.nodes.dialogue
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature })
 
     const obj = this._parseJson(raw)
     if (!obj || typeof obj !== 'object') return { slots: {}, reply: '', ask_confirm: false, question: null }
@@ -164,8 +200,8 @@ class LLMClient {
    * @returns {Promise<Object>} { key: value }（未启用/失败返回 {}）
    */
   async extractSlots(text, task, slotsSpec, state) {
-    if (!this.nodeEnabled('extract')) return {}
-    const n = this.nodes.extract
+    const eff = this.resolveEffective('extract', task?.llm || null)
+    if (!eff.enabled) return {}
     const slotDesc = Object.entries(slotsSpec)
       .map(([k, s]) => `${k}: ${s.label}${s.type === 'regex' && s.rule ? `（格式：${s.rule}）` : ''}${s.type === 'enum' && s.rule ? `（可选：${s.rule}）` : ''}`)
       .join('；')
@@ -180,19 +216,24 @@ class LLMClient {
       ? `\n业务场景例句（用户可能这么说）：${task.intent_examples.slice(0, 8).join('；')}`
       : ''
 
-    const system = getPrompt('extract_slots.system')
-    const user = getPrompt('extract_slots.user', {
-      taskName: task.name,
-      examples,
-      slotDesc,
-      filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '',
-      text,
-    })
+    // 提示词：任务级覆盖优先，其次运营配置注册表（管理后台可编辑），默认值兜底
+    const sysTpl = task?.llm?.prompts?.extractSystem
+    const system = sysTpl ? this._fill(sysTpl, {}) : getPrompt('extract_slots.system')
+    const userTpl = task?.llm?.prompts?.extractUser
+    const user = userTpl
+      ? this._fill(userTpl, { taskName: task.name, examples, slotDesc, filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '', text })
+      : getPrompt('extract_slots.user', {
+          taskName: task.name,
+          examples,
+          slotDesc,
+          filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '',
+          text,
+        })
 
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature })
 
     return this._parseJson(raw)
   }
@@ -202,7 +243,7 @@ class LLMClient {
    * @returns {Promise<string|null>}
    */
   async extractSlot(text, slotDef, ctx = {}) {
-    if (!this.nodeEnabled('extract') || !slotDef?.key) return null
+    if (!this.nodeEnabled('extract', ctx?.task?.llm || null) || !slotDef?.key) return null
     const task = ctx.task || { name: '当前任务' }
     const result = await this.extractSlots(text, task, {
       [slotDef.key]: {

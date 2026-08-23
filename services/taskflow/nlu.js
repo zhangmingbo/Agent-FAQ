@@ -367,7 +367,7 @@ class TaskNLU {
    */
   async extractSlotValue(text, slotDef, ctx = {}, opts = {}) {
     const method = slotDef.extract?.method || 'text'
-    const llmFirst = this.mode === 'llm' && llmClient.nodeEnabled('extract') && !opts.labelOnly && method === 'text'
+    const llmFirst = this.mode === 'llm' && llmClient.nodeEnabled('extract', ctx?.task?.llm || null) && !opts.labelOnly && method === 'text'
     let value = null
     let source = null
 
@@ -388,7 +388,7 @@ class TaskNLU {
     }
 
     // LLM 兜底（hybrid 模式：规则未提取到时）
-    if (value === null && !llmFirst && this.mode !== 'rule' && llmClient.nodeEnabled('extract') && !opts.labelOnly) {
+    if (value === null && !llmFirst && this.mode !== 'rule' && llmClient.nodeEnabled('extract', ctx?.task?.llm || null) && !opts.labelOnly) {
       try {
         value = await llmClient.extractSlot(text, slotDef, ctx)
         source = value !== null ? 'llm' : null
@@ -404,7 +404,7 @@ class TaskNLU {
    * @returns {Promise<Object|null>} { key: value }
    */
   async extractSlotsBatch(text, task, slotsSpec, state) {
-    if (this.mode === 'rule' || !llmClient.nodeEnabled('extract')) return null
+    if (this.mode === 'rule' || !llmClient.nodeEnabled('extract', task?.llm || null)) return null
     try {
       return await llmClient.extractSlots(text, task, slotsSpec, state)
     } catch (e) {
@@ -427,20 +427,18 @@ class TaskNLU {
    * @returns {Promise<{slots:Object, reply:string, ask_confirm:boolean, question:string|null}>}
    */
   async dialogue({ task, slotDesc, filledDesc, history, text }) {
-    if (!llmClient.nodeEnabled('dialogue')) throw new Error('LLM 对话节点未启用')
-    const system = getPrompt('dialogue.system', {
-      brand: '沁园',
-      taskName: task.name,
-      slotDesc,
-    })
-    const user = getPrompt('dialogue.user', {
-      taskName: task.name,
-      slotDesc,
-      filledDesc,
-      history,
-      text,
-    })
-    return llmClient.dialogueTurn(system, user)
+    const eff = llmClient.resolveEffective('dialogue', task?.llm || null)
+    if (!eff.enabled) throw new Error('LLM 对话未启用（任务级配置关闭或节点关闭）')
+    // 提示词：任务级覆盖优先，其次运营配置注册表
+    const sysTpl = task?.llm?.prompts?.dialogueSystem
+    const system = sysTpl
+      ? llmClient._fill(sysTpl, { brand: '沁园', taskName: task.name, slotDesc })
+      : getPrompt('dialogue.system', { brand: '沁园', taskName: task.name, slotDesc })
+    const userTpl = task?.llm?.prompts?.dialogueUser
+    const user = userTpl
+      ? llmClient._fill(userTpl, { taskName: task.name, slotDesc, filledDesc, history, text })
+      : getPrompt('dialogue.user', { taskName: task.name, slotDesc, filledDesc, history, text })
+    return llmClient.dialogueTurn(system, user, eff)
   }
 
   // ========== 意图路由（任务通道 vs FAQ 通道） ==========

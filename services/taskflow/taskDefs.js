@@ -72,6 +72,9 @@ class TaskDefs {
       await pool.execute('ALTER TABLE task ADD COLUMN arb_gap DECIMAL(4,3) NULL COMMENT \'仲裁差距阈值（任务级）\' AFTER clarify_options')
     } catch { /* 列已存在 */ }
     try {
+      await pool.execute('ALTER TABLE task ADD COLUMN llm JSON NULL COMMENT \'任务级 LLM 配置（dialogue/extract 覆盖全局节点）\' AFTER arb_strong_hit')
+    } catch { /* 列已存在 */ }
+    try {
       await pool.execute('ALTER TABLE task ADD COLUMN arb_task_min DECIMAL(4,3) NULL COMMENT \'任务侧最低线（任务级）\' AFTER arb_gap')
     } catch { /* 列已存在 */ }
     try {
@@ -126,6 +129,10 @@ class TaskDefs {
       arb_task_min: row.arb_task_min === null || row.arb_task_min === undefined ? null : parseFloat(row.arb_task_min),
       arb_faq_min: row.arb_faq_min === null || row.arb_faq_min === undefined ? null : parseFloat(row.arb_faq_min),
       arb_strong_hit: row.arb_strong_hit === null || row.arb_strong_hit === undefined ? null : parseFloat(row.arb_strong_hit),
+      // 任务级 LLM 配置（覆盖全局节点；undefined = 全用全局）
+      //   { enabled: bool(本任务总开关), dialogue: {enabled, model, temperature, maxTokens},
+      //     extract: {...}, prompts: {dialogueSystem, dialogueUser, extractSystem, extractUser} }
+      llm: _parseJson(row.llm, null),
       slots,
       steps,
       completion_message: row.completion_message || '',
@@ -262,7 +269,7 @@ class TaskDefs {
 
   /** 保存（创建/更新）并刷新缓存 */
   async save(def) {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, completion_message, on_complete, status } = def
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, completion_message, on_complete, status } = def
     // 任务级仲裁阈值：null/undefined/'' → 存 NULL（表示用全局）
     const arbNum = (v) => {
       if (v === null || v === undefined || v === '') return null
@@ -270,9 +277,9 @@ class TaskDefs {
       return isNaN(n) ? null : n
     }
     await pool.execute(
-      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, completion_message, on_complete, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, arb_gap=?, arb_task_min=?, arb_faq_min=?, arb_strong_hit=?, completion_message=?, on_complete=?, status=?`,
+      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, completion_message, on_complete, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, arb_gap=?, arb_task_min=?, arb_faq_min=?, arb_strong_hit=?, llm=?, completion_message=?, on_complete=?, status=?`,
       [
         code, name, description || null,
         JSON.stringify(trigger_keywords || []),
@@ -282,6 +289,7 @@ class TaskDefs {
         clarify_question || '',
         JSON.stringify(Array.isArray(clarify_options) ? clarify_options : null),
         arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min), arbNum(arb_strong_hit),
+        JSON.stringify(llm || null),
         completion_message || null, on_complete || '', status ?? 1,
         name, description || null,
         JSON.stringify(trigger_keywords || []),
@@ -291,6 +299,7 @@ class TaskDefs {
         clarify_question || '',
         JSON.stringify(Array.isArray(clarify_options) ? clarify_options : null),
         arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min), arbNum(arb_strong_hit),
+        JSON.stringify(llm || null),
         completion_message || null, on_complete || '', status ?? 1,
       ]
     )

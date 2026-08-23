@@ -193,8 +193,10 @@ class TaskFlowEngine {
       return null
     }
 
-    // LLM 驱动对话（llm/hybrid 模式且 LLM 可用）；LLM 失败自动降级回规则版
-    const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid') && this.llm.nodeEnabled('dialogue')
+    // LLM 驱动对话（llm/hybrid 模式且 LLM 可用，且该任务未关闭 LLM）；失败自动降级回规则版
+    const taskDef = this.taskDefs.get(state.taskCode)
+    const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid')
+      && this.llm.nodeEnabled('dialogue', taskDef?.llm || null)
     let result = null
     if (useLlmDialog) {
       try {
