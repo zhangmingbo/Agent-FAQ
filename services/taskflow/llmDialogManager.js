@@ -12,6 +12,7 @@
  */
 
 import { runAction } from './actionRegistry.js'
+import { executeApiStep } from './apiStep.js'
 import { TaskState } from './stateMachine.js'
 import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
@@ -126,7 +127,11 @@ class LLMDialogManager {
 
     let reply = result.reply || (applied ? '好的，已记录。' : '请继续。')
 
-    // 4.5) 动作承诺校验：非完成轮次禁止"已转接/已提交/已登记"等完成性宣称。
+    // 4.5) 中间"调用接口"步骤（确定性触发，不依赖 LLM 信号）：前置槽位填好后自动执行
+    const apiReplies = await this._runPendingApiSteps(state)
+    if (apiReplies.length) reply = reply + (reply ? '\n' : '') + apiReplies.join('\n')
+
+    // 4.6) 动作承诺校验：非完成轮次禁止"已转接/已提交/已登记"等完成性宣称。
     //      LLM 只负责说话，动作执行由系统在用户确认后统一完成（_complete）——
     //      在收集/确认阶段就宣称"已办理"属于编造，追加系统澄清避免误导用户。
     if (COMPLETE_CLAIM_RE.test(reply)) {
@@ -134,8 +139,10 @@ class LLMDialogManager {
       reply = reply + getReply('claim_clarify_suffix')
     }
 
-    // 5) 完整性检查 → 确认态（确定性门禁：必填全齐才算齐）
-    const allFilled = Object.values(state.slots).every(s => !s.required || s.filled)
+    // 5) 完整性检查 → 确认态（确定性门禁：必填全齐才算齐；api 系统填充槽位不算必填）
+    const taskDefNow = this.defs.get(state.taskCode)
+    const systemSlots = new Set(taskDefNow?.apiResultSlots || [])
+    const allFilled = Object.values(state.slots).every(s => !s.required || s.filled || systemSlots.has(s.key))
     if (allFilled && state.status !== TaskState.CONFIRMING) {
       state.status = TaskState.CONFIRMING
       reply = this._renderConfirm(state, result.reply)
@@ -230,10 +237,11 @@ class LLMDialogManager {
     return (prefix ? prefix + '\n' : '') + confirmTpl
   }
 
-  /** 字段约束描述（含格式/枚举），供 LLM 理解 */
+  /** 字段约束描述（含格式/枚举），供 LLM 理解（排除 api 步骤的系统填充槽位） */
   _slotDesc(state) {
     const task = this.defs.get(state.taskCode)
-    return (task?.slots || []).map(s => {
+    const system = new Set(task?.apiResultSlots || [])
+    return (task?.slots || []).filter(s => !system.has(s.key)).map(s => {
       const step = (task.steps || []).find(st => st.type === 'collect' && st.slot_key === s.key)
       const extract = step?.extract || {}
       let extra = ''
@@ -267,6 +275,41 @@ class LLMDialogManager {
       extract: step?.extract || { method: 'text', rule: '' },
       validate: step?.validate || def.validate || {},
     }
+  }
+
+  /** 收集当前槽位值（接口请求组装用） */
+  _slotValues(state) {
+    const o = {}
+    for (const [k, s] of Object.entries(state.slots || {})) o[k] = s.value
+    return o
+  }
+
+  /**
+   * 执行"待触发的中间 api 步骤"（确定性，不靠 LLM 信号）：
+   * 前置 collect 步骤的槽位已填、且结果槽位尚未写入 → 执行，结果写入 resultSlot。
+   * @returns {Promise<string[]>} 各步骤的回显话术
+   */
+  async _runPendingApiSteps(state) {
+    const task = this.defs.get(state.taskCode)
+    if (!task?.steps) return []
+    const out = []
+    for (let i = 0; i < task.steps.length; i++) {
+      const step = task.steps[i]
+      if (step.type !== 'api' || !step.resultSlot) continue
+      const slot = state.slots[step.resultSlot]
+      if (slot && slot.filled) continue // 已执行过（结果已写入）
+      // 前置步骤若是 collect，其槽位填好才执行（如：填完电话 → 查订单）
+      const prev = i > 0 ? task.steps[i - 1] : null
+      const prereqFilled = !prev || prev.type !== 'collect' || !!(state.slots[prev.slot_key] && state.slots[prev.slot_key].filled)
+      if (!prereqFilled) continue
+      const r = await executeApiStep(step, this._slotValues(state))
+      if (r.ok && state.slots[step.resultSlot]) {
+        state.slots[step.resultSlot].value = r.result
+        state.slots[step.resultSlot].filled = true
+      }
+      out.push(r.message)
+    }
+    return out
   }
 
   _isCancel(text) {

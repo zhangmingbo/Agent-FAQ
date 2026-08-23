@@ -2134,6 +2134,13 @@
     var actionExtra = s.type === 'action' ?
       '<input class="step-action" value="' + esc(s.action||'') + '" placeholder="动作名" style="width:130px">' +
       '<input class="step-msg" value="' + esc(s.done_message||'') + '" placeholder="完成话术">' : '';
+    var apiExtra = s.type === 'api' ?
+      '<input class="step-api-url" value="' + esc(s.url||'') + '" placeholder="接口地址" style="width:190px">' +
+      '<select class="step-api-method"><option value="POST"' + ((s.method||'POST')==='POST'?' selected':'') + '>POST</option><option value="GET"' + (s.method==='GET'?' selected':'') + '>GET</option></select>' +
+      '<input class="step-api-rs" value="' + esc(s.resultSlot||'') + '" placeholder="结果槽位key" style="width:90px">' +
+      '<input class="step-api-rf" value="' + esc(s.resultField||'') + '" placeholder="结果字段(如 data.x)" style="width:100px">' +
+      '<textarea class="step-api-fm" rows="1" placeholder="字段映射(每行 槽位key=接口字段)">' + esc((function(){ var fm=s.fieldMap||{},arr=[]; for(var k in fm) arr.push(k+'='+fm[k]); return arr.join('\n'); })()) + '</textarea>' +
+      '<input class="step-api-msg" value="' + esc(s.done_message||'') + '" placeholder="回复话术(支持 {结果槽位})" style="width:200px">' : '';
     var subtaskExtra = s.type === 'subtask' ?
       '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
       '<input class="step-return" value="' + esc(s.on_return||'') + '" placeholder="返回步骤">' : '';
@@ -2148,12 +2155,13 @@
         '<option value="collect"' + (s.type==='collect'?' selected':'') + '>收集</option>' +
         '<option value="confirm"' + (s.type==='confirm'?' selected':'') + '>确认</option>' +
         '<option value="action"' + (s.type==='action'?' selected':'') + '>动作</option>' +
+        '<option value="api"' + (s.type==='api'?' selected':'') + '>调用接口</option>' +
         '<option value="subtask"' + (s.type==='subtask'?' selected':'') + '>子任务</option>' +
         '<option value="branch"' + (s.type==='branch'?' selected':'') + '>分支</option>' +
         '<option value="message"' + (s.type==='message'?' selected':'') + '>回复</option>' +
       '</select>' +
       '<input class="step-next" value="' + esc(s.next||'') + '" placeholder="下一步" style="width:90px">' +
-      collectExtra + actionExtra + subtaskExtra + messageExtra + branchExtra +
+      collectExtra + actionExtra + apiExtra + subtaskExtra + messageExtra + branchExtra +
       '<button class="step-up" title="上移">↑</button><button class="step-down" title="下移">↓</button><button class="step-del" title="删除">&times;</button>' +
     '</div>';
   }
@@ -2201,6 +2209,22 @@
         step.action = row.querySelector('.step-action').value.trim() || 'complete_message';
         var dm = row.querySelector('.step-msg').value.trim();
         if (dm) step.done_message = dm;
+      } else if (type === 'api') {
+        step.url = row.querySelector('.step-api-url').value.trim();
+        step.method = row.querySelector('.step-api-method').value || 'POST';
+        step.resultSlot = row.querySelector('.step-api-rs').value.trim() || undefined;
+        step.resultField = row.querySelector('.step-api-rf').value.trim() || undefined;
+        var fm = {};
+        row.querySelector('.step-api-fm').value.split('\n').forEach(function(l) {
+          l = l.trim(); if (!l) return;
+          var eq = l.indexOf('=');
+          if (eq <= 0) return;
+          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
+          if (k) fm[k] = v;
+        });
+        if (Object.keys(fm).length) step.fieldMap = fm;
+        var adm = row.querySelector('.step-api-msg').value.trim();
+        if (adm) step.done_message = adm;
       } else if (type === 'subtask') {
         step.task = row.querySelector('.step-task').value.trim();
         step.on_return = row.querySelector('.step-return').value.trim();

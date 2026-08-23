@@ -18,6 +18,7 @@
 
 import extractor from './extractor.js'
 import { runAction } from './actionRegistry.js'
+import { executeApiStep } from './apiStep.js'
 import { TaskState } from './stateMachine.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import { getReply } from '../replyTexts.js'
@@ -174,6 +175,21 @@ class DialogManager {
           const result = await this._execAction(state, step, reply)
           if (result) return result // 完成或失败重试（返回信封）
           return this._finish(state, reply)
+        }
+        case 'api': {
+          // 中间/收尾"调用接口"步骤：按步骤机走到即执行，结果写入 resultSlot
+          const slots = {}
+          for (const [k, s] of Object.entries(state.slots || {})) slots[k] = s.value
+          const r = await executeApiStep(step, slots)
+          if (r.ok && step.resultSlot && state.slots[step.resultSlot]) {
+            state.slots[step.resultSlot].value = r.result
+            state.slots[step.resultSlot].filled = true
+          }
+          reply += (reply ? '\n' : '') + r.message
+          state.currentStep = step.next
+          extracted = true
+          alreadyExtracted = true
+          break
         }
         case 'subtask': {
           return this._startSubtask(state, step, reply)
@@ -389,9 +405,11 @@ class DialogManager {
     return null
   }
 
-  /** 第一个未填的必填槽位 */
+  /** 第一个未填的必填槽位（排除 api 步骤的系统填充槽位） */
   _firstUnfilledRequired(state) {
-    return Object.entries(state.slots).find(([_, s]) => s.required && !s.filled) || null
+    const task = this.defs.get(state.taskCode)
+    const system = new Set(task?.apiResultSlots || [])
+    return Object.entries(state.slots).find(([_, s]) => s.required && !s.filled && !system.has(s.key)) || null
   }
 
   /** 按槽位 key 查找其步骤定义（含 extract/validate） */
