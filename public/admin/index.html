@@ -1020,10 +1020,11 @@
             var val = (rt[key] !== undefined && rt[key] !== null) ? rt[key] : '';
             html += '<div style="margin-bottom:14px">' +
               '<div style="font-size:13px;color:#555;margin-bottom:4px">' + label +
+                (desc ? ' <span class="cfg-comment">· ' + desc + '</span>' : '') +
+                (desc ? '<span class="arb-tip">?<span class="arb-tip-box">用于什么场景：' + desc + '</span></span>' : '') +
                 (vars ? ' <span style="color:#bbb;font-weight:normal;font-size:12px">可用变量：' + vars + '</span>' : '') +
               '</div>' +
               '<textarea id="rt-' + key + '" rows="2" class="rt-textarea">' + esc(val) + '</textarea>' +
-              (desc ? '<div class="cfg-comment">' + desc + '</div>' : '') +
             '</div>';
           });
           html += '</div>';
@@ -1032,17 +1033,23 @@
         html += '<div class="text-group texts-full"><h4>匹配词表</h4>' +
           '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 24px">' +
             '<div style="margin-bottom:14px">' +
-              '<div style="font-size:13px;color:#555;margin-bottom:4px">触发词近义扩展表 <span style="color:#bbb;font-weight:normal;font-size:12px">每行一个词条：词=扩展1,扩展2</span></div>' +
+              '<div style="font-size:13px;color:#555;margin-bottom:4px">触发词近义扩展表 <span class="cfg-comment">· 任务触发词命中时并入扩展表达</span>' +
+                '<span class="arb-tip">?<span class="arb-tip-box">触发词命中时并入扩展表达，覆盖口语化说法（如"坏了"扩展出"故障""失灵"）。每行一个词条：词=扩展1,扩展2</span></span>' +
+                ' <span style="color:#bbb;font-weight:normal;font-size:12px">每行：词=扩展1,扩展2</span>' +
+              '</div>' +
               '<textarea id="mv-synonyms" rows="7" class="rt-textarea">' + esc(synonymsToText(mv.triggerSynonyms)) + '</textarea>' +
-              '<div class="cfg-comment">任务触发词命中时并入扩展表达，覆盖口语化说法</div>' +
             '</div>' +
             '<div>' +
-              '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 办理 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
+              '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 办理 <span class="cfg-comment">· 用户选"办理"时的关键词</span>' +
+                '<span class="arb-tip">?<span class="arb-tip-box">澄清追问"办理还是咨询"时，命中这些词判定用户选"办理"。逗号分隔。</span></span>' +
+                ' <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span>' +
+              '</div>' +
               '<textarea id="mv-rt-task" rows="3" class="rt-textarea">' + esc((mv.routeChoiceTask || []).join(',')) + '</textarea>' +
-              '<div class="cfg-comment">澄清追问时判定用户选"办理"的关键词</div>' +
-              '<div style="font-size:13px;color:#555;margin:14px 0 4px">澄清关键词 · 咨询 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
+              '<div style="font-size:13px;color:#555;margin:14px 0 4px">澄清关键词 · 咨询 <span class="cfg-comment">· 用户选"咨询"时的关键词</span>' +
+                '<span class="arb-tip">?<span class="arb-tip-box">澄清追问"办理还是咨询"时，命中这些词判定用户选"咨询"。逗号分隔。</span></span>' +
+                ' <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span>' +
+              '</div>' +
               '<textarea id="mv-rt-faq" rows="3" class="rt-textarea">' + esc((mv.routeChoiceFaq || []).join(',')) + '</textarea>' +
-              '<div class="cfg-comment">澄清追问时判定用户选"咨询"的关键词</div>' +
             '</div>' +
           '</div>' +
         '</div>';
