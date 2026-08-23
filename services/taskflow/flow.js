@@ -60,6 +60,8 @@ async function runSteps(steps, exec, ctx, idemKey, depth) {
         vars: exec.vars,
         result: exec.results, // {result.步骤名.字段} 引用
         idempotencyKey: idemKey,
+        sessionId: ctx.sessionId,
+        taskCode: ctx.task?.code,
       }
       const r = await executeHttpCall(step, httpCtx)
       await logFlowStep(ctx, step, idemKey, r)

@@ -2037,6 +2037,8 @@
               '</select></div>' +
             '<div style="font-size:12px;color:#888;margin-bottom:4px">字段映射（每行：槽位key=接口字段名；留空=传全部收集字段）</div>' +
             '<textarea id="tf-api-fieldmap" rows="3" placeholder="phone=phone&#10;customer_name=name&#10;service_type=serviceType" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:6px">' + esc(isEdit && task.api_action && task.api_action.fieldMap ? Object.entries(task.api_action.fieldMap).map(function(x){ return x[0] + '=' + x[1]; }).join('\n') : '') + '</textarea>' +
+            '<div style="font-size:12px;color:#888;margin-bottom:4px">固定/模板入参（每行：接口字段=固定值，支持 {slot.xxx}/{sessionId}/{taskCode} 模板；覆盖同名字段）</div>' +
+            '<textarea id="tf-api-fixed-params" rows="2" placeholder="appId=10086&#10;channel=qinyuan&#10;traceId={sessionId}" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:6px">' + esc(isEdit && task.api_action && task.api_action.fixedParams ? Object.entries(task.api_action.fixedParams).map(function(x){ return x[0] + '=' + x[1]; }).join('\n') : '') + '</textarea>' +
             '<input id="tf-api-success-msg" placeholder="成功话术（留空用默认：已为您提交成功；支持 {orderNo} 占位符）" value="' + esc(isEdit && task.api_action ? (task.api_action.successMessage || '') : '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:6px">' +
             '<div style="display:flex;gap:8px;margin-bottom:6px">' +
               '<div style="flex:1"><div style="font-size:12px;color:#666">失败重试次数</div><input id="tf-api-retry" type="number" min="0" max="10" value="' + esc(isEdit && task.api_action && task.api_action.retries !== undefined ? task.api_action.retries : 3) + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"></div>' +
@@ -2264,12 +2266,21 @@
           var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
           if (k) fieldMap[k] = v;
         });
+        var fixedParams = {};
+        overlay.querySelector('#tf-api-fixed-params').value.split('\n').forEach(function(l) {
+          l = l.trim(); if (!l) return;
+          var eq = l.indexOf('=');
+          if (eq <= 0) return;
+          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
+          if (k && v) fixedParams[k] = v;
+        });
         var retryVal = parseInt(overlay.querySelector('#tf-api-retry').value, 10);
         var timeoutVal = parseInt(overlay.querySelector('#tf-api-timeout').value, 10);
         apiAction = {
           url: apiUrl,
           method: overlay.querySelector('#tf-api-method').value || 'POST',
           fieldMap: Object.keys(fieldMap).length ? fieldMap : undefined,
+          fixedParams: Object.keys(fixedParams).length ? fixedParams : undefined,
           successMessage: overlay.querySelector('#tf-api-success-msg').value.trim() || undefined,
           retries: !isNaN(retryVal) && retryVal >= 0 ? retryVal : 3,
           timeout: !isNaN(timeoutVal) && timeoutVal >= 1000 ? timeoutVal : 10000,

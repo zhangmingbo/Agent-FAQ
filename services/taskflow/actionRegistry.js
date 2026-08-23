@@ -166,6 +166,8 @@ register('call_api', async (ctx) => {
     slots: ctx.slots || {},
     vars: ctx.state?.vars || {},
     idempotencyKey: ctx.idempotencyKey,
+    sessionId: ctx.sessionId,
+    taskCode: ctx.task?.code,
   })
   if (r.ok) {
     return { ok: true, message: r.message || getReply('api_action_done'), log: r.log }

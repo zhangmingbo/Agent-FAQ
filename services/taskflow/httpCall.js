@@ -147,9 +147,17 @@ export async function executeHttpCall(rawConfig, ctx = {}) {
 
   // 组装入参
   const slots = ctx.slots || {}
+  const tplCtx = {
+    slots,
+    vars: ctx.vars || {},
+    result: ctx.result || {},
+    idempotencyKey: ctx.idempotencyKey,
+    sessionId: ctx.sessionId || '',
+    taskCode: ctx.taskCode || '',
+  }
   const payload = cfg.body && typeof cfg.body === 'object'
-    ? resolveBody(cfg.body, { slots, vars: ctx.vars || {}, result: ctx.result || {}, idempotencyKey: ctx.idempotencyKey })
-    : (cfg.body !== undefined ? resolveTemplate(cfg.body, ctx) : { ...slots })
+    ? resolveBody(cfg.body, tplCtx)
+    : (cfg.body !== undefined ? resolveTemplate(cfg.body, tplCtx) : { ...slots })
 
   traceService.traceStep(trace, '任务·调用接口', {
     url: cfg.url,
@@ -193,7 +201,7 @@ export async function executeHttpCall(rawConfig, ctx = {}) {
   // 话术（done_message 支持 {result.xxx} / {result} 主值 / {槽位key} 插值）
   let message = ''
   if (cfg.done_message !== undefined && cfg.done_message !== null) {
-    message = resolveTemplate(cfg.done_message, { slots, vars: ctx.vars || {}, result: results })
+    message = resolveTemplate(cfg.done_message, tplCtx)
     message = message.split('{result}').join(String(result))
     for (const [k, v] of Object.entries(results)) {
       message = message.split('{' + k + '}').join(String(v))
