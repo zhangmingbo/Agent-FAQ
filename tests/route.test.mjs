@@ -307,3 +307,40 @@ test('route: 仲裁双低 + matchTask 未命中 → 落 LLM 三选一（无任�
   nlu._vectors.clear()
   nlu.setFaqSamples([])
 })
+
+test('route: 两侧弱匹配（0.6级碰巧接近）→ out_of_scope（不澄清）', async () => {
+  // "我家门坏了"：任务 0.64 / FAQ 0.61，均未达强命中线 0.72
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery() { return [0.5, 0, 0.5, 0] }, // 与任务例句(dim0)余弦 0.5、FAQ(dim2) 0.5，均 < 0.72
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[1, 0, 0, 0]])
+  nlu.setFaqSamples([{ intentCode: 'some_faq', intentName: '某FAQ', vector: [0, 0, 1, 0] }])
+  llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
+  llmClient.judgeTrigger = async () => null
+  stubRouteTurn('faq') // 即使 LLM 说 faq，仲裁已判域外
+  const r = await nlu.route('我家门坏了', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'out_of_scope')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})
+
+test('route: 触发词命中豁免域外——弱匹配但含触发词 → clarify 而非 out_of_scope', async () => {
+  // "请个师父上门来看看吧"：含触发词"上门"（taskBoost 生效），分数弱但属确定性业务信号
+  nlu.setNlpEngine({
+    async encodeTexts() { return [] },
+    async encodeQuery() { return [0.5, 0, 0.5, 0] }, // 弱匹配（同上门用例）
+  })
+  nlu._vectors.clear()
+  nlu._vectors.set('service_appointment', [[1, 0, 0, 0]])
+  nlu.setFaqSamples([{ intentCode: 'some_faq', intentName: '某FAQ', vector: [0, 0, 1, 0] }])
+  llmClient.configure({ enabled: true, apiUrl: 'http://mock', apiKey: 'x' })
+  llmClient.judgeTrigger = async () => null
+  stubRouteTurn('faq')
+  // "上门"是 TASK_APPT 触发词 → taskBoost 生效 → 不判域外 → 弱匹配但有分 → clarify
+  const r = await nlu.route('请个师父上门来看看吧', { tasks: [TASK_APPT, TASK_METER] })
+  assert.equal(r, 'clarify')
+  nlu._vectors.clear()
+  nlu.setFaqSamples([])
+})

@@ -392,6 +392,18 @@ class FAQEngine {
             _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
             await this.taskEngine.stash(sessionId)
             response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+          } else if (route === 'out_of_scope') {
+            // 任务中用户说域外话（"我家门坏了"）→ 不挂起，回任务继续引导（不打断办事）
+            console.log('[TASK] 域外输入，继续任务引导')
+            _t('域外输入 → 继续任务', {}, 'warn')
+            response = taskResult
+              ? {
+                  intent_code: `task:${taskResult.taskState.taskCode}`,
+                  confidence: 1,
+                  source: 'task_progress',
+                  answer: taskResult.reply,
+                }
+              : null
           } else {
             // task_continue → 用任务引擎的引导回复（提取失败但路由认为还在任务内）
             response = taskResult
@@ -431,6 +443,11 @@ class FAQEngine {
             askedAt: Date.now(),
           }
           response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+        } else if (route === 'out_of_scope') {
+          // 任务/FAQ 均未达强命中线（"我家门坏了"）→ 业务域外引导（不用 LLM 兜底）
+          console.log('[ROUTE] 域外输入，业务引导')
+          _t('域外输入 → 业务引导', {}, 'warn')
+          response = await this._handleFallback(text, context, { confidence: 0 })
         }
         // route === 'faq' → 走下方常规 FAQ 流程（response 保持 null）
       }

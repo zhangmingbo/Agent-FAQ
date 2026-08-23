@@ -283,7 +283,17 @@ class TaskNLU {
       }
     }
 
-    // 两者都太低（都未达语义线）→ 无法判定
+    // 强命中线：至少一侧达到此值才算"真实业务命中"。
+    // 两侧都只是弱匹配（0.5~0.7 的碰巧接近，如"我家门坏了"任务0.64/FAQ0.61）
+    // → 不构成澄清理由，判域外（由上层走 fallback 业务引导）
+    // 注意：empty 场景（taskScore=0 且 faqScore=0，无引擎/双低）不在此列——上层走 matchTask 补判
+    const strongHit = 0.72
+    if ((taskScore > 0 || faqScore > 0) && taskScore < strongHit && faqScore < strongHit) {
+      console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达强命中线(${strongHit}) → 域外`)
+      return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+    }
+
+    // 两者都太低（都未达各自语义线）→ 无法判定
     if (taskScore < taskMin && faqScore < faqMin) {
       console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达线 → clarify`)
       return empty
@@ -488,6 +498,10 @@ class TaskNLU {
         }, arb.channel === 'clarify' ? 'warn' : 'task')
         if (arb.channel === 'faq') return 'faq'
         if (arb.channel === 'task_new') return 'task_new'
+        // 域外：两侧都未达强命中线（"我家门坏了"0.6级碰巧接近）→ 不澄清，直接业务引导
+        // 但触发词命中时（taskBoost 生效）即使分数弱也是确定性业务信号（"请个师父上门来看看"），
+        // 不判域外——由下方细分逻辑处理（可能 task_new/faq/clarify）
+        if (arb.channel === 'out_of_scope' && !taskBoost) return 'out_of_scope'
         // 仲裁判 clarify 且有一侧达线（接近）→ 追问用户；双低（都未达线）→ 继续
         if (arb.taskScore > 0 || arb.faqScore > 0) return 'clarify'
 
