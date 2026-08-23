@@ -686,7 +686,9 @@ class TaskNLU {
     if (method === 'enum') {
       const options = Array.isArray(slotDef.extract.enum)
         ? slotDef.extract.enum
-        : String(slotDef.extract.rule || '').split(',').map(s => s.trim())
+        : String(slotDef.extract.rule || '').split(',').map(s => s.trim()).filter(Boolean)
+      // 未配置可选项（rule 为空）→ 视为无约束放行，避免 [''] 匹配全拒导致槽位永远填不上
+      if (!options.length) return true
       return options.includes(v)
     }
     if (method === 'regex' && slotDef.extract?.rule) {

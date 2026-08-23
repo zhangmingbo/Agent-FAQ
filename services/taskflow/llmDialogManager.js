@@ -91,18 +91,38 @@ class LLMDialogManager {
     })
 
     // 4) 应用槽位（业务校验兜底：防 LLM 编造/乱填）
+    //    —— 诊断日志：记录 LLM 原始输出与每个槽位的接受/丢弃原因（判定逻辑不变）
+    const llmSlots = result.slots || {}
+    console.log(`[TaskFlow-LLM] [${state.taskCode}] LLM 原始 slots:`, JSON.stringify(llmSlots))
     let applied = false
-    for (const [k, v] of Object.entries(result.slots || {})) {
+    for (const [k, v] of Object.entries(llmSlots)) {
       const slot = state.slots[k]
-      if (!slot || slot.filled && state.status === TaskState.COLLECTING) continue
+      if (!slot) {
+        console.log(`[TaskFlow-LLM]   ✗ 丢弃 ${k}=${JSON.stringify(v)}：任务中不存在该槽位 key`)
+        continue
+      }
+      if (slot.filled && state.status === TaskState.COLLECTING) {
+        console.log(`[TaskFlow-LLM]   - 跳过 ${k}=${JSON.stringify(v)}：槽位已填（收集态不覆盖）`)
+        continue
+      }
       const sDef = this._slotDefByKey(state, k)
-      if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) continue
+      if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) {
+        console.log(`[TaskFlow-LLM]   ✗ 丢弃 ${k}=${JSON.stringify(v)}：值格式与槽位定义不匹配`)
+        continue
+      }
       const check = this.nlu.validate(sDef, v)
-      if (!check.ok) continue
+      if (!check.ok) {
+        console.log(`[TaskFlow-LLM]   ✗ 丢弃 ${k}=${JSON.stringify(v)}：校验失败（${check.message || ''}）`)
+        continue
+      }
       slot.value = String(v)
       slot.filled = true
       applied = true
+      console.log(`[TaskFlow-LLM]   ✓ 应用 ${k}=${JSON.stringify(v)}`)
     }
+    const filledNow = Object.entries(state.slots).filter(([, s]) => s.filled).map(([k, s]) => `${k}=${s.value}`).join('；') || '(无)'
+    const unfilledNow = Object.entries(state.slots).filter(([, s]) => s.required && !s.filled).map(([k, s]) => k).join('、')
+    console.log(`[TaskFlow-LLM] [${state.taskCode}] 槽位状态 → 已填: ${filledNow} | 待填: ${unfilledNow || '(全齐)'}`)
 
     let reply = result.reply || (applied ? '好的，已记录。' : '请继续。')
 
