@@ -2301,8 +2301,8 @@
           if (k) fp[k] = v;
         });
         if (Object.keys(fp).length) step.fixedParams = fp;
-        var adm = row.querySelector('.step-api-msg').value.trim();
-        if (adm) step.done_message = adm;
+        // 回复话术：允许存空字符串（空 = 调用接口后不向用户回显结果）
+        step.done_message = row.querySelector('.step-api-msg').value.trim();
       } else if (type === 'subtask') {
         step.task = row.querySelector('.step-task').value.trim();
         step.on_return = row.querySelector('.step-return').value.trim();

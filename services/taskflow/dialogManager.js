@@ -193,7 +193,7 @@ class DialogManager {
             state.slots[step.resultSlot].value = r.result
             state.slots[step.resultSlot].filled = true
           }
-          reply += (reply ? '\n' : '') + r.message
+          if (r.message) reply += (reply ? '\n' : '') + r.message
           state.currentStep = step.next
           extracted = true
           alreadyExtracted = true

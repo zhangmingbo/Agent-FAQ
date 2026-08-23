@@ -6,7 +6,9 @@
  *   - fieldMap：{ 槽位key: 接口字段名 }，用已收集槽位组装请求；留空=传全部槽位
  *   - resultSlot：接口响应写入该槽位（槽位需在任务定义里，系统填充，不向用户收集）
  *   - resultField：可选，JSON 点路径（如 data.orderNo），只取响应某字段；留空存整个响应
- *   - done_message：回给用户的话术，支持 {result} / {resultSlot} 插值；留空默认回显结果
+ *   - done_message：回给用户的话术，支持 {result} / {resultSlot} 插值；
+ *     未配置（或为空）→ 调用后不向用户追加任何内容（静默，默认行为）
+ *   - next：下一步骤 key
  *
  * 触发：确定性按步骤执行（规则版步骤机 / LLM 版前置槽位填好后），不依赖 LLM 信号。
  */
@@ -79,7 +81,10 @@ export async function executeApiStep(step, slots, trace = null) {
       }
     } catch { /* 非 JSON，保留原文 */ }
 
-    let message = step.done_message || result || getReply('api_action_done')
+    // 回复话术：仅当配置了 done_message 才向用户追加内容（支持 {result}/{resultSlot} 插值）；
+    // 未配置或为空 → 静默，接口调用结果不回显给用户（默认行为）
+    const hasMsg = step.done_message !== undefined && step.done_message !== null
+    let message = hasMsg ? String(step.done_message) : ''
     message = message.split('{result}').join(result)
     if (step.resultSlot) message = message.split('{' + step.resultSlot + '}').join(result)
     traceService.traceStep(trace, '任务·接口结果', {

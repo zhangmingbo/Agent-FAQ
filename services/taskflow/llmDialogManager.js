@@ -347,7 +347,7 @@ class LLMDialogManager {
         state.slots[step.resultSlot].value = r.result
         state.slots[step.resultSlot].filled = true
       }
-      out.push(r.message)
+      if (r.message) out.push(r.message)
     }
     return out
   }
