@@ -14,6 +14,7 @@
  */
 
 import pool from '../../db/pool.js'
+import { getReply } from '../replyTexts.js'
 
 const actions = new Map()
 
@@ -46,7 +47,7 @@ export function listActions() {
 // ========== 内置动作 ==========
 
 register('complete_message', async (ctx) => {
-  return { ok: true, message: ctx.step?.done_message || ctx.task.completion_message || `已为您完成${ctx.task.name}。` }
+  return { ok: true, message: ctx.step?.done_message || ctx.task.completion_message || getReply('complete_fallback', { taskName: ctx.task.name }) }
 })
 
 register('create_repair_order', async (ctx) => {
@@ -69,11 +70,11 @@ register('create_repair_order', async (ctx) => {
     [ctx.sessionId, ctx.task.code, slots.address || null, slots.fault || null, slots.phone || null]
   )
 
-  return { ok: true, message: `已为您提交报修工单（单号 #${result.insertId}），我们会尽快处理。` }
+  return { ok: true, message: getReply('repair_order_done', { orderId: result.insertId }) }
 })
 
 register('transfer_human', async () => {
-  return { ok: true, message: '好的，正在为您转接人工客服，请稍候...\n客服热线：400-123-4567' }
+  return { ok: true, message: getReply('transfer_human') }
 })
 
 register('create_meter_replace_order', async (ctx) => {
@@ -98,7 +99,7 @@ register('create_meter_replace_order', async (ctx) => {
     [ctx.sessionId, ctx.task.code, slots.customer_name || null, slots.phone || null, slots.address || null, slots.reason || null, slots.time_slot || null]
   )
 
-  return { ok: true, message: `已为您登记换表申请（单号 #${result.insertId}），师傅会尽快联系您确认上门时间。` }
+  return { ok: true, message: getReply('meter_replace_done', { orderId: result.insertId }) }
 })
 
 register('create_service_appointment', async (ctx) => {
@@ -124,7 +125,7 @@ register('create_service_appointment', async (ctx) => {
     [ctx.sessionId, ctx.task.code, slots.phone || null, slots.service_type || null, slots.customer_name || null, slots.address || null, slots.machine_model || null, slots.time_slot || null]
   )
 
-  return { ok: true, message: `已为您预约${slots.service_type || ''}服务（单号 #${result.insertId}），售后会在24小时内联系您，请保持电话畅通。` }
+  return { ok: true, message: getReply('service_appointment_done', { serviceType: slots.service_type || '', orderId: result.insertId }) }
 })
 
 export default { register, runAction, listActions }

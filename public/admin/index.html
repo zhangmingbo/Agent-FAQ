@@ -716,7 +716,7 @@
             if (!isSave) return;
             // 原生保存触发后（异步），补提交所有注入阈值，并重挂被重渲染清掉的注释
             setTimeout(function() {
-              var arb = {};
+              var payload = {};
               var ids = {
                 'arb-gap': 'arbGap', 'arb-task-min': 'arbTaskMin', 'arb-faq-min': 'arbFaqMin',
                 'arb-strong-hit': 'arbStrongHit', 'arb-vector-threshold': 'arbVectorThreshold', 'arb-task-boost': 'arbTaskBoost',
@@ -732,12 +732,16 @@
                 if (!el) continue;
                 var v = parseFloat(el.value);
                 if (isNaN(v)) { alert('参数格式错误：' + id); return; }
-                arb[ids[id]] = v;
+                payload[ids[id]] = v;
                 any = true;
               }
+              // 固定话术 + 匹配词表（配置驱动，不允许硬编码）
+              var tp = collectTextsPayload();
+              if (Object.keys(tp.replyTexts).length) { payload.replyTexts = tp.replyTexts; any = true; }
+              if (Object.keys(tp.matchVocab).length) { payload.matchVocab = tp.matchVocab; any = true; }
               if (any) {
-                api('POST', '/api/config', arb, function(res) {
-                  if (!res.success) alert('阈值保存失败：' + (res.message || '未知错误'));
+                api('POST', '/api/config', payload, function(res) {
+                  if (!res.success) alert('配置保存失败：' + (res.message || '未知错误'));
                 });
               }
               var p = document.querySelector('.config-panel');
@@ -844,16 +848,17 @@
       });
     }
 
-    // 系统配置页整体分区排版：原生识别参数 + 三个注入区块 → 四个 tab 卡片
+    // 系统配置页整体分区排版：原生识别参数 + 注入区块 → 五个 tab 卡片
     function restructureConfigLayout(panel) {
-      // 建 tab 栏 + 4 个面板容器
+      // 建 tab 栏 + 5 个面板容器
       var tabs = document.createElement('div');
       tabs.id = 'config-tabs';
       tabs.innerHTML =
         '<button class="cfg-tab-btn active" data-tab="recog">识别参数</button>' +
         '<button class="cfg-tab-btn" data-tab="arb">任务/FAQ 仲裁</button>' +
         '<button class="cfg-tab-btn" data-tab="adv">高级判定</button>' +
-        '<button class="cfg-tab-btn" data-tab="analysis">分析建议</button>';
+        '<button class="cfg-tab-btn" data-tab="analysis">分析建议</button>' +
+        '<button class="cfg-tab-btn" data-tab="texts">固定话术</button>';
       var recog = document.createElement('div');
       recog.className = 'cfg-tab-panel active';
       recog.id = 'cfg-tab-recog';
@@ -866,6 +871,10 @@
       var analysis = document.createElement('div');
       analysis.className = 'cfg-tab-panel';
       analysis.id = 'cfg-tab-analysis';
+      var texts = document.createElement('div');
+      texts.className = 'cfg-tab-panel';
+      texts.id = 'cfg-tab-texts';
+      texts.innerHTML = '<div class="cfg-panel-desc">所有用户可见的对话文案（含校验提示、动作完成话术、匹配词表）。默认值已自动落库，改完点右上角"保存配置"生效。留空 = 用默认值。</div><div id="texts-form"></div>';
 
       // 原生内容（h3 识别参数 + el-form）→ 识别参数面板；三个注入区块 → 各自面板
       while (panel.firstChild) {
@@ -887,6 +896,8 @@
       panel.appendChild(arb);
       panel.appendChild(adv);
       panel.appendChild(analysis);
+      panel.appendChild(texts);
+      renderTextsForm();
 
       // tab 切换
       tabs.addEventListener('click', function(e) {
@@ -895,8 +906,152 @@
         tabs.querySelectorAll('.cfg-tab-btn').forEach(function(b){ b.classList.remove('active') });
         btn.classList.add('active');
         var tab = btn.getAttribute('data-tab');
-        [recog, arb, adv, analysis].forEach(function(p){ p.classList.toggle('active', p.id === 'cfg-tab-' + tab) });
+        [recog, arb, adv, analysis, texts].forEach(function(p){ p.classList.toggle('active', p.id === 'cfg-tab-' + tab) });
       });
+    }
+
+    // ===== 固定话术 tab：所有用户可见文案（配置驱动，不允许硬编码） =====
+    var TEXT_GROUPS = [
+      { title: '兜底 / 域外', keys: [
+        ['domain_fallback', '域外引导话术', ''],
+        ['meaningless', '无意义回复', ''],
+        ['no_answer', '确认后无答案', ''],
+      ]},
+      { title: '澄清 / 进度', keys: [
+        ['continue_task', '继续办理提示', '{taskName} {hint}'],
+        ['progress_needed', '还缺信息提示', '{labels}'],
+        ['progress_all_filled', '信息齐全提示', ''],
+        ['ask_business', '无任务询问', ''],
+        ['stashed_hint', '暂存任务提示', '{taskName}'],
+        ['suspended_hint', '挂起任务提示', '{taskName}'],
+        ['task_faq_progress', '任务中答FAQ后进度', '{taskName} {labels}'],
+        ['clarify_options', 'FAQ候选竞争追问', '{options}'],
+        ['clarify_yes_no', 'FAQ二选一确认', '{intentName}'],
+        ['route_clarify_repeat_prefix', '澄清重复追问前缀', ''],
+      ]},
+      { title: '任务对话（规则版）', keys: [
+        ['slot_prompt_fallback', '槽位提示兜底', '{label}'],
+        ['modify_prompt', '修改提示', '{label}'],
+        ['direct_input', '直接输入新值', '{label}'],
+        ['guidance_header', '智能引导开头', ''],
+        ['guidance_item', '引导条目', '{label}'],
+        ['guidance_filled_hint', '引导补充', ''],
+        ['confirm_prompt', '确认提示', ''],
+        ['confirm_summary_header', '确认清单标题', ''],
+        ['confirm_summary_item', '确认清单条目', '{label} {value}'],
+        ['slot_updated', '槽位更新确认', '{label} {value}'],
+        ['submitting', '提交中', ''],
+        ['modify_reask', '重新提供提示', ''],
+        ['action_fail_rule', '动作失败（规则版）', '{message}'],
+        ['cancel_done', '取消完成', ''],
+      ]},
+      { title: '任务对话（LLM 版）', keys: [
+        ['modify_prompt_llm', '修改提示', ''],
+        ['action_fail_llm', '动作失败（LLM版）', '{message}'],
+        ['complete_fallback', '完成兜底', '{taskName}'],
+      ]},
+      { title: '动作完成', keys: [
+        ['repair_order_done', '报修单完成', '{orderId}'],
+        ['transfer_human', '转人工', ''],
+        ['meter_replace_done', '换表完成', '{orderId}'],
+        ['service_appointment_done', '预约完成', '{serviceType} {orderId}'],
+      ]},
+      { title: '槽位校验提示', keys: [
+        ['validate_required', '必填为空', '{label}'],
+        ['validate_len_min', '长度不足', '{n}'],
+        ['validate_len_max', '长度超限', '{n}'],
+        ['validate_number', '非数字', ''],
+        ['validate_phone', '手机号错误', ''],
+        ['validate_enum', '枚举不匹配', '{options}'],
+        ['validate_format', '格式错误', ''],
+      ]},
+    ];
+
+    function renderTextsForm() {
+      var box = document.getElementById('texts-form');
+      if (!box) return;
+      api('GET', '/api/config', null, function(cfg) {
+        if (!cfg) return;
+        var rt = cfg.replyTexts || {};
+        var mv = cfg.matchVocab || {};
+        var html = '';
+        TEXT_GROUPS.forEach(function(g) {
+          html += '<h4 style="font-size:14px;color:#4361ee;margin:22px 0 10px;border-bottom:1px solid #eef0f4;padding-bottom:6px">' + g.title + '</h4>';
+          g.keys.forEach(function(k) {
+            var key = k[0], label = k[1], vars = k[2];
+            var val = (rt[key] !== undefined && rt[key] !== null) ? rt[key] : '';
+            html += '<div style="margin-bottom:14px">' +
+              '<div style="font-size:13px;color:#555;margin-bottom:4px">' + label +
+                (vars ? ' <span style="color:#bbb;font-weight:normal;font-size:12px">可用变量：' + vars + '</span>' : '') +
+              '</div>' +
+              '<textarea id="rt-' + key + '" rows="2" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc(val) + '</textarea>' +
+            '</div>';
+          });
+        });
+        html += '<h4 style="font-size:14px;color:#4361ee;margin:22px 0 10px;border-bottom:1px solid #eef0f4;padding-bottom:6px">匹配词表</h4>' +
+          '<div style="margin-bottom:14px">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:4px">触发词近义扩展表 <span style="color:#bbb;font-weight:normal;font-size:12px">每行一个词条：词=扩展1,扩展2</span></div>' +
+            '<textarea id="mv-synonyms" rows="6" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc(synonymsToText(mv.triggerSynonyms)) + '</textarea>' +
+          '</div>' +
+          '<div style="margin-bottom:14px">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 办理 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
+            '<textarea id="mv-rt-task" rows="2" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc((mv.routeChoiceTask || []).join(',')) + '</textarea>' +
+          '</div>' +
+          '<div style="margin-bottom:14px">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 咨询 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
+            '<textarea id="mv-rt-faq" rows="2" style="width:100%;max-width:640px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit">' + esc((mv.routeChoiceFaq || []).join(',')) + '</textarea>' +
+          '</div>';
+        box.innerHTML = html;
+      });
+    }
+
+    function synonymsToText(obj) {
+      var lines = [];
+      for (var k in obj) {
+        if (Array.isArray(obj[k])) lines.push(k + '=' + obj[k].join(','));
+      }
+      return lines.join('\n');
+    }
+
+    function textToSynonyms(txt) {
+      var out = {};
+      String(txt || '').split('\n').forEach(function(line) {
+        line = line.trim();
+        if (!line) return;
+        var eq = line.indexOf('=');
+        if (eq <= 0) return;
+        var key = line.slice(0, eq).trim();
+        var words = line.slice(eq + 1).split(/[,，]/).map(function(w){ return w.trim(); }).filter(Boolean);
+        if (key && words.length) out[key] = words;
+      });
+      return out;
+    }
+
+    // 收集固定话术 + 词表（右上角保存时调用）
+    function collectTextsPayload() {
+      var replyTexts = {};
+      TEXT_GROUPS.forEach(function(g) {
+        g.keys.forEach(function(k) {
+          var el = document.getElementById('rt-' + k[0]);
+          if (!el) return;
+          var v = el.value.trim();
+          if (v) replyTexts[k[0]] = v;
+        });
+      });
+      var matchVocab = {};
+      var synEl = document.getElementById('mv-synonyms');
+      if (synEl) matchVocab.triggerSynonyms = textToSynonyms(synEl.value);
+      var rtTaskEl = document.getElementById('mv-rt-task');
+      if (rtTaskEl) {
+        var tw = rtTaskEl.value.split(/[,，]/).map(function(w){ return w.trim(); }).filter(Boolean);
+        if (tw.length) matchVocab.routeChoiceTask = tw;
+      }
+      var rtFaqEl = document.getElementById('mv-rt-faq');
+      if (rtFaqEl) {
+        var fw = rtFaqEl.value.split(/[,，]/).map(function(w){ return w.trim(); }).filter(Boolean);
+        if (fw.length) matchVocab.routeChoiceFaq = fw;
+      }
+      return { replyTexts, matchVocab };
     }
 
     // 全局一次注入 tooltip 样式 + 隐藏原生底部保存按钮（CSS 规则跨 Vue 重渲染存活）

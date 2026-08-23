@@ -20,6 +20,7 @@ import extractor from './extractor.js'
 import { runAction } from './actionRegistry.js'
 import { TaskState } from './stateMachine.js'
 import dialogueRules from '../../rules/dialogueRules.js'
+import { getReply } from '../replyTexts.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 const CORRECT_PATTERNS = ['修改', '改成', '换成', '改为', '变更', '改一下']
@@ -98,7 +99,7 @@ class DialogManager {
       state.skipCount = 0
       console.log(`[TaskFlow] 修改请求: ${modifyReq}`)
       return {
-        reply: `好的，请告诉我新的${state.slots[modifyReq]?.label || modifyReq}：`,
+        reply: getReply('modify_prompt', { label: state.slots[modifyReq]?.label || modifyReq }),
         isComplete: false,
         extracted: true,
         reask: false,
@@ -427,19 +428,19 @@ class DialogManager {
       return this._buildSmartGuidance(state)
     }
     const slotDef = this._slotDef(state, step)
-    return slotDef?.prompt || step.prompt || `请提供${slotDef?.label || step.slot_key}`
+    return slotDef?.prompt || step.prompt || getReply('slot_prompt_fallback', { label: slotDef?.label || step.slot_key })
   }
 
   /** 连续无法提取时的智能引导 */
   _buildSmartGuidance(state) {
     const filled = Object.entries(state.slots).filter(([_, s]) => s.filled)
     const unfilled = Object.entries(state.slots).filter(([_, s]) => s.required && !s.filled)
-    let msg = '目前还需要以下信息：\n'
+    let msg = getReply('guidance_header')
     for (const [key, slot] of unfilled) {
-      msg += `  ${slot.label}：❓ 待提供\n`
+      msg += getReply('guidance_item', { label: slot.label })
     }
     if (filled.length > 0) {
-      msg += '\n您可以直接回复对应内容，或说"修改XX"来更改已填信息。'
+      msg += getReply('guidance_filled_hint')
     }
     return msg
   }
@@ -470,7 +471,7 @@ class DialogManager {
     if (slotMatch) {
       state.slots[slotMatch.key].value = slotMatch.value.trim()
       state.slots[slotMatch.key].filled = true
-      return this._renderConfirm(state, `好的，${slotMatch.label}已更新为「${slotMatch.value.trim()}」。\n`)
+      return this._renderConfirm(state, getReply('slot_updated', { label: slotMatch.label, value: slotMatch.value.trim() }))
     }
 
     // 无进展 → FAQ 回退
@@ -482,7 +483,7 @@ class DialogManager {
     state.status = TaskState.COLLECTING
     const step = this._currentStep(state)
     state.currentStep = step?.next
-    return this._advanceCollect(state, text, '好的，正在为您提交。\n')
+    return this._advanceCollect(state, text, getReply('submitting'))
   }
 
   _denyConfirm(state) {
@@ -491,13 +492,13 @@ class DialogManager {
     const firstUnfilled = Object.entries(state.slots).find(([_, s]) => s.required && !s.filled)
     const step = firstUnfilled ? this._findStepBySlot(state, firstUnfilled[0]) : null
     state.currentStep = step?.key
-    const reply = '好的，请重新提供需要修改的信息。\n' + this._buildSmartGuidance(state)
+    const reply = getReply('modify_reask') + this._buildSmartGuidance(state)
     return { reply, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state }
   }
 
   _renderConfirm(state, prefix, asFallback = false) {
     const summary = this._buildSummary(state)
-    const prompt = '请确认以上信息，回复"确认"提交，或说"修改XX"更正。'
+    const prompt = getReply('confirm_prompt')
     return {
       reply: (prefix || '') + summary + '\n' + prompt,
       isComplete: false,
@@ -509,9 +510,9 @@ class DialogManager {
   }
 
   _buildSummary(state) {
-    const lines = ['\n📋 请确认以下信息：']
+    const lines = [getReply('confirm_summary_header')]
     for (const [key, slot] of Object.entries(state.slots)) {
-      if (slot.filled) lines.push(`  ${slot.label}：${slot.value}`)
+      if (slot.filled) lines.push(getReply('confirm_summary_item', { label: slot.label, value: slot.value }))
     }
     return lines.join('\n')
   }
@@ -550,7 +551,7 @@ class DialogManager {
     }
     state.status = TaskState.COLLECTING
     return {
-      reply: `操作未能完成：${result.message}\n您可以回复"重试"，或"取消"结束。`,
+      reply: getReply('action_fail_rule', { message: result.message }),
       isComplete: false,
       extracted: true,
       reask: false,
@@ -640,7 +641,7 @@ class DialogManager {
   _cancel(state) {
     state.status = TaskState.CANCELLED
     return {
-      reply: '好的，已为您取消操作。',
+      reply: getReply('cancel_done'),
       isComplete: false,
       extracted: true,
       reask: false,
@@ -837,7 +838,7 @@ class DialogManager {
     if (!value) {
       state.pendingModify = key
       return {
-        reply: `请直接输入新的${slot.label || key}：`,
+        reply: getReply('direct_input', { label: slot.label || key }),
         isComplete: false,
         extracted: true,
         reask: true,

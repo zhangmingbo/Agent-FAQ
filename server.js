@@ -39,6 +39,8 @@ import { createRouter as createTasksRouter } from './routes/tasks.js'
 import { createRouter as createDebugRouter } from './routes/debug.js'
 import taskEngine from './services/taskflow/index.js'
 import taskSuggestService from './services/taskSuggestService.js'
+import { initReplyTexts, getAllReplyTexts, DEFAULT_REPLY_TEXTS } from './services/replyTexts.js'
+import { initMatchVocab, getAllMatchVocab, DEFAULT_MATCH_VOCAB } from './services/matchVocab.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -155,6 +157,15 @@ async function start() {
       simThreshold: dbConfig.suggest_sim_threshold,
       keywordMinScore: dbConfig.suggest_keyword_min_score,
     })
+    // 固定话术 / 匹配词表（首次启动自动落库，之后以库为准）
+    if (!dbConfig.reply_texts) {
+      await configRepo.set('reply_texts', JSON.stringify(DEFAULT_REPLY_TEXTS))
+    }
+    if (!dbConfig.match_vocab) {
+      await configRepo.set('match_vocab', JSON.stringify(DEFAULT_MATCH_VOCAB))
+    }
+    initReplyTexts(dbConfig)
+    initMatchVocab(dbConfig)
     console.log('   ✅ 系统配置已加载')
   } catch (e) {
     console.log('   ⚠️ 使用默认配置')

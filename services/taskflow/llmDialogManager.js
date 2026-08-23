@@ -15,6 +15,7 @@ import { runAction } from './actionRegistry.js'
 import { TaskState } from './stateMachine.js'
 import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
+import { getReply } from '../replyTexts.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 
@@ -67,7 +68,7 @@ class LLMDialogManager {
       }
       if (isDeny) {
         state.status = TaskState.COLLECTING
-        const reply = '好的，请告诉我需要修改的内容。'
+        const reply = getReply('modify_prompt_llm')
         state.history.push({ role: 'user', text }, { role: 'assistant', text: reply })
         return { reply, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state }
       }
@@ -150,16 +151,16 @@ class LLMDialogManager {
       const result = await runAction(actionStep.action, ctx)
       if (result.ok) {
         state.status = TaskState.DONE
-        message = result.message || actionStep.done_message || `已为您完成${task.name}。`
+        message = result.message || actionStep.done_message || getReply('complete_fallback', { taskName: task.name })
       } else {
         // 动作失败：保持确认态，告知用户
-        message = `操作未能完成：${result.message}\n您可以回复"确认"重试，或回复"取消"。`
+        message = getReply('action_fail_llm', { message: result.message })
         state.history.push({ role: 'assistant', text: message })
         return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state }
       }
     } else {
       state.status = TaskState.DONE
-      message = task.completion_message || `已为您完成${task.name}。`
+      message = task.completion_message || getReply('complete_fallback', { taskName: task.name })
     }
 
     state.history.push({ role: 'assistant', text: message })
@@ -176,7 +177,7 @@ class LLMDialogManager {
   _cancel(state) {
     state.status = TaskState.CANCELLED
     return {
-      reply: '好的，已为您取消操作。',
+      reply: getReply('cancel_done'),
       isComplete: false,
       extracted: true,
       reask: false,

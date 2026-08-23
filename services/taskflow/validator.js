@@ -13,10 +13,12 @@
  * 校验失败时返回 { ok:false, message: slot.validate.reask || 默认提示 }
  */
 
+import { getReply } from '../replyTexts.js'
+
 export function validateSlot(slot, value) {
   if (value === null || value === undefined || value === '') {
     if (slot.required === false) return { ok: true }
-    return { ok: false, message: slot.validate?.reask || `请提供${slot.label || '该信息'}` }
+    return { ok: false, message: slot.validate?.reask || getReply('validate_required', { label: slot.label || '该信息' }) }
   }
 
   const rule = slot.validate?.rule
@@ -37,26 +39,26 @@ function _checkRule(rule, value) {
 
   // length>=N / length<=N
   let m = rule.match(/^length>=\s*(\d+)$/)
-  if (m) return v.length >= parseInt(m[1]) ? { ok: true } : { ok: false, message: `长度不能少于${m[1]}个字符` }
+  if (m) return v.length >= parseInt(m[1]) ? { ok: true } : { ok: false, message: getReply('validate_len_min', { n: m[1] }) }
   m = rule.match(/^length<=\s*(\d+)$/)
-  if (m) return v.length <= parseInt(m[1]) ? { ok: true } : { ok: false, message: `长度不能超过${m[1]}个字符` }
+  if (m) return v.length <= parseInt(m[1]) ? { ok: true } : { ok: false, message: getReply('validate_len_max', { n: m[1] }) }
 
   switch (rule) {
     case 'nonempty':
       return { ok: true }
     case 'number':
-      return /^\d+(\.\d+)?$/.test(v) ? { ok: true } : { ok: false, message: '请输入数字' }
+      return /^\d+(\.\d+)?$/.test(v) ? { ok: true } : { ok: false, message: getReply('validate_number') }
     case 'phone':
-      return /^1[3-9]\d{9}$/.test(v) ? { ok: true } : { ok: false, message: '请输入正确的11位手机号' }
+      return /^1[3-9]\d{9}$/.test(v) ? { ok: true } : { ok: false, message: getReply('validate_phone') }
     default:
       if (rule.startsWith('enum:')) {
         const options = rule.slice(5).split(',').map(s => s.trim())
-        return options.includes(v) ? { ok: true } : { ok: false, message: `请输入：${options.join('、')}` }
+        return options.includes(v) ? { ok: true } : { ok: false, message: getReply('validate_enum', { options: options.join('、') }) }
       }
       if (rule.startsWith('regex:')) {
         try {
           const re = new RegExp(rule.slice(6), 'i')
-          return re.test(v) ? { ok: true } : { ok: false, message: '输入格式不正确' }
+          return re.test(v) ? { ok: true } : { ok: false, message: getReply('validate_format') }
         } catch {
           return { ok: true }
         }

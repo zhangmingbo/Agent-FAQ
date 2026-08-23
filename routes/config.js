@@ -8,6 +8,8 @@ import { asyncHandler } from '../middleware/errorHandler.js'
 import * as configRepo from '../repositories/configRepo.js'
 import llmPrompts from '../services/llmPrompts.js'
 import taskSuggestService from '../services/taskSuggestService.js'
+import { getAllReplyTexts, setReplyTexts } from '../services/replyTexts.js'
+import { getAllMatchVocab, setMatchVocab } from '../services/matchVocab.js'
 
 export function createRouter(engine) {
   const router = Router()
@@ -71,6 +73,9 @@ export function createRouter(engine) {
       suggestMinLen: parseInt(config.suggest_min_len) || 4,
       suggestSimThreshold: parseFloat(config.suggest_sim_threshold) || 0.55,
       suggestKeywordMinScore: parseFloat(config.suggest_keyword_min_score) || 0.75,
+      // 固定话术 / 匹配词表（运营可配，sys_config 存储）
+      replyTexts: getAllReplyTexts(),
+      matchVocab: getAllMatchVocab(),
     })
   }))
 
@@ -154,6 +159,16 @@ export function createRouter(engine) {
         simThreshold: req.body.suggestSimThreshold,
         keywordMinScore: req.body.suggestKeywordMinScore,
       })
+    }
+
+    // 固定话术 / 匹配词表（保存即生效）
+    if (req.body.replyTexts !== undefined) {
+      await configRepo.set('reply_texts', JSON.stringify(req.body.replyTexts))
+      setReplyTexts(req.body.replyTexts)
+    }
+    if (req.body.matchVocab !== undefined) {
+      await configRepo.set('match_vocab', JSON.stringify(req.body.matchVocab))
+      setMatchVocab(req.body.matchVocab)
     }
 
     // LLM 配置（任务智能层 + FAQ 兜底共用，保存即生效）

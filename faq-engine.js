@@ -22,6 +22,8 @@ import FaqService from './services/faqService.js'
 import * as statsService from './services/statsService.js'
 import * as chatLogRepo from './repositories/chatLogRepo.js'
 import { get as getPrompt } from './services/llmPrompts.js'
+import { getReply } from './services/replyTexts.js'
+import { getRouteChoiceWords } from './services/matchVocab.js'
 import traceService from './services/traceService.js'
 
 class FAQEngine {
@@ -137,7 +139,7 @@ class FAQEngine {
           intent_code: null,
           confidence: 0,
           source: 'meaningless',
-          answer: this.fallbackAnswer || '抱歉，我没有理解您的意思。您可以尝试描述您遇到的问题，或输入"转人工"联系人工客服。'
+          answer: getReply('meaningless')
         }
         
         console.log(`[OUTPUT] Source: ${response.source} | Answer: "${response.answer.substring(0, 50)}..."`)
@@ -181,26 +183,26 @@ class FAQEngine {
           const taskState = this.taskEngine.getActiveTask(sessionId)
           const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
           const progressHint = unfilled.length
-            ? `还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
-            : '信息已齐全，请确认'
+            ? getReply('progress_needed', { labels: unfilled.map(([_, s]) => s.label).join('、') })
+            : getReply('progress_all_filled')
           response = {
             intent_code: `task:${taskState.taskCode}`,
             confidence: 1,
             source: 'task_resumed',
-            answer: `好的，我们继续「${taskState.taskName}」～${progressHint}`,
+            answer: getReply('continue_task', { taskName: taskState.taskName, hint: progressHint }),
           }
         } else if (hasActiveNow) {
           // 场景 B：任务中插话拿不准，用户选择继续办理当前任务
           const taskState = this.taskEngine.getActiveTask(sessionId)
           const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
           const progressHint = unfilled.length
-            ? `还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
-            : '信息已齐全，请确认'
+            ? getReply('progress_needed', { labels: unfilled.map(([_, s]) => s.label).join('、') })
+            : getReply('progress_all_filled')
           response = {
             intent_code: `task:${taskState.taskCode}`,
             confidence: 1,
             source: 'task_progress',
-            answer: `好的，我们继续「${taskState.taskName}」～${progressHint}`,
+            answer: getReply('continue_task', { taskName: taskState.taskName, hint: progressHint }),
           }
         } else if (pending.taskCode) {
           // 场景 C：无任务时澄清 → 触发候选任务（用原始触发句）
@@ -221,7 +223,7 @@ class FAQEngine {
             intent_code: null,
             confidence: 1,
             source: 'route',
-            answer: '好的，请问您需要办理什么业务呢？',
+            answer: getReply('ask_business'),
           }
         }
       } else if (choice === 'faq') {
@@ -271,13 +273,13 @@ class FAQEngine {
           this.taskEngine.resume(sessionId)
           const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
           const progressHint = unfilled.length
-            ? `还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
-            : '信息已齐全，请确认'
+            ? getReply('progress_needed', { labels: unfilled.map(([_, s]) => s.label).join('、') })
+            : getReply('progress_all_filled')
           response = {
             intent_code: `task:${taskState.taskCode}`,
             confidence: 1,
             source: 'task_resumed',
-            answer: `好的，我们继续「${taskState.taskName}」～${progressHint}`,
+            answer: getReply('continue_task', { taskName: taskState.taskName, hint: progressHint }),
           }
         } else {
           // 不是恢复词：可能是继续 FAQ 提问，或想换办别的事
@@ -554,7 +556,7 @@ class FAQEngine {
       const taskState = this.taskEngine.getActiveTask(sessionId)
       if (taskState) {
         const unfilled = Object.entries(taskState.slots).filter(([_, s]) => s.required && !s.filled)
-        const progressHint = `\n\n———\n📌 您正在进行「${taskState.taskName}」，还需要：${unfilled.map(([_, s]) => s.label).join('、')}`
+        const progressHint = getReply('task_faq_progress', { taskName: taskState.taskName, labels: unfilled.map(([_, s]) => s.label).join('、') })
         return { ...faqResponse, answer: faqResponse.answer + progressHint, source: 'task_faq' }
       }
       return faqResponse
@@ -604,7 +606,7 @@ class FAQEngine {
       if (fromStash) {
         const stashed = await this.taskEngine.getStashed(sessionId)
         if (stashed) {
-          answer = `（您之前正在进行「${stashed.taskName}」，回复"继续"可接着办理）\n\n` + answer
+          answer = getReply('stashed_hint', { taskName: stashed.taskName }) + answer
         }
       }
       return {
@@ -626,7 +628,7 @@ class FAQEngine {
 
   /** 挂起提示话术（FAQ 回答后拼接，引导用户恢复任务） */
   _suspendedHint(taskState) {
-    return `\n\n———\n📌 您正在进行「${taskState.taskName}」，回复"继续"可接着办理。`
+    return getReply('suspended_hint', { taskName: taskState.taskName })
   }
 
   /** 解析路由澄清的用户选项回复 → 'task' | 'faq' | null */
@@ -639,9 +641,10 @@ class FAQEngine {
     if (/^1[.、．，,。]?\s*$/.test(t)) return 'task'
     if (/^2[.、．，,。]?\s*$/.test(t)) return 'faq'
 
-    // 语义关键词（运营可配的词面，先内置常用词）
-    const taskWords = ['办理', '预约', '要办', '想办', '登记', '办业务', '继续办理', '继续办', '申请', '办一下']
-    const faqWords = ['咨询', '了解', '问问', '查询', '不需要', '不用了', '其他', '别的', '不是', '算了', '看看']
+    // 语义关键词（运营可配：sys_config match_vocab）
+    const words = getRouteChoiceWords()
+    const taskWords = words.task
+    const faqWords = words.faq
 
     if (taskWords.some(w => lower.includes(w))) return 'task'
     if (faqWords.some(w => lower.includes(w))) return 'faq'
@@ -681,7 +684,7 @@ class FAQEngine {
       intent_code: pending.taskCode ? `task:${pending.taskCode}` : null,
       confidence: 1,
       source: 'route_clarify',
-      answer: (repeat ? '抱歉，我没有理解您的选择。\n' : '') + tpl,
+      answer: (repeat ? getReply('route_clarify_repeat_prefix') : '') + tpl,
     }
   }
 
@@ -897,7 +900,7 @@ class FAQEngine {
           intent_code: pending.intentCode,
           confidence: pending.confidence,
           source: 'confirmed',
-          answer: this.fallbackAnswer || '抱歉，没有找到相关答案。'
+          answer: getReply('no_answer')
         }
       }
       
@@ -1037,9 +1040,9 @@ class FAQEngine {
     let followUp
     if (competition) {
       const options = top.slice(0, 3).map((r, i) => `${i + 1}. ${r.intentName || r.intentCode}`).join('\n')
-      followUp = `您的问题可能属于以下几种，请回复序号（1/2/3）选择：\n${options}`
+      followUp = getReply('clarify_options', { options })
     } else {
-      followUp = faq?.followUp || `您是想咨询"${result.intent_name}"吗？请回复"是"或"不是"`
+      followUp = faq?.followUp || getReply('clarify_yes_no', { intentName: result.intent_name })
     }
 
     return {
@@ -1070,7 +1073,7 @@ class FAQEngine {
       confidence: result?.confidence || 0,
       intent_code: null,
       intent_name: null,
-      answer: '我是沁园净水器售后客服，主要帮您处理安装预约、滤芯更换、报修、费用咨询等净水器相关问题。您刚才的问题超出了我的服务范围～\n\n您可以试试：\n1. 描述具体的净水器问题（如"滤芯多久换"、"机器不出水"）\n2. 输入"转人工"联系人工客服',
+      answer: getReply('domain_fallback'),
       source: 'fallback',
       related: ['怎么预约上门服务', '滤芯多久换一次', '机器不出水怎么办'],
     }
