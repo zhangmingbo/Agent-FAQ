@@ -63,10 +63,16 @@ app.use('/uploads', express.static(UPLOADS_DIR))
 
 // Vue 管理后台（no-cache：管理界面脚本经常更新，禁止浏览器缓存旧版）
 app.get('/admin', (req, res) => res.redirect('/admin/'))
-app.use('/admin', express.static(join(PUBLIC_DIR, 'admin'), {
-  maxAge: 0,
-  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
-}))
+app.use('/admin', (req, res, next) => {
+  // 强制改写 Cache-Control（send 内部会按 maxAge 设置，这里统一覆盖为 no-cache）
+  const setHeader = res.setHeader.bind(res)
+  res.setHeader = (name, value) => {
+    if (String(name).toLowerCase() === 'cache-control') value = 'no-cache'
+    return setHeader(name, value)
+  }
+  next()
+})
+app.use('/admin', express.static(join(PUBLIC_DIR, 'admin')))
 
 // 兼容旧路径 /admin.html → admin-legacy.html
 app.get('/admin.html', (req, res) => res.sendFile(join(PUBLIC_DIR, 'admin-legacy.html')))
