@@ -2,11 +2,13 @@
  * "调用接口"步骤执行器（type:'api'）
  *
  * 步骤 DSL：
- *   { type:'api', url, method, fieldMap, resultSlot, resultField, done_message, next }
+ *   { type:'api', url, method, fieldMap, resultSlot, resultField, resultMap, done_message, next }
  *   - fieldMap：{ 槽位key: 接口字段名 }，用已收集槽位组装请求；留空=传全部槽位
- *   - resultSlot：接口响应写入该槽位（槽位需在任务定义里，系统填充，不向用户收集）
- *   - resultField：可选，JSON 点路径（如 data.orderNo），只取响应某字段；留空存整个响应
- *   - done_message：回给用户的话术，支持 {result} / {resultSlot} 插值；
+ *   - resultSlot/resultField：单字段结果（旧式）——resultField 点路径（如 data.orderNo）提取后写入 resultSlot
+ *   - resultMap：多字段结果（新式，优先于 resultSlot/resultField）——
+ *     { 槽位key: 接口字段点路径 }，逐个提取并写入对应槽位，如
+ *     { order_number: 'data.orderNo', order_status: 'data.status' }
+ *   - done_message：回给用户的话术，支持 {result} / {结果槽位key} 插值；
  *     未配置（或为空）→ 调用后不向用户追加任何内容（静默，默认行为）
  *   - next：下一步骤 key
  *
@@ -71,29 +73,44 @@ export async function executeApiStep(step, slots, trace = null) {
 
     const text = await res.text()
     let result = text
+    /** 多字段提取结果：{ 槽位key: 值 }（resultMap 全部；旧式单字段时含 resultSlot） */
+    const results = {}
     try {
       const j = JSON.parse(text)
-      if (step.resultField) {
+      if (step.resultMap && typeof step.resultMap === 'object' && Object.keys(step.resultMap).length) {
+        // 多字段：按 { 槽位key: 点路径 } 逐个提取
+        for (const [slotKey, path] of Object.entries(step.resultMap)) {
+          const v = j && String(path).split('.').reduce((o, k) => (o == null ? o : o[k]), j)
+          results[slotKey] = (v === undefined || v === null) ? text : (typeof v === 'string' ? v : JSON.stringify(v))
+        }
+        // 主结果取第一个映射值（供 {result} 插值 / 兼容单值消费方）
+        result = Object.values(results)[0] ?? text
+      } else if (step.resultField) {
+        // 旧式单字段：resultField 点路径提取 → resultSlot
         const v = j && step.resultField.split('.').reduce((o, k) => (o == null ? o : o[k]), j)
         result = (v === undefined || v === null) ? text : (typeof v === 'string' ? v : JSON.stringify(v))
+        if (step.resultSlot) results[step.resultSlot] = result
       } else {
         result = typeof j === 'string' ? j : JSON.stringify(j)
       }
     } catch { /* 非 JSON，保留原文 */ }
 
-    // 回复话术：仅当配置了 done_message 才向用户追加内容（支持 {result}/{resultSlot} 插值）；
+    // 回复话术：仅当配置了 done_message 才向用户追加内容（支持 {result}/{结果槽位key} 插值）；
     // 未配置或为空 → 静默，接口调用结果不回显给用户（默认行为）
     const hasMsg = step.done_message !== undefined && step.done_message !== null
     let message = hasMsg ? String(step.done_message) : ''
     message = message.split('{result}').join(result)
-    if (step.resultSlot) message = message.split('{' + step.resultSlot + '}').join(result)
+    for (const [slotKey, val] of Object.entries(results)) {
+      message = message.split('{' + slotKey + '}').join(val)
+    }
     traceService.traceStep(trace, '任务·接口结果', {
       ok: true,
       response: text, // 接口原始完整返回
       result,
+      results: Object.keys(results).length ? results : undefined,
       resultSlot: step.resultSlot || null,
     }, 'task')
-    return { ok: true, result, message }
+    return { ok: true, result, results, message }
   } catch (e) {
     console.error('[TaskFlow] api 步骤异常:', e.message)
     traceService.traceStep(trace, '任务·接口异常', { message: e.message }, 'error')

@@ -2209,6 +2209,7 @@
       '<input class="step-api-rf" value="' + esc(s.resultField||'') + '" placeholder="结果字段(如 data.x)" style="width:100px">' +
       '<textarea class="step-api-fm" rows="2" placeholder="请求入参：每行 槽位key=接口字段（支持 data.x 嵌套），如 phone=phone、name=data.name">' + esc((function(){ var fm=s.fieldMap||{},arr=[]; for(var k in fm) arr.push(k+'='+fm[k]); return arr.join('\n'); })()) + '</textarea>' +
       '<textarea class="step-api-fixed" rows="2" placeholder="固定入参：每行 接口字段=固定值（如 appId=10086、channel=qinyuan）">' + esc((function(){ var fp=s.fixedParams||{},arr=[]; for(var k in fp) arr.push(k+'='+fp[k]); return arr.join('\n'); })()) + '</textarea>' +
+      '<textarea class="step-api-rm" rows="2" placeholder="结果映射(多字段，优先于单字段)：每行 槽位key=接口字段路径，如 order_number=data.orderNo、order_status=data.status">' + esc((function(){ var rm=s.resultMap||{},arr=[]; for(var k in rm) arr.push(k+'='+rm[k]); return arr.join('\n'); })()) + '</textarea>' +
       '<input class="step-api-msg" value="' + esc(s.done_message||'') + '" placeholder="回复话术(支持 {结果槽位})" style="width:200px">' : '';
     var subtaskExtra = s.type === 'subtask' ?
       '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
@@ -2303,6 +2304,16 @@
         if (Object.keys(fp).length) step.fixedParams = fp;
         // 回复话术：允许存空字符串（空 = 调用接口后不向用户回显结果）
         step.done_message = row.querySelector('.step-api-msg').value.trim();
+        // 结果映射（多字段）：每行 槽位key=接口字段路径，优先于 resultSlot/resultField
+        var rm = {};
+        row.querySelector('.step-api-rm').value.split('\n').forEach(function(l) {
+          l = l.trim(); if (!l) return;
+          var eq = l.indexOf('=');
+          if (eq <= 0) return;
+          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
+          if (k && v) rm[k] = v;
+        });
+        if (Object.keys(rm).length) step.resultMap = rm;
       } else if (type === 'subtask') {
         step.task = row.querySelector('.step-task').value.trim();
         step.on_return = row.querySelector('.step-return').value.trim();

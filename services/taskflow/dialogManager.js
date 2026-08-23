@@ -185,13 +185,18 @@ class DialogManager {
           return this._finish(state, reply, trace)
         }
         case 'api': {
-          // 中间/收尾"调用接口"步骤：按步骤机走到即执行，结果写入 resultSlot
+          // 中间/收尾"调用接口"步骤：按步骤机走到即执行，结果写入结果槽位
           const slots = {}
           for (const [k, s] of Object.entries(state.slots || {})) slots[k] = s.value
           const r = await executeApiStep(step, slots, trace)
-          if (r.ok && step.resultSlot && state.slots[step.resultSlot]) {
-            state.slots[step.resultSlot].value = r.result
-            state.slots[step.resultSlot].filled = true
+          if (r.ok) {
+            // 多字段结果逐槽写入（resultMap 全部 / 旧式单字段含 resultSlot）
+            for (const [slotKey, val] of Object.entries(r.results || {})) {
+              if (state.slots[slotKey]) {
+                state.slots[slotKey].value = val
+                state.slots[slotKey].filled = true
+              }
+            }
           }
           if (r.message) reply += (reply ? '\n' : '') + r.message
           state.currentStep = step.next

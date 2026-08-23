@@ -138,8 +138,14 @@ class TaskDefs {
       llm: _parseJson(row.llm, null),
       // 调用接口配置（完成动作 call_api 用）：{ url, method, fieldMap, successMessage }
       api_action: _parseJson(row.api_action, null),
-      // api 步骤的结果槽位（系统填充，不向用户收集，也不阻塞确认）
-      apiResultSlots: [...new Set((steps || []).filter(s => s.type === 'api' && s.resultSlot).map(s => s.resultSlot))],
+      // api 步骤的结果槽位（系统填充，不向用户收集，也不阻塞确认）：
+      // 兼容旧式 resultSlot 与新式 resultMap（{ 槽位key: 字段路径 }）的全部槽位
+      apiResultSlots: [...new Set((steps || []).filter(s => s.type === 'api').flatMap(s => {
+        const keys = []
+        if (s.resultSlot) keys.push(s.resultSlot)
+        if (s.resultMap && typeof s.resultMap === 'object') keys.push(...Object.keys(s.resultMap))
+        return keys
+      }))],
       slots,
       steps,
       completion_message: row.completion_message || '',

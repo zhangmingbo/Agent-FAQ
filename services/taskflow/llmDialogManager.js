@@ -341,11 +341,16 @@ class LLMDialogManager {
         continue
       }
       const r = await executeApiStep(step, this._slotValues(state), trace)
-      _t('任务对话·中间接口步骤', { step: step.key, ok: r.ok, resultSlot: step.resultSlot || null }, r.ok ? 'task' : 'error')
+      _t('任务对话·中间接口步骤', { step: step.key, ok: r.ok, resultSlot: step.resultSlot || null, resultSlots: r.results && Object.keys(r.results).length ? Object.keys(r.results) : null }, r.ok ? 'task' : 'error')
       state.apiSteps[step.key] = true
-      if (r.ok && step.resultSlot && state.slots[step.resultSlot]) {
-        state.slots[step.resultSlot].value = r.result
-        state.slots[step.resultSlot].filled = true
+      if (r.ok) {
+        // 多字段结果逐槽写入（resultMap 全部 / 旧式单字段含 resultSlot）
+        for (const [slotKey, val] of Object.entries(r.results || {})) {
+          if (state.slots[slotKey]) {
+            state.slots[slotKey].value = val
+            state.slots[slotKey].filled = true
+          }
+        }
       }
       if (r.message) out.push(r.message)
     }
