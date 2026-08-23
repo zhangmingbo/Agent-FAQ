@@ -1784,11 +1784,25 @@
               '</div>' +
             '</div>' +
             '<div style="margin-top:10px">' +
-              '<div style="font-size:12px;color:#888;margin-bottom:4px;line-height:1.7">提示词覆盖：<b>4 个框已预填当前全局提示词</b>，直接在里面改 = 定制本任务；不改 = 继续用全局；想用全局默认就清空该框。<br>为什么 4 个：对话 = 角色规则（系统）+ 每轮消息（用户）；提取 = 提取规则（系统）+ 字段描述（用户）。<br>注意：{xxx} 是占位符会自动替换，<b>别删</b>。想换口吻 → 改「对话系统提示词」开头那句"你是…售后客服"即可。</div>' +
-              '<textarea id="tf-llm-dialogue-system" placeholder="对话系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
-              '<textarea id="tf-llm-dialogue-user" placeholder="对话用户模板（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
-              '<textarea id="tf-llm-extract-system" placeholder="提取系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
-              '<textarea id="tf-llm-extract-user" placeholder="提取用户模板（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractUser || '') : '') + '</textarea>' +
+              '<div style="font-size:12px;color:#888;margin-bottom:6px;line-height:1.7">提示词覆盖：<b>4 个框已预填当前全局提示词</b>，直接在里面改 = 定制本任务；不改 = 继续用全局；想用全局默认就清空该框。<br>注意：{xxx} 是占位符会自动替换，<b>别删</b>。想换口吻 → 改「对话系统提示词」开头那句"你是…售后客服"即可。</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话系统提示词 <span style="color:#aaa">（角色与规则）</span></div>' +
+                  '<textarea id="tf-llm-dialogue-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
+                '</div>' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话用户模板 <span style="color:#aaa">（每轮消息）</span></div>' +
+                  '<textarea id="tf-llm-dialogue-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
+                '</div>' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取系统提示词 <span style="color:#aaa">（提取规则）</span></div>' +
+                  '<textarea id="tf-llm-extract-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
+                '</div>' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取用户模板 <span style="color:#aaa">（字段描述）</span></div>' +
+                  '<textarea id="tf-llm-extract-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractUser || '') : '') + '</textarea>' +
+                '</div>' +
+              '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
