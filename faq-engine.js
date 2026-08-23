@@ -33,16 +33,31 @@ class FAQEngine {
    * @param {number} options.clarifyThreshold - 追问确认阈值
    * @param {number} options.topK - 返回 Top K 结果（自建 faqService 时生效）
    * @param {Object} options.llm - 大模型配置
+   * @param {number} options.faqCompeteCeiling - 候选竞争：top1 相似度上限（默认 0.95）
+   * @param {number} options.faqCompeteGap - 候选竞争：top1-top2 差距下限（默认 0.06）
+   * @param {number} options.llmRerankCeiling - LLM 意图重排触发上限（低于此值且候选≥2 才重排，默认 0.9）
+   * @param {number} options.analysisMaxConfidence - 分析页低置信度过滤上限（默认 0.7）
+   * @param {number} options.analysisRecommendThreshold - 分析页"加相似问"建议线（默认 0.3）
    */
   constructor(options = {}) {
     this.clarifyThreshold = options.clarifyThreshold ?? 0.65
     this.llmConfig = options.llm || { enabled: false }
     this.meaninglessDetectionMode = 'rule' // 'rule' 或 'llm'
 
+    // 开放给运营的判定参数（sys_config 可配，routes/config.js 热更新）
+    this.faqCompeteCeiling = options.faqCompeteCeiling ?? 0.95
+    this.faqCompeteGap = options.faqCompeteGap ?? 0.06
+    this.llmRerankCeiling = options.llmRerankCeiling ?? 0.9
+    this.analysisMaxConfidence = options.analysisMaxConfidence ?? 0.7
+    this.analysisRecommendThreshold = options.analysisRecommendThreshold ?? 0.3
+
     // 知识库领域服务（默认自建，便于独立使用引擎；server.js 显式注入共享实例）
     this.faqService = options.faqService || new FaqService({
       minConfidence: options.minConfidence ?? 0.5,
       topK: options.topK ?? 5,
+      shortTextLen: options.shortTextLen ?? 4,
+      shortRegexHit: options.shortRegexHit ?? 0.95,
+      shortContainsHit: options.shortContainsHit ?? 0.9,
     })
 
     // 兼容访问：识别器与答案缓存由 faqService 持有
@@ -791,7 +806,7 @@ class FAQEngine {
 
     if (result.matched) {
       // ===== [STEP 3.5] LLM 意图重排（可选，配置启用且置信度不高时） =====
-      if (this.llmConfig?.enabled && result.confidence < 0.9 && (result.top_results?.length || 0) >= 2) {
+      if (this.llmConfig?.enabled && result.confidence < this.llmRerankCeiling && (result.top_results?.length || 0) >= 2) {
         const choice = await this._llmRerankIntent(text, result.top_results.slice(0, 5))
         if (choice && choice !== result.intent_code) {
           const alt = result.top_results.find(r => (r.intentCode || r.intent_code) === choice)
@@ -812,8 +827,8 @@ class FAQEngine {
       const competition = !!(
         top1 && top2
         && (top1.intentCode || top1.intent_code) !== (top2.intentCode || top2.intent_code)
-        && top1.similarity < 0.95
-        && (top1.similarity - top2.similarity) < 0.06
+        && top1.similarity < this.faqCompeteCeiling
+        && (top1.similarity - top2.similarity) < this.faqCompeteGap
       )
 
       if (result.confidence >= this.clarifyThreshold && !competition) {
@@ -1015,8 +1030,8 @@ class FAQEngine {
     const competition = !!(
       top1 && top2
       && (top1.intentCode || top1.intent_code) !== (top2.intentCode || top2.intent_code)
-      && top1.similarity < 0.95
-      && (top1.similarity - top2.similarity) < 0.06
+      && top1.similarity < this.faqCompeteCeiling
+      && (top1.similarity - top2.similarity) < this.faqCompeteGap
     )
 
     let followUp
@@ -1195,7 +1210,7 @@ class FAQEngine {
    * 智能分析：获取优化建议（兼容门面，委托 statsService）
    */
   getAnalysis() {
-    return this.statsService.getAnalysis()
+    return this.statsService.getAnalysis(this.analysisMaxConfidence)
   }
 }
 

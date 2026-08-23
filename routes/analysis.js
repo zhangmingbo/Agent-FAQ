@@ -47,7 +47,7 @@ export function createRouter(engine) {
       matched: result.matched,
       confidence: result.confidence,
       suggestions,
-      recommendAction: (result.matched && result.confidence > 0.3) ? 'add_question' : 'create_new',
+      recommendAction: (result.matched && result.confidence > (engine.analysisRecommendThreshold ?? 0.3)) ? 'add_question' : 'create_new',
     })
   }))
 

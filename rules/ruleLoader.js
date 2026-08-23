@@ -128,6 +128,9 @@ class RuleLoader {
         if (parsed.denyWords) rules.denyWords = this._normalizeRulesArray(parsed.denyWords)
         if (parsed.meaninglessWords) rules.meaninglessWords = this._normalizeRulesArray(parsed.meaninglessWords)
         if (parsed.resumeWords) rules.resumeWords = this._normalizeRulesArray(parsed.resumeWords)
+        if (parsed.matchTolerance && typeof parsed.matchTolerance === 'object') {
+          rules.matchTolerance = parsed.matchTolerance
+        }
       } catch (e) {
         console.warn('[RuleLoader] 解析对话规则失败，使用默认值')
       }

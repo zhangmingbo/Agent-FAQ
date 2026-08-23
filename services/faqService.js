@@ -18,10 +18,13 @@ class FaqService {
    * @param {Object} options - 配置
    * @param {number} options.minConfidence - 意图识别最低置信度阈值
    * @param {number} options.topK - 识别器返回 Top K 数量
+   * @param {number} options.shortTextLen - 短句防护长度线（默认 4）
+   * @param {number} options.shortRegexHit - 短句正则命中分（默认 0.95）
+   * @param {number} options.shortContainsHit - 短句例句包含命中分（默认 0.9）
    */
-  constructor({ minConfidence = 0.5, topK = 5 } = {}) {
+  constructor({ minConfidence = 0.5, topK = 5, shortTextLen = 4, shortRegexHit = 0.95, shortContainsHit = 0.9 } = {}) {
     // 底层意图识别器（供引擎与路由复用）
-    this.recognizer = new IntentRecognizer({ minConfidence, topK })
+    this.recognizer = new IntentRecognizer({ minConfidence, topK, shortTextLen, shortRegexHit, shortContainsHit })
 
     // FAQ 答案缓存（code → faq item），与识别器同步维护
     this.faqMap = new Map()

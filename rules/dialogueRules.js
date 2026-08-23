@@ -56,6 +56,15 @@ class DialogueRules {
         { pattern: '继续办理', weight: 1.0 },
       ],
       sessionTimeout: 30 * 60 * 1000, // 30分钟
+      // 匹配容错参数（运营可配：确认/否认/无意义等短词的容错匹配）
+      matchTolerance: {
+        containsMaxLen: 10,    // 包含匹配：文本长度不超过此值才做"包含"判定
+        containsWeight: 0.8,   // 包含匹配权重系数（如"对的对的"包含"对的"）
+        fuzzyPatternMaxLen: 4, // 模糊匹配：规则词长度上限
+        fuzzyTextMaxLen: 10,   // 模糊匹配：文本长度上限
+        fuzzySim: 0.8,         // 模糊匹配相似度门槛（"好滴"≈"好的"）
+        fuzzyWeight: 0.7,      // 模糊匹配权重系数
+      },
     }
     
     // 当前生效的规则
@@ -108,6 +117,22 @@ class DialogueRules {
     
     if (typeof newRules.sessionTimeout === 'number' && newRules.sessionTimeout > 0) {
       this.currentRules.sessionTimeout = newRules.sessionTimeout
+    }
+    
+    // 匹配容错参数（可选，单项合并）
+    if (newRules.matchTolerance && typeof newRules.matchTolerance === 'object') {
+      const t = this.currentRules.matchTolerance
+      const src = newRules.matchTolerance
+      const num = (v, d) => {
+        const n = parseFloat(v)
+        return isNaN(n) ? d : n
+      }
+      if (src.containsMaxLen !== undefined) t.containsMaxLen = parseInt(src.containsMaxLen, 10) > 0 ? parseInt(src.containsMaxLen, 10) : t.containsMaxLen
+      if (src.containsWeight !== undefined) t.containsWeight = num(src.containsWeight, t.containsWeight)
+      if (src.fuzzyPatternMaxLen !== undefined) t.fuzzyPatternMaxLen = parseInt(src.fuzzyPatternMaxLen, 10) > 0 ? parseInt(src.fuzzyPatternMaxLen, 10) : t.fuzzyPatternMaxLen
+      if (src.fuzzyTextMaxLen !== undefined) t.fuzzyTextMaxLen = parseInt(src.fuzzyTextMaxLen, 10) > 0 ? parseInt(src.fuzzyTextMaxLen, 10) : t.fuzzyTextMaxLen
+      if (src.fuzzySim !== undefined) t.fuzzySim = num(src.fuzzySim, t.fuzzySim)
+      if (src.fuzzyWeight !== undefined) t.fuzzyWeight = num(src.fuzzyWeight, t.fuzzyWeight)
     }
     
     // 更新元数据
@@ -280,18 +305,18 @@ class DialogueRules {
         console.log(`    [MATCH] ✅ Exact "${rule.pattern}" → Score: ${score.toFixed(2)}`)
       }
       // 包含匹配（短文本）
-      else if (text.length <= 10 && text.includes(rule.pattern.toLowerCase())) {
-        score = rule.weight * 0.8 // 包含匹配降低权重
-        console.log(`    [MATCH] ⚠️ Contains "${rule.pattern}" → Score: ${score.toFixed(2)} (x0.8)`)
+      else if (text.length <= this.currentRules.matchTolerance.containsMaxLen && text.includes(rule.pattern.toLowerCase())) {
+        score = rule.weight * this.currentRules.matchTolerance.containsWeight // 包含匹配降低权重
+        console.log(`    [MATCH] ⚠️ Contains "${rule.pattern}" → Score: ${score.toFixed(2)} (x${this.currentRules.matchTolerance.containsWeight})`)
       }
       // 编辑距离模糊匹配（仅对短词）
-      else if (rule.pattern.length <= 4 && text.length <= 10) {
+      else if (rule.pattern.length <= this.currentRules.matchTolerance.fuzzyPatternMaxLen && text.length <= this.currentRules.matchTolerance.fuzzyTextMaxLen) {
         const distance = this._levenshteinDistance(text, rule.pattern.toLowerCase())
         const maxLength = Math.max(text.length, rule.pattern.length)
         const similarity = 1 - distance / maxLength
         
-        if (similarity >= 0.8) { // 相似度阈值
-          score = rule.weight * similarity * 0.7 // 模糊匹配进一步降低权重
+        if (similarity >= this.currentRules.matchTolerance.fuzzySim) { // 相似度阈值
+          score = rule.weight * similarity * this.currentRules.matchTolerance.fuzzyWeight // 模糊匹配进一步降低权重
           console.log(`    [MATCH] 🔄 Fuzzy "${rule.pattern}" → Distance: ${distance}, Similarity: ${(similarity*100).toFixed(0)}%, Score: ${score.toFixed(2)}`)
         }
       }

@@ -75,8 +75,8 @@ export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder 
 /**
  * 低置信度列表（分页/日期/搜索/排序）
  */
-export async function getLowConfidence({ date, keyword, sortBy = 'confidence', sortOrder = 'asc', page = 1, pageSize = 20 }) {
-  let where = 'WHERE confidence > 0 AND confidence < 0.7 AND intent_code IS NOT NULL AND meaningful = 1'
+export async function getLowConfidence({ date, keyword, sortBy = 'confidence', sortOrder = 'asc', page = 1, pageSize = 20, maxConfidence = 0.7 }) {
+  let where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1`
   const params = []
 
   if (date) {
@@ -126,12 +126,12 @@ export async function getLowConfidence({ date, keyword, sortBy = 'confidence', s
 /**
  * 获取可用日期列表（按类型）
  */
-export async function getDates(type) {
+export async function getDates(type, maxConfidence = 0.7) {
   let where = ''
   if (type === 'unmatched') {
     where = "WHERE intent_code IS NULL AND source IN ('fallback', 'clarify') AND meaningful = 1"
   } else if (type === 'low-confidence') {
-    where = 'WHERE confidence > 0 AND confidence < 0.7 AND intent_code IS NOT NULL AND meaningful = 1'
+    where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1`
   } else if (type === 'recent') {
     where = 'WHERE meaningful = 1'
   }
@@ -306,11 +306,11 @@ export async function getUnmatchedForAnalysis() {
 /**
  * 低置信度匹配（智能分析用）
  */
-export async function getLowConfidenceForAnalysis() {
+export async function getLowConfidenceForAnalysis(maxConfidence = 0.7) {
   const [rows] = await pool.execute(
     `SELECT user_text, intent_code, confidence, created_at
      FROM chat_log 
-     WHERE confidence > 0 AND confidence < 0.7 AND intent_code IS NOT NULL
+     WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL
      ORDER BY created_at DESC 
      LIMIT 50`
   )

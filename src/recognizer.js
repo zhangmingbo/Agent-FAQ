@@ -29,11 +29,17 @@ class IntentRecognizer {
    * @param {string} [options.modelName] - 模型名称，默认 'paraphrase-multilingual-MiniLM-L12-v2'
    * @param {number} [options.minConfidence=0.5] - 最小置信度阈值
    * @param {number} [options.topK=3] - 返回的Top K结果数量
+   * @param {number} [options.shortTextLen=4] - 短句防护：长度低于此值不走向量匹配
+   * @param {number} [options.shortRegexHit=0.95] - 短句正则命中给的相似度
+   * @param {number} [options.shortContainsHit=0.9] - 短句例句包含原词给的相似度
    */
   constructor(options = {}) {
     this.modelName = options.modelName || 'paraphrase-multilingual-MiniLM-L12-v2'
     this.minConfidence = options.minConfidence ?? 0.5
     this.topK = options.topK ?? 3
+    this.shortTextLen = options.shortTextLen ?? 4
+    this.shortRegexHit = options.shortRegexHit ?? 0.95
+    this.shortContainsHit = options.shortContainsHit ?? 0.9
 
     this.nlpEngine = new NLPEngine(this.modelName)
 
@@ -173,7 +179,7 @@ class IntentRecognizer {
     // 短句（<4字）向量匹配不可靠："习近平"(3字) vs "查明细"(3字) 相似度 0.826。
     // 短句只接受"例句包含原词"或正则命中（确定性），不做纯向量相似猜测——
     // 避免域外短词（人名/地名）被强行塞进最像的意图。
-    const SHORT_TEXT_LEN = 4
+    const SHORT_TEXT_LEN = this.shortTextLen
     const isShort = text.trim().length < SHORT_TEXT_LEN
     if (isShort) {
       const t = text.trim()
@@ -181,10 +187,10 @@ class IntentRecognizer {
       for (const sample of this.allSamples) {
         // 正则命中
         if (sample.isRegex && sample.regex.test(t)) {
-          exactHits.push({ ...sample, similarity: 0.95, _exact: true })
+          exactHits.push({ ...sample, similarity: this.shortRegexHit, _exact: true })
         } else if (!sample.isRegex && sample.questionText && sample.questionText.includes(t)) {
           // 例句包含原词（"换芯"出现在例句"安排个上门换滤芯"里 → 确定匹配）
-          exactHits.push({ ...sample, similarity: 0.9, _exact: true })
+          exactHits.push({ ...sample, similarity: this.shortContainsHit, _exact: true })
         }
       }
       if (exactHits.length > 0) {

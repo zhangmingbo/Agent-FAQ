@@ -528,6 +528,8 @@
     panel.appendChild(rulesPanel);
     panel.appendChild(tasksPanel);
     panel.appendChild(llmPanel);
+    // 对话规则 tab 底部追加"匹配容错"配置区
+    injectMatchTolerance(rulesPanel);
     // 标签切换
     tabs.addEventListener('click', function(e) {
       var btn = e.target.closest('.tab-btn');
@@ -540,6 +542,86 @@
       llmPanel.classList.toggle('active', tab === 'llm');
       if (tab === 'tasks') { loadTasks(); loadSuggestions(); }
       if (tab === 'llm') loadLLMPanel();
+    });
+  }
+
+  // 对话规则 tab：匹配容错参数（确认/否认/无意义词的容错匹配判定）
+  function ensureTipStyle() {
+    if (document.getElementById('arb-tip-style')) return;
+    var st = document.createElement('style');
+    st.id = 'arb-tip-style';
+    st.textContent =
+      '.arb-tip{position:relative;display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#4361ee;color:#fff;font-size:11px;font-weight:bold;cursor:help;margin-left:6px;vertical-align:middle}' +
+      '.arb-tip .arb-tip-box{visibility:hidden;opacity:0;position:absolute;left:24px;top:-8px;width:300px;background:#2b2f3a;color:#e8eaed;font-size:12px;line-height:1.7;font-weight:normal;padding:12px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9999;transition:opacity .15s,visibility .15s;white-space:normal;text-align:left}' +
+      '.arb-tip:hover .arb-tip-box{visibility:visible;opacity:1}' +
+      '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}';
+    document.head.appendChild(st);
+  }
+
+  function injectMatchTolerance(panel) {
+    ensureTipStyle();
+    var div = document.createElement('div');
+    div.id = 'match-tolerance-block';
+    div.style.cssText = 'margin-top:30px;max-width:500px';
+    div.innerHTML =
+      '<h3 style="font-size:15px;margin-bottom:16px">匹配容错参数</h3>' +
+      '<div style="font-size:12px;color:#999;margin-bottom:12px">确认/否认/无意义等短词的容错匹配：包含匹配与编辑距离模糊匹配的判定参数。保存立即生效。</div>' +
+      '<div id="match-tolerance-form"></div>' +
+      '<button id="mt-save-btn" style="padding:8px 20px;background:#4361ee;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;margin-top:8px">保存容错参数</button>';
+    panel.appendChild(div);
+    renderMatchTolerance();
+  }
+
+  function renderMatchTolerance() {
+    var box = document.getElementById('match-tolerance-form');
+    if (!box) return;
+    api('GET', '/api/dialogue-rules', null, function(rules) {
+      if (!rules) return;
+      ensureTipStyle();
+      var mt = rules.matchTolerance || {};
+      var row = function(label, id, val, desc, o) {
+        o = o || {};
+        return '<div style="margin-bottom:18px">' +
+          '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
+            ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
+            '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
+          '</div>' +
+          '<input id="' + id + '" type="number" step="' + (o.step || '0.01') + '" min="' + (o.min || 0) + '" max="' + (o.max || 1) + '" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+        '</div>';
+      };
+      box.innerHTML =
+        row('包含匹配长度上限', 'mt-contains-max-len', mt.containsMaxLen,
+          '作用：文本长度不超过此值时才做"包含匹配"（如"对的对的"包含"对的"）。<br>调大：更长的话也能被包含匹配；调小：只对更短的话生效。<br>典型值：8~15，建议 10。', { min: 2, max: 30, step: 1 }) +
+        row('包含匹配权重', 'mt-contains-weight', mt.containsWeight,
+          '作用：包含命中时的权重系数（低于精确匹配 1.0，避免误判）。<br>调大：包含命中更接近精确匹配；调小：更保守。<br>典型值：0.6~0.9，建议 0.8。') +
+        row('模糊匹配词长上限', 'mt-fuzzy-pattern-max-len', mt.fuzzyPatternMaxLen,
+          '作用：规则词长度超过此值不做编辑距离模糊匹配（长词模糊不可靠）。<br>典型值：3~6，建议 4。', { min: 2, max: 10, step: 1 }) +
+        row('模糊匹配文本长度上限', 'mt-fuzzy-text-max-len', mt.fuzzyTextMaxLen,
+          '作用：用户输入长度超过此值不做模糊匹配。<br>典型值：6~15，建议 10。', { min: 2, max: 30, step: 1 }) +
+        row('模糊匹配相似度线', 'mt-fuzzy-sim', mt.fuzzySim,
+          '作用：编辑距离相似度 ≥ 此值才算模糊命中（"好滴"≈"好的"）。<br>调大：要求更像才命中；调小：更宽松。<br>典型值：0.7~0.9，建议 0.8。') +
+        row('模糊匹配权重', 'mt-fuzzy-weight', mt.fuzzyWeight,
+          '作用：模糊命中时的权重系数（低于精确匹配）。<br>典型值：0.5~0.85，建议 0.7。');
+      var btn = document.getElementById('mt-save-btn');
+      if (btn) btn.onclick = function() {
+        var mt = {};
+        var ids = {
+          'mt-contains-max-len': 'containsMaxLen', 'mt-contains-weight': 'containsWeight',
+          'mt-fuzzy-pattern-max-len': 'fuzzyPatternMaxLen', 'mt-fuzzy-text-max-len': 'fuzzyTextMaxLen',
+          'mt-fuzzy-sim': 'fuzzySim', 'mt-fuzzy-weight': 'fuzzyWeight'
+        };
+        for (var id in ids) {
+          var el = document.getElementById(id);
+          if (!el) continue;
+          var v = parseFloat(el.value);
+          if (isNaN(v)) { alert('参数格式错误：' + id); return; }
+          mt[ids[id]] = v;
+        }
+        api('POST', '/api/dialogue-rules', { matchTolerance: mt }, function(res) {
+          if (res.success) alert('容错参数已保存并生效');
+          else alert(res.message || '保存失败');
+        });
+      };
     });
   }
 
@@ -556,6 +638,8 @@
       if (!h3 || h3.textContent.indexOf('识别参数') === -1) return;
       sysInjected = true;
       injectArbThresholds(panel);
+      injectAdvThresholds(panel);
+      injectAnalysisThresholds(panel);
       injectNativeTips(panel);
       placeTopRightSave();
     });
@@ -603,9 +687,9 @@
             '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（触发词没覆盖但说法像例句的场景）。<br>举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 触发预约任务。<br>调大：减少语义误触发；调小：更多口语化表达能触发。<br>典型值：0.40~0.55，建议 0.45。') +
           row('触发词基础分', 'arb-task-boost', cfg.arbTaskBoost,
             '作用：话术命中任务触发词（如"预约""上门"）时，任务侧相似度抬升到此值——触发词是运营明确配置的信号。<br>举例："请个师父上门来看看吧"命中"上门" → 任务侧抬到 0.85，压过 FAQ 0.72 → 进入预约任务。<br>调大：触发词命中后更坚定走任务；调小：更易被 FAQ 反超。<br>典型值：0.80~0.92，建议 0.85。') +
-          '<div style="font-size:12px;color:#999;margin-top:4px">仲裁阈值与上方识别参数共用右上角"保存配置"按钮，一起保存生效。</div>';
+          '<div style="font-size:12px;color:#999;margin-top:4px">以上阈值与上方识别参数共用右上角"保存配置"按钮，一起保存生效。</div>';
         box.innerHTML = html;
-        // 与右上角"保存配置"按钮联动：点击时把仲裁阈值一并提交
+        // 与右上角"保存配置"按钮联动：点击时把仲裁/高级判定/分析建议阈值一并提交
         if (!window.__arbLinked) {
           window.__arbLinked = true;
           document.addEventListener('click', function(e) {
@@ -614,25 +698,30 @@
             if (!btn) return;
             var isSave = btn.textContent.indexOf('保存配置') >= 0;
             if (!isSave) return;
-            // 原生保存触发后（异步），补提交仲裁阈值，并重挂被重渲染清掉的注释
+            // 原生保存触发后（异步），补提交所有注入阈值，并重挂被重渲染清掉的注释
             setTimeout(function() {
               var arb = {};
               var ids = {
                 'arb-gap': 'arbGap', 'arb-task-min': 'arbTaskMin', 'arb-faq-min': 'arbFaqMin',
-                'arb-strong-hit': 'arbStrongHit', 'arb-vector-threshold': 'arbVectorThreshold', 'arb-task-boost': 'arbTaskBoost'
+                'arb-strong-hit': 'arbStrongHit', 'arb-vector-threshold': 'arbVectorThreshold', 'arb-task-boost': 'arbTaskBoost',
+                'faq-compete-ceiling': 'faqCompeteCeiling', 'faq-compete-gap': 'faqCompeteGap', 'llm-rerank-ceiling': 'llmRerankCeiling',
+                'short-text-len': 'shortTextLen', 'short-regex-hit': 'shortRegexHit', 'short-contains-hit': 'shortContainsHit',
+                'task-vec-min-len': 'taskVecMinLen',
+                'analysis-recommend-threshold': 'analysisRecommendThreshold', 'analysis-max-confidence': 'analysisMaxConfidence',
+                'suggest-min-len': 'suggestMinLen', 'suggest-sim-threshold': 'suggestSimThreshold', 'suggest-keyword-min-score': 'suggestKeywordMinScore'
               };
               var any = false;
               for (var id in ids) {
                 var el = document.getElementById(id);
                 if (!el) continue;
                 var v = parseFloat(el.value);
-                if (isNaN(v)) { alert('仲裁阈值格式错误：' + id); return; }
+                if (isNaN(v)) { alert('参数格式错误：' + id); return; }
                 arb[ids[id]] = v;
                 any = true;
               }
               if (any) {
                 api('POST', '/api/config', arb, function(res) {
-                  if (!res.success) alert('仲裁阈值保存失败：' + (res.message || '未知错误'));
+                  if (!res.success) alert('阈值保存失败：' + (res.message || '未知错误'));
                 });
               }
               var p = document.querySelector('.config-panel');
@@ -640,6 +729,98 @@
             }, 300);
           });
         }
+      });
+    }
+
+    // ===== 高级判定阈值（FAQ 候选竞争 / LLM 重排 / 短句防护 / 任务向量最短） =====
+    function injectAdvThresholds(panel) {
+      ensureArbTipStyle();
+      var div = document.createElement('div');
+      div.id = 'adv-threshold-block';
+      div.style.cssText = 'margin-top:30px;max-width:500px';
+      div.innerHTML =
+        '<h3 style="font-size:15px;margin-bottom:16px">高级判定阈值</h3>' +
+        '<div style="font-size:12px;color:#999;margin-bottom:12px">FAQ 候选竞争、LLM 意图重排、短句防护、任务向量语义触发等判定参数。保存立即生效。</div>' +
+        '<div id="adv-threshold-form"></div>';
+      panel.appendChild(div);
+      renderAdvForm();
+    }
+
+    function renderAdvForm() {
+      var box = document.getElementById('adv-threshold-form');
+      if (!box) return;
+      api('GET', '/api/config', null, function(cfg) {
+        if (!cfg) return;
+        ensureArbTipStyle();
+        var row = function(label, id, val, desc, o) {
+          o = o || {};
+          return '<div style="margin-bottom:18px">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
+              ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
+              '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
+            '</div>' +
+            '<input id="' + id + '" type="number" step="' + (o.step || '0.01') + '" min="' + (o.min || 0) + '" max="' + (o.max || 1) + '" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+          '</div>';
+        };
+        box.innerHTML =
+          row('候选竞争判定上限', 'faq-compete-ceiling', cfg.faqCompeteCeiling,
+            '作用：FAQ 候选 top1 与 top2 是不同意图，且 top1 相似度低于此值时，才进入"候选竞争追问"（列 1/2/3 让用户选）。<br>top1 ≥ 此值视为答案确定，直接回答不追问。<br>调大：更少列选项追问（认为够确定）；调小：更易进入候选竞争。<br>典型值：0.90~0.98，建议 0.95。') +
+          row('候选竞争差距阈值', 'faq-compete-gap', cfg.faqCompeteGap,
+            '作用：top1 与 top2 相似度差距小于此值才认为"两个候选都很像" → 列选项追问；差距更大说明 top1 明显更优，直接回答。<br>调大：更易触发候选竞争（保守）；调小：更直接回答。<br>典型值：0.03~0.10，建议 0.06。') +
+          row('LLM 意图重排触发线', 'llm-rerank-ceiling', cfg.llmRerankCeiling,
+            '作用：启用大模型时，FAQ 相似度低于此值且候选≥2，才调用 LLM 重新排序意图（更精准但每次有成本）。<br>调大：更少调 LLM 重排（省成本）；调小：更多低分场景重排。<br>典型值：0.85~0.95，建议 0.90。') +
+          row('短句判定长度', 'short-text-len', cfg.shortTextLen,
+            '作用：长度低于此值的输入不走向量相似度匹配（向量对短词不可靠，如"习近平"误配"查明细"），只接受"正则命中/例句包含原词"的确定性匹配。<br>调大：更多短输入走确定性匹配；调小：更少。<br>典型值：3~5，建议 4。', { min: 2, max: 10, step: 1 }) +
+          row('短句正则命中分', 'short-regex-hit', cfg.shortRegexHit,
+            '作用：短句命中正则（如"转人工"）时给的相似度分数。<br>调大：更坚定命中；调小：可能被其它判定压过。<br>典型值：0.90~0.99，建议 0.95。') +
+          row('短句包含命中分', 'short-contains-hit', cfg.shortContainsHit,
+            '作用：短句原文出现在某 FAQ 例句里（"换芯"在"上门换滤芯"）时给的相似度。<br>典型值：0.85~0.95，建议 0.90。') +
+          row('任务向量最短长度', 'task-vec-min-len', cfg.taskVecMinLen,
+            '作用：任务意图例句的向量语义触发只对长度≥此值的输入生效（太短只走触发词，避免短句噪声误触发任务）。<br>调大：更少语义触发（只靠触发词）；调小：更多短句也能语义触发。<br>典型值：4~8，建议 5。', { min: 2, max: 15, step: 1 });
+      });
+    }
+
+    // ===== 分析建议阈值（分析页过滤线 + 建议挖掘参数） =====
+    function injectAnalysisThresholds(panel) {
+      ensureArbTipStyle();
+      var div = document.createElement('div');
+      div.id = 'analysis-threshold-block';
+      div.style.cssText = 'margin-top:30px;max-width:500px';
+      div.innerHTML =
+        '<h3 style="font-size:15px;margin-bottom:16px">分析建议阈值</h3>' +
+        '<div style="font-size:12px;color:#999;margin-bottom:12px">问题分析页与任务建议挖掘的过滤/建议线。保存立即生效。</div>' +
+        '<div id="analysis-threshold-form"></div>';
+      panel.appendChild(div);
+      renderAnalysisForm();
+    }
+
+    function renderAnalysisForm() {
+      var box = document.getElementById('analysis-threshold-form');
+      if (!box) return;
+      api('GET', '/api/config', null, function(cfg) {
+        if (!cfg) return;
+        ensureArbTipStyle();
+        var row = function(label, id, val, desc, o) {
+          o = o || {};
+          return '<div style="margin-bottom:18px">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
+              ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
+              '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
+            '</div>' +
+            '<input id="' + id + '" type="number" step="' + (o.step || '0.01') + '" min="' + (o.min || 0) + '" max="' + (o.max || 1) + '" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+          '</div>';
+        };
+        box.innerHTML =
+          row('加相似问建议线', 'analysis-recommend-threshold', cfg.analysisRecommendThreshold,
+            '作用：问题分析页里，FAQ 命中且相似度高于此值 → 建议"加入该 FAQ 相似问"；低于则建议新建。<br>调大：更保守地建议加入；调小：更多建议加入。<br>典型值：0.20~0.40，建议 0.30。') +
+          row('低置信过滤上限', 'analysis-max-confidence', cfg.analysisMaxConfidence,
+            '作用：分析页"低置信度"列表只展示相似度低于此值的日志（高于此值算正常命中，不进分析）。<br>调大：更多日志进低置信分析；调小：只看更低的。<br>典型值：0.60~0.80，建议 0.70。') +
+          row('挖掘最短长度', 'suggest-min-len', cfg.suggestMinLen,
+            '作用：任务建议挖掘时，短于此长度的表达不进候选池（太短多为语气词/碎片）。<br>典型值：3~6，建议 4。', { min: 2, max: 10, step: 1 }) +
+          row('挖掘相似度线', 'suggest-sim-threshold', cfg.suggestSimThreshold,
+            '作用：候选表达与任务例句的语义相似度低于此值 → 不算"像该任务"，不入建议。<br>调大：建议更保守（可能漏）；调小：更多候选（噪声多）。<br>典型值：0.45~0.65，建议 0.55。') +
+          row('触发词最低分', 'suggest-keyword-min-score', cfg.suggestKeywordMinScore,
+            '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。');
       });
     }
 

@@ -39,8 +39,9 @@ class TaskNLU {
      *   strongHit 强命中线：两侧都低于此值判"域外"（无真实业务信号，不澄清直接业务引导）
      *   vectorThreshold 语义触发线：任务例句向量相似度 ≥ 此值才算语义命中
      *   taskBoost 触发词基础分：触发词命中时任务侧抬升到此分（允许 FAQ 例句原话反超）
+     *   vecMinLen 任务向量语义最短长度：低于此字数不做例句向量语义触发（只走触发词）
      */
-    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55, strongHit: 0.72, vectorThreshold: 0.45, taskBoost: 0.85 }
+    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55, strongHit: 0.72, vectorThreshold: 0.45, taskBoost: 0.85, vecMinLen: 5 }
     /** @type {Map<string, Array>} code -> 意图例句向量 */
     this._vectors = new Map()
     /**
@@ -64,8 +65,9 @@ class TaskNLU {
       strongHit: num(cfg.strongHit, this.arbConfig.strongHit ?? 0.72),
       vectorThreshold: num(cfg.vectorThreshold, this.arbConfig.vectorThreshold ?? 0.45),
       taskBoost: num(cfg.taskBoost, this.arbConfig.taskBoost ?? 0.85),
+      vecMinLen: parseInt(cfg.vecMinLen, 10) > 0 ? parseInt(cfg.vecMinLen, 10) : (this.arbConfig.vecMinLen ?? 5),
     }
-    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin} strongHit=${this.arbConfig.strongHit} vectorThreshold=${this.arbConfig.vectorThreshold} taskBoost=${this.arbConfig.taskBoost}`)
+    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin} strongHit=${this.arbConfig.strongHit} vectorThreshold=${this.arbConfig.vectorThreshold} taskBoost=${this.arbConfig.taskBoost} vecMinLen=${this.arbConfig.vecMinLen}`)
   }
 
   /** 设置模式 */
@@ -148,12 +150,13 @@ class TaskNLU {
     }
 
     // 3) 向量语义（意图例句；仅较长句子，否定句不触发）
-    if (this.nlpEngine && text.trim().length >= 5 && !NEGATION_RE.test(text) && !this._isNegation(lowerText)) {
+    const vecMinLen = this.arbConfig.vecMinLen ?? 5
+    if (this.nlpEngine && text.trim().length >= vecMinLen && !NEGATION_RE.test(text) && !this._isNegation(lowerText)) {
       const hit = await this._matchByVector(text, tasks, currentCode)
       _t('意图例句向量', { hit: hit ? hit.code : null }, hit ? 'rule' : 'info')
       if (hit) return hit
     } else {
-      _t('跳过向量语义', { reason: !this.nlpEngine ? '无模型' : (text.trim().length < 5 ? '太短' : '否定句') })
+      _t('跳过向量语义', { reason: !this.nlpEngine ? '无模型' : (text.trim().length < vecMinLen ? '太短' : '否定句') })
     }
 
     return null

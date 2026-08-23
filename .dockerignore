@@ -1,3 +1,9 @@
 deploy-linux
 *.log
 .DS_Store
+.git
+*.tar
+*.png
+*.md
+deploy.sh
+.gitignore

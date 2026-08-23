@@ -18,13 +18,13 @@ export function createRouter(engine) {
 
   // 低置信度列表
   router.get('/chat-log/low-confidence', asyncHandler(async (req, res) => {
-    const result = await chatLogRepo.getLowConfidence(req.query)
+    const result = await chatLogRepo.getLowConfidence({ ...req.query, maxConfidence: engine.analysisMaxConfidence ?? 0.7 })
     res.json(result)
   }))
 
   // 可用日期列表
   router.get('/chat-log/dates', asyncHandler(async (req, res) => {
-    const rows = await chatLogRepo.getDates(req.query.type)
+    const rows = await chatLogRepo.getDates(req.query.type, engine.analysisMaxConfidence ?? 0.7)
     res.json(rows)
   }))
 

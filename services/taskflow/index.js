@@ -103,6 +103,7 @@ class TaskFlowEngine {
         strongHit: dbConfig.arb_strong_hit,
         vectorThreshold: dbConfig.arb_vector_threshold,
         taskBoost: dbConfig.arb_task_boost,
+        vecMinLen: dbConfig.task_vec_min_len,
       })
     } catch (e) {
       console.warn('[TaskFlow] LLM 配置读取失败，使用规则模式:', e.message)

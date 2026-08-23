@@ -38,6 +38,7 @@ import { createRouter as createHealthRouter } from './routes/health.js'
 import { createRouter as createTasksRouter } from './routes/tasks.js'
 import { createRouter as createDebugRouter } from './routes/debug.js'
 import taskEngine from './services/taskflow/index.js'
+import taskSuggestService from './services/taskSuggestService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -139,6 +140,21 @@ async function start() {
     if (dbConfig.meaningless_detection_mode) {
       engine.meaninglessDetectionMode = dbConfig.meaningless_detection_mode
     }
+    // 高级判定阈值（FAQ 候选竞争 / LLM 重排 / 短句防护）
+    if (dbConfig.faq_compete_ceiling) engine.faqCompeteCeiling = parseFloat(dbConfig.faq_compete_ceiling)
+    if (dbConfig.faq_compete_gap) engine.faqCompeteGap = parseFloat(dbConfig.faq_compete_gap)
+    if (dbConfig.llm_rerank_ceiling) engine.llmRerankCeiling = parseFloat(dbConfig.llm_rerank_ceiling)
+    if (dbConfig.short_text_len) engine.recognizer.shortTextLen = parseInt(dbConfig.short_text_len)
+    if (dbConfig.short_regex_hit) engine.recognizer.shortRegexHit = parseFloat(dbConfig.short_regex_hit)
+    if (dbConfig.short_contains_hit) engine.recognizer.shortContainsHit = parseFloat(dbConfig.short_contains_hit)
+    // 分析/建议阈值
+    if (dbConfig.analysis_recommend_threshold) engine.analysisRecommendThreshold = parseFloat(dbConfig.analysis_recommend_threshold)
+    if (dbConfig.analysis_max_confidence) engine.analysisMaxConfidence = parseFloat(dbConfig.analysis_max_confidence)
+    taskSuggestService.configure({
+      minLen: dbConfig.suggest_min_len,
+      simThreshold: dbConfig.suggest_sim_threshold,
+      keywordMinScore: dbConfig.suggest_keyword_min_score,
+    })
     console.log('   ✅ 系统配置已加载')
   } catch (e) {
     console.log('   ⚠️ 使用默认配置')

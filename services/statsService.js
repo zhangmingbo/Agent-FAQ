@@ -21,10 +21,10 @@ export function getStats() {
  * 原 FAQEngine.getAnalysis() 的 SQL 实现收敛于此，
  * 由 chatLogRepo / faqRepo 的既有查询聚合而成。
  */
-export async function getAnalysis() {
+export async function getAnalysis(maxConfidence = 0.7) {
   const [unmatched, lowConfidence, topQuestions, trend, meaningless, coverageStats, lowQuestionFaqs] = await Promise.all([
     chatLogRepo.getUnmatchedForAnalysis(),
-    chatLogRepo.getLowConfidenceForAnalysis(),
+    chatLogRepo.getLowConfidenceForAnalysis(maxConfidence),
     chatLogRepo.getTopQuestions(),
     chatLogRepo.getTrend(),
     chatLogRepo.getFallbackStats(),

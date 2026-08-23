@@ -28,17 +28,29 @@ const NEGATION_RE = /(没|不|别|无需|不用|不是|不要|不想|没说|没�
 /** 赞美/情绪类表达过滤（"你真聪明/太棒了"与办理无关） */
 const PRAISE_RE = /(你真|你好棒|太棒|厉害|聪明|牛逼|优秀|感谢你|辛苦了|有你是|多亏你|谢谢|不错|可以啊)/
 
-/** 太短的表达无法可靠匹配（少于 4 字基本是语气词/碎片） */
-const MIN_LEN = 4
-/** 匹配阈值：语义相似度低于此值不算"像某个任务"（避免噪声入池） */
-const SIM_THRESHOLD = 0.55
-/** 触发词命中的最低分（触发词在但语义极低也要过此门槛，防止"电话xxx"误配） */
-const KEYWORD_MIN_SCORE = 0.75
+/** 太短/相似度/触发词门槛 → 实例字段 this.minLen / this.simThreshold / this.keywordMinScore（sys_config 可配） */
 
 class TaskSuggestService {
   constructor() {
     /** 未匹配日志读取器（默认仓库实现；测试可注入 mock） */
     this.logRepo = chatLogRepo
+    /** 建议挖掘参数（运营可配，sys_config → configure() 更新） */
+    this.minLen = 4
+    this.simThreshold = 0.55
+    this.keywordMinScore = 0.75
+  }
+
+  /** 运行时更新挖掘参数（管理后台保存后调用） */
+  configure({ minLen, simThreshold, keywordMinScore } = {}) {
+    if (minLen !== undefined) this.minLen = parseInt(minLen, 10) > 0 ? parseInt(minLen, 10) : this.minLen
+    if (simThreshold !== undefined) {
+      const n = parseFloat(simThreshold)
+      if (!isNaN(n)) this.simThreshold = n
+    }
+    if (keywordMinScore !== undefined) {
+      const n = parseFloat(keywordMinScore)
+      if (!isNaN(n)) this.keywordMinScore = n
+    }
   }
 
   /**
@@ -64,7 +76,7 @@ class TaskSuggestService {
     const items = []
     for (const c of candidates) {
       const text = (c.text || '').trim()
-      if (text.length < MIN_LEN) continue
+      if (text.length < this.minLen) continue
       if (NOISE_RE.test(text)) continue
       if (NEGATION_RE.test(text)) continue
       if (CANCEL_RE.test(text)) continue
@@ -126,8 +138,8 @@ class TaskSuggestService {
       if (kwHit) {
         score = 0.85 + vecScore * 0.1 // 触发词为主，语义微调
         reason = 'keyword'
-        if (score < KEYWORD_MIN_SCORE) { score = 0; reason = '' } // 触发词在但整体仍弱 → 不算
-      } else if (vecScore >= SIM_THRESHOLD) {
+        if (score < this.keywordMinScore) { score = 0; reason = '' } // 触发词在但整体仍弱 → 不算
+      } else if (vecScore >= this.simThreshold) {
         score = vecScore
         reason = 'vector'
       }

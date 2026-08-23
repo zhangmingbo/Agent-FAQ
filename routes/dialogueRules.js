@@ -16,21 +16,33 @@ export function createRouter(engine, ruleLoader, dialogueRules) {
     res.json(rules)
   }))
 
-  // 更新对话规则配置
+  // 更新对话规则配置（合并式：可只提交部分字段，不会覆盖其它配置）
   router.post('/dialogue-rules', asyncHandler(async (req, res) => {
-    const { confirmWords, denyWords, meaninglessWords, resumeWords, sessionTimeout } = req.body
+    const { confirmWords, denyWords, meaninglessWords, resumeWords, sessionTimeout, matchTolerance } = req.body
 
-    if (!Array.isArray(confirmWords) || !Array.isArray(denyWords) || !Array.isArray(meaninglessWords)) {
+    const hasWords = [confirmWords, denyWords, meaninglessWords, resumeWords].some(Array.isArray)
+    if (!hasWords && matchTolerance === undefined && sessionTimeout === undefined) {
       res.status(400).json({ success: false, message: '参数格式错误' })
       return
     }
 
-    await configRepo.set('dialogue_rules', JSON.stringify({
-      confirmWords,
-      denyWords,
-      meaninglessWords,
-      resumeWords: Array.isArray(resumeWords) ? resumeWords : [],
-    }))
+    // 读取现有 dialogue_rules，合并更新
+    let current = {}
+    const existing = await configRepo.get('dialogue_rules')
+    if (existing) {
+      try { current = JSON.parse(existing) } catch { current = {} }
+    }
+
+    const next = { ...current }
+    if (Array.isArray(confirmWords)) next.confirmWords = confirmWords
+    if (Array.isArray(denyWords)) next.denyWords = denyWords
+    if (Array.isArray(meaninglessWords)) next.meaninglessWords = meaninglessWords
+    if (Array.isArray(resumeWords)) next.resumeWords = resumeWords
+    if (matchTolerance && typeof matchTolerance === 'object') {
+      next.matchTolerance = { ...(next.matchTolerance || {}), ...matchTolerance }
+    }
+
+    await configRepo.set('dialogue_rules', JSON.stringify(next))
 
     if (typeof sessionTimeout === 'number' && sessionTimeout > 0) {
       await configRepo.set('session_timeout', String(sessionTimeout))
@@ -72,6 +84,7 @@ export function createRouter(engine, ruleLoader, dialogueRules) {
         denyWords: rules.denyWords,
         meaninglessWords: rules.meaninglessWords,
         resumeWords: rules.resumeWords || [],
+        ...(rules.matchTolerance ? { matchTolerance: rules.matchTolerance } : {}),
       }))
       res.json({ success: true, version: rules.version })
     } else {

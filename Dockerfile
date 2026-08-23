@@ -7,7 +7,7 @@ COPY node_modules/ ./node_modules/
 COPY model_cache/ ./model_cache/
 
 # 复制所有应用文件
-COPY package.json ./
+COPY package.json ecosystem.config.js ./
 COPY src/ ./src/
 COPY config/ ./config/
 COPY db/ ./db/
@@ -15,9 +15,9 @@ COPY middleware/ ./middleware/
 COPY repositories/ ./repositories/
 COPY routes/ ./routes/
 COPY rules/ ./rules/
-COPY services/ ./services/
+COPY scripts/ ./scripts/
 COPY public/ ./public/
-COPY faq-library.js faq-engine.js server.js ./
+COPY db.js faq-library.js faq-engine.js server.js intent-recognizer.js intents-library.js .env.example ./
 
 # 替换为 Linux 版原生模块（sharp、mysql2）
 RUN npm install --os=linux --cpu=x64 sharp mysql2
