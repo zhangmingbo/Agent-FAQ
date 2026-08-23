@@ -58,11 +58,9 @@ const PUBLIC_DIR = join(__dirname, 'public')
 const UPLOADS_DIR = join(__dirname, 'uploads')
 if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true })
 
-app.use(express.static(PUBLIC_DIR))
-app.use('/uploads', express.static(UPLOADS_DIR))
-
 // Vue 管理后台（no-cache：管理界面脚本经常更新，禁止浏览器缓存旧版）
-app.get('/admin', (req, res) => res.redirect('/admin/'))
+// 注意：必须放在根静态之前，否则 /admin/* 会被下面的 express.static(PUBLIC_DIR) 先拦截
+// （serve-static 自带 /admin → /admin/ 目录重定向，无需手动 redirect 路由）
 app.use('/admin', (req, res, next) => {
   // 强制改写 Cache-Control（send 内部会按 maxAge 设置，这里统一覆盖为 no-cache）
   const setHeader = res.setHeader.bind(res)
@@ -73,6 +71,9 @@ app.use('/admin', (req, res, next) => {
   next()
 })
 app.use('/admin', express.static(join(PUBLIC_DIR, 'admin')))
+
+app.use(express.static(PUBLIC_DIR))
+app.use('/uploads', express.static(UPLOADS_DIR))
 
 // 兼容旧路径 /admin.html → admin-legacy.html
 app.get('/admin.html', (req, res) => res.sendFile(join(PUBLIC_DIR, 'admin-legacy.html')))
