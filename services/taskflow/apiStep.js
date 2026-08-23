@@ -13,6 +13,18 @@
 
 import { getReply } from '../replyTexts.js'
 
+/** 按点路径写入嵌套对象：setPath(obj, 'data.phone', v) → obj.data.phone = v */
+function setPath(obj, path, value) {
+  const keys = String(path).split('.')
+  let cur = obj
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i]
+    if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {}
+    cur = cur[k]
+  }
+  cur[keys[keys.length - 1]] = value
+}
+
 export async function executeApiStep(step, slots) {
   if (!step || !step.url) return { ok: false, result: null, message: 'api 步骤未配置接口地址' }
 
@@ -22,10 +34,17 @@ export async function executeApiStep(step, slots) {
     payload = {}
     for (const [slotKey, apiField] of Object.entries(fieldMap)) {
       const v = slots[slotKey]
-      payload[apiField] = (v !== undefined && v !== null) ? String(v) : ''
+      setPath(payload, apiField, (v !== undefined && v !== null) ? String(v) : '')
     }
   } else {
     payload = { ...slots }
+  }
+  // 固定入参（静态值，如 appId/渠道号；覆盖同名字段，支持嵌套）
+  if (step.fixedParams && typeof step.fixedParams === 'object') {
+    for (const [k, v] of Object.entries(step.fixedParams)) {
+      if (v && typeof v === 'object') setPath(payload, k, v) // 对象原样（嵌套结构）
+      else setPath(payload, k, String(v === undefined || v === null ? '' : v))
+    }
   }
 
   try {
