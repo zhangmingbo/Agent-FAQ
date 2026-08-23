@@ -568,6 +568,8 @@
             '<td style="text-align:right"><input id="arb-task-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbTaskMin + '" style="width:80px"></td></tr>' +
             '<tr><td style="padding:3px 0">FAQ 侧最低线（低于此值不算"像 FAQ"）</td>' +
             '<td style="text-align:right"><input id="arb-faq-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbFaqMin + '" style="width:80px"></td></tr>' +
+            '<tr><td style="padding:3px 0">强命中线（两侧都低于此值判域外，不澄清）</td>' +
+            '<td style="text-align:right"><input id="arb-strong-hit" type="number" step="0.01" min="0" max="1" value="' + cfg.arbStrongHit + '" style="width:80px"></td></tr>' +
             '<tr><td colspan="2" style="text-align:right;padding-top:8px"><button class="btn-sm" id="arb-save-btn">保存阈值</button></td></tr>' +
           '</div>'
         : '';
@@ -579,8 +581,9 @@
           var gap = parseFloat(document.getElementById('arb-gap').value);
           var taskMin = parseFloat(document.getElementById('arb-task-min').value);
           var faqMin = parseFloat(document.getElementById('arb-faq-min').value);
-          if (isNaN(gap) || isNaN(taskMin) || isNaN(faqMin)) { alert('请输入有效数字'); return; }
-          api('POST', '/api/config', { arbGap: gap, arbTaskMin: taskMin, arbFaqMin: faqMin }, function(res) {
+          var strongHit = parseFloat(document.getElementById('arb-strong-hit').value);
+          if (isNaN(gap) || isNaN(taskMin) || isNaN(faqMin) || isNaN(strongHit)) { alert('请输入有效数字'); return; }
+          api('POST', '/api/config', { arbGap: gap, arbTaskMin: taskMin, arbFaqMin: faqMin, arbStrongHit: strongHit }, function(res) {
             if (res.success) { alert('阈值已保存并生效'); loadLLMPanel(); }
             else alert(res.message || '保存失败');
           });

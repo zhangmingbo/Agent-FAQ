@@ -49,6 +49,11 @@ export function createRouter(engine) {
       llmModel: llmCfg.model || '',
       nluMode: config.nlu_mode || 'hybrid',
       meaninglessDetectionMode: config.meaningless_detection_mode || 'rule',
+      // 任务/FAQ 统一语义仲裁阈值（运营可配）
+      arbGap: parseFloat(config.arb_gap) || 0.08,
+      arbTaskMin: parseFloat(config.arb_task_min) || 0.45,
+      arbFaqMin: parseFloat(config.arb_faq_min) || 0.55,
+      arbStrongHit: parseFloat(config.arb_strong_hit) || 0.72,
     })
   }))
 
@@ -83,6 +88,21 @@ export function createRouter(engine) {
         await configRepo.set('nlu_mode', mode)
         engine.taskEngine?.setNluMode?.(mode)
       }
+    }
+
+    // 任务/FAQ 统一语义仲裁阈值（保存即生效）
+    if (req.body.arbGap !== undefined || req.body.arbTaskMin !== undefined || req.body.arbFaqMin !== undefined || req.body.arbStrongHit !== undefined) {
+      if (req.body.arbGap !== undefined) await configRepo.set('arb_gap', req.body.arbGap)
+      if (req.body.arbTaskMin !== undefined) await configRepo.set('arb_task_min', req.body.arbTaskMin)
+      if (req.body.arbFaqMin !== undefined) await configRepo.set('arb_faq_min', req.body.arbFaqMin)
+      if (req.body.arbStrongHit !== undefined) await configRepo.set('arb_strong_hit', req.body.arbStrongHit)
+      const cfg = await configRepo.getAll()
+      engine.taskEngine?.nlu?.setArbConfig?.({
+        gap: cfg.arb_gap,
+        taskMin: cfg.arb_task_min,
+        faqMin: cfg.arb_faq_min,
+        strongHit: cfg.arb_strong_hit,
+      })
     }
 
     // LLM 配置（任务智能层 + FAQ 兜底共用，保存即生效）

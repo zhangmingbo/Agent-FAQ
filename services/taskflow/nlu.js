@@ -37,8 +37,9 @@ class TaskNLU {
      *   gap       差距阈值：任务与 FAQ 相似度差 > gap 才判显著胜出，否则澄清
      *   taskMin   任务侧最低线：低于此值不算"像任务"
      *   faqMin    FAQ 侧最低线：低于此值不算"像 FAQ"
+     *   strongHit 强命中线：两侧都低于此值判"域外"（无真实业务信号，不澄清直接业务引导）
      */
-    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55 }
+    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55, strongHit: 0.72 }
     /** @type {Map<string, Array>} code -> 意图例句向量 */
     this._vectors = new Map()
     /**
@@ -59,8 +60,9 @@ class TaskNLU {
       gap: num(cfg.gap, this.arbConfig.gap ?? 0.08),
       taskMin: num(cfg.taskMin, this.arbConfig.taskMin ?? 0.45),
       faqMin: num(cfg.faqMin, this.arbConfig.faqMin ?? 0.55),
+      strongHit: num(cfg.strongHit, this.arbConfig.strongHit ?? 0.72),
     }
-    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin}`)
+    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin} strongHit=${this.arbConfig.strongHit}`)
   }
 
   /** 设置模式 */
@@ -283,11 +285,11 @@ class TaskNLU {
       }
     }
 
-    // 强命中线：至少一侧达到此值才算"真实业务命中"。
+    // 强命中线（运营可配）：至少一侧达到此值才算"真实业务命中"。
     // 两侧都只是弱匹配（0.5~0.7 的碰巧接近，如"我家门坏了"任务0.64/FAQ0.61）
     // → 不构成澄清理由，判域外（由上层走 fallback 业务引导）
     // 注意：empty 场景（taskScore=0 且 faqScore=0，无引擎/双低）不在此列——上层走 matchTask 补判
-    const strongHit = 0.72
+    const strongHit = this.arbConfig.strongHit ?? 0.72
     if ((taskScore > 0 || faqScore > 0) && taskScore < strongHit && faqScore < strongHit) {
       console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达强命中线(${strongHit}) → 域外`)
       return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
