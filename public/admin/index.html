@@ -577,46 +577,35 @@
       if (!box) return;
       api('GET', '/api/config', null, function(cfg) {
         if (!cfg) return;
+        // 问号悬浮提示（纯 CSS，无 JS 依赖）
+        var tipStyle = '<style>' +
+          '.arb-tip{position:relative;display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#4361ee;color:#fff;font-size:11px;font-weight:bold;cursor:help;margin-left:6px;vertical-align:middle}' +
+          '.arb-tip .arb-tip-box{visibility:hidden;opacity:0;position:absolute;left:24px;top:-8px;width:300px;background:#2b2f3a;color:#e8eaed;font-size:12px;line-height:1.7;font-weight:normal;padding:12px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9999;transition:opacity .15s,visibility .15s;white-space:normal;text-align:left}' +
+          '.arb-tip:hover .arb-tip-box{visibility:visible;opacity:1}' +
+          '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}' +
+          '</style>';
         var row = function(label, id, val, desc) {
           return '<div style="margin-bottom:18px">' +
-            '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label + ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span></div>' +
+            '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
+              ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
+              '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
+            '</div>' +
             '<input id="' + id + '" type="number" step="0.01" min="0" max="1" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
-            '<div style="font-size:12px;color:#999;margin-top:6px;line-height:1.6;background:#f8f9fa;padding:8px 10px;border-radius:6px;border-left:3px solid #4361ee">' + desc + '</div>' +
           '</div>';
         };
-        var html =
+        var html = tipStyle +
           row('差距阈值', 'arb-gap', cfg.arbGap,
-            '作用：决定"任务"和"FAQ"两边相似度差多少时直接判定胜出，而不是追问用户。' +
-            '举例：用户说"我要预约上门服务"，任务侧相似度 0.92、FAQ 侧 0.70，差 0.22 > 0.08 → 直接进入任务。' +
-            '调大（如 0.15）：更倾向追问用户确认（更保守）；调小（如 0.05）：更倾向直接判定（更果断）。' +
-            '典型值：0.06~0.15，建议 0.08。') +
+            '作用：决定"任务"和"FAQ"两边相似度差多少时直接判定胜出，而不是追问用户。<br>举例：用户说"我要预约上门服务"，任务侧 0.92、FAQ 侧 0.70，差 0.22 &gt; 0.08 → 直接进入任务。<br>调大：更倾向追问确认（保守）；调小：更倾向直接判定（果断）。<br>典型值：0.06~0.15，建议 0.08。') +
           row('任务侧最低线', 'arb-task-min', cfg.arbTaskMin,
-            '作用：任务例句相似度低于此值，就不算"像这个任务"，不会触发任务。' +
-            '举例：用户说"习近平是谁"，与任务例句最高相似度 0.40 < 0.45 → 不触发任何任务。' +
-            '调大：减少任务误触发（但可能漏掉真实预约）；调小：更容易触发任务（但易误触）。' +
-            '典型值：0.40~0.55，建议 0.45。') +
+            '作用：任务例句相似度低于此值，就不算"像这个任务"，不会触发任务。<br>举例："习近平是谁"与任务例句最高相似度 0.40 &lt; 0.45 → 不触发任何任务。<br>调大：减少任务误触发（可能漏真实预约）；调小：更容易触发（易误触）。<br>典型值：0.40~0.55，建议 0.45。') +
           row('FAQ 侧最低线', 'arb-faq-min', cfg.arbFaqMin,
-            '作用：FAQ 例句相似度低于此值，就不算"匹配到 FAQ"，不会用 FAQ 回答。' +
-            '举例：用户问"今天天气"，与所有 FAQ 例句相似度都 < 0.55 → 不匹配 FAQ。' +
-            '调大：减少 FAQ 误匹配（但可能漏答）；调小：更容易匹配 FAQ（但易答非所问）。' +
-            '典型值：0.50~0.65，建议 0.55。') +
+            '作用：FAQ 例句相似度低于此值，就不算"匹配到 FAQ"，不会用 FAQ 回答。<br>举例："今天天气"与所有 FAQ 例句相似度都 &lt; 0.55 → 不匹配 FAQ。<br>调大：减少 FAQ 误匹配（可能漏答）；调小：更容易匹配（易答非所问）。<br>典型值：0.50~0.65，建议 0.55。') +
           row('强命中线', 'arb-strong-hit', cfg.arbStrongHit,
-            '作用：没有触发词命中时，如果任务和 FAQ 两侧相似度都低于此值，判定为"域外问题"（与净水器业务无关），' +
-            '直接回复业务引导（"我是沁园售后客服…"），不追问、不强行匹配。' +
-            '举例："我家门坏了"任务 0.64、FAQ 0.61，都 < 0.72 → 判定域外，不再问"是想预约还是咨询"。' +
-            '调大：更多输入被判为域外（更严格）；调小：更多弱匹配进入澄清流程。' +
-            '典型值：0.65~0.80，建议 0.72。') +
+            '作用：无触发词时，任务和 FAQ 两侧相似度都低于此值 → 判定"域外问题"（与净水器业务无关），直接业务引导，不追问。<br>举例："我家门坏了"任务 0.64、FAQ 0.61，都 &lt; 0.72 → 域外。<br>调大：更多输入判为域外（严格）；调小：更多弱匹配进澄清。<br>典型值：0.65~0.80，建议 0.72。') +
           row('语义触发线', 'arb-vector-threshold', cfg.arbVectorThreshold,
-            '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（用于触发词没覆盖但说法类似例句的场景）。' +
-            '举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 语义触发预约任务。' +
-            '调大：减少语义误触发（例句外的说法更难触发）；调小：更多口语化表达能触发任务。' +
-            '典型值：0.40~0.55，建议 0.45。') +
+            '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（触发词没覆盖但说法像例句的场景）。<br>举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 触发预约任务。<br>调大：减少语义误触发；调小：更多口语化表达能触发。<br>典型值：0.40~0.55，建议 0.45。') +
           row('触发词基础分', 'arb-task-boost', cfg.arbTaskBoost,
-            '作用：用户话术命中任务配置的触发词时（如"预约""上门"），任务侧相似度抬升到此值——' +
-            '触发词是运营明确配置的信号，应比纯语义更可信。' +
-            '举例："请个师父上门来看看吧"命中触发词"上门" → 任务侧抬到 0.85，压过 FAQ 侧 0.72 → 进入预约任务。' +
-            '调大：触发词命中后更坚定走任务（但可能压过明确的 FAQ 问题）；调小：更易被 FAQ 反超。' +
-            '典型值：0.80~0.92，建议 0.85。') +
+            '作用：话术命中任务触发词（如"预约""上门"）时，任务侧相似度抬升到此值——触发词是运营明确配置的信号。<br>举例："请个师父上门来看看吧"命中"上门" → 任务侧抬到 0.85，压过 FAQ 0.72 → 进入预约任务。<br>调大：触发词命中后更坚定走任务；调小：更易被 FAQ 反超。<br>典型值：0.80~0.92，建议 0.85。') +
           '<button class="btn-sm btn-primary" id="arb-save-btn" style="padding:8px 20px;background:#4361ee;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">保存仲裁阈值</button>';
         box.innerHTML = html;
         var btn = document.getElementById('arb-save-btn');
