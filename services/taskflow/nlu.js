@@ -33,6 +33,12 @@ class TaskNLU {
     this.vectorThreshold = 0.45
     /** @type {Map<string, Array>} code -> 意图例句向量 */
     this._vectors = new Map()
+    /**
+     * FAQ 侧例句向量源（与任务同一模型编码，可公平对比相似度）
+     * 由 faq-engine 注入 recognizer.allSamples（[{intentCode,intentName,vector}]）
+     * 用于"任务 vs FAQ"统一语义仲裁
+     */
+    this.faqSamples = []
   }
 
   /** 设置模式 */
@@ -48,6 +54,11 @@ class TaskNLU {
   /** 注入共享 NLP 引擎（复用 FAQ 模型） */
   setNlpEngine(engine) {
     this.nlpEngine = engine
+  }
+
+  /** 注入 FAQ 例句向量源（recognizer.allSamples），用于统一语义仲裁 */
+  setFaqSamples(samples) {
+    this.faqSamples = Array.isArray(samples) ? samples : []
   }
 
   /** 任务定义变更后重建意图例句向量 */
@@ -155,6 +166,87 @@ class TaskNLU {
       return tasks.find(t => t.code === best.code) || null
     }
     return null
+  }
+
+  // ========== 统一语义仲裁（任务 vs FAQ） ==========
+
+  /**
+   * 用同一模型对输入打分，比较"最像哪个任务"与"最像哪个 FAQ 意图"，
+   * 谁显著高就选谁；两者接近则无法确定（返回 'clarify' 让用户选）。
+   *
+   * 这是"查一下用气量"类误判的根治：
+   *   任务侧 meter_replace sim=0.471，FAQ 侧 gas_usage_detail sim=1.0
+   *   → FAQ 显著高 → 走 FAQ，不再被任务抢
+   *
+   * @param {string} text - 用户输入
+   * @param {Object} ctx - { tasks }
+   * @returns {Promise<{channel:'task_new'|'faq'|'clarify', taskScore, faqScore, taskCode?, taskName?, faqCode?, faqName?, diff}>}
+   */
+  async arbitrateTaskFaq(text, ctx = {}) {
+    const empty = { channel: 'clarify', taskScore: 0, faqScore: 0, diff: 0 }
+    if (!this.nlpEngine) return empty
+    const tasks = ctx.tasks || []
+
+    // 编码一次，两套向量共用
+    let qv
+    try {
+      qv = await this.nlpEngine.encodeQuery(text)
+    } catch {
+      return empty
+    }
+
+    // 任务侧最高相似度
+    let taskScore = 0
+    let taskCode = null
+    let taskName = ''
+    for (const [code, samples] of this._vectors) {
+      const def = tasks.find(t => t.code === code)
+      if (!def || def.status !== 1) continue
+      for (const v of samples) {
+        const sim = cosineSimilarity(qv, v)
+        if (sim > taskScore) {
+          taskScore = sim
+          taskCode = code
+          taskName = def.name
+        }
+      }
+    }
+
+    // FAQ 侧最高相似度
+    let faqScore = 0
+    let faqCode = null
+    let faqName = ''
+    for (const s of this.faqSamples) {
+      if (!s.vector) continue
+      const sim = cosineSimilarity(qv, s.vector)
+      if (sim > faqScore) {
+        faqScore = sim
+        faqCode = s.intentCode
+        faqName = s.intentName
+      }
+    }
+
+    const diff = taskScore - faqScore
+
+    // 两者都太低（都未达语义线）→ 无法判定
+    if (taskScore < 0.45 && faqScore < 0.55) {
+      console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)}，均未达线 → clarify`)
+      return empty
+    }
+
+    // 差距阈值：任务或 FAQ 显著高时直接选（参照 FAQ 竞争澄清的 0.06）
+    const GAP = 0.08
+    if (diff > GAP) {
+      console.log(`[TaskNLU] 仲裁：任务 ${taskCode}(${taskScore.toFixed(3)}) > FAQ ${faqCode}(${faqScore.toFixed(3)}) → task_new`)
+      return { channel: 'task_new', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+    }
+    if (-diff > GAP) {
+      console.log(`[TaskNLU] 仲裁：FAQ ${faqCode}(${faqScore.toFixed(3)}) > 任务 ${taskCode}(${taskScore.toFixed(3)}) → faq`)
+      return { channel: 'faq', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
+    }
+
+    console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)} FAQ=${faqScore.toFixed(3)} 接近(Δ=${diff.toFixed(3)}) → clarify`)
+    return { channel: 'clarify', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff }
   }
 
   // ========== 槽位提取 ==========
@@ -315,11 +407,17 @@ class TaskNLU {
       }
 
       // 2.2 规则未命中或被否定 → 走完整 matchTask（LLM 判定 + 意图例句向量语义）
-      //    （任务中途判定"换办别的事"时同样生效）
+      //    命中后必须与 FAQ 统一仲裁（同一模型对比相似度，谁高选谁），
+      //    防止"查一下用气量"这类 FAQ 例句原话被任务例句语义误抢
       if (!matchedTask && this.mode !== 'rule') {
         try {
           const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null)
           if (hit) {
+            // 语义/LLM 命中任务 → 与 FAQ 仲裁
+            const arb = await this.arbitrateTaskFaq(t, ctx)
+            if (arb.channel === 'faq') return 'faq'
+            if (arb.channel === 'clarify') return 'clarify'
+            // arb.task_new → 任务胜出
             matchedTask = hit
             consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
             if (!consultHint) return 'task_new'

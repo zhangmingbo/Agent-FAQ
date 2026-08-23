@@ -162,6 +162,8 @@ async function start() {
   await taskEngine.initialize()
   // 接入共享 NLP 引擎（复用 FAQ 识别器已加载的向量模型，支持语义触发）
   await taskEngine.setNlpEngine(engine.recognizer.nlpEngine)
+  // 注入 FAQ 例句向量源（同一模型编码，任务 vs FAQ 统一语义仲裁用）
+  taskEngine.nlu.setFaqSamples(engine.recognizer.allSamples)
   engine.taskEngine = taskEngine
   console.log(`   ✅ 任务加载完成，共 ${taskEngine.taskDefs.size} 个`)
 
