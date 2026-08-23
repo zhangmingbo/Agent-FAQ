@@ -504,10 +504,10 @@
   }, 300);
 
   function injectTaskTabs(panel) {
-    // 创建标签导航（对话规则 | 任务流程 | LLM 智能层）
+    // 创建标签导航（对话规则 | 任务流程 | LLM 智能层 | 系统配置）
     var tabs = document.createElement('div');
     tabs.id = 'rules-tabs';
-    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="llm">LLM 智能层</button>';
+    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="llm">LLM 智能层</button><button class="tab-btn" data-tab="syscfg">系统配置</button>';
     // 把原有内容包进 tab panel
     var rulesPanel = document.createElement('div');
     rulesPanel.className = 'tab-panel active';
@@ -523,11 +523,17 @@
     llmPanel.className = 'tab-panel';
     llmPanel.id = 'tab-llm';
     llmPanel.innerHTML = buildLLMPanelHTML();
+    // 创建系统配置面板（全局参数）
+    var sysPanel = document.createElement('div');
+    sysPanel.className = 'tab-panel';
+    sysPanel.id = 'tab-syscfg';
+    sysPanel.innerHTML = buildSysConfigPanelHTML();
     // 组装
     panel.appendChild(tabs);
     panel.appendChild(rulesPanel);
     panel.appendChild(tasksPanel);
     panel.appendChild(llmPanel);
+    panel.appendChild(sysPanel);
     // 标签切换
     tabs.addEventListener('click', function(e) {
       var btn = e.target.closest('.tab-btn');
@@ -538,8 +544,82 @@
       rulesPanel.classList.toggle('active', tab === 'rules');
       tasksPanel.classList.toggle('active', tab === 'tasks');
       llmPanel.classList.toggle('active', tab === 'llm');
+      sysPanel.classList.toggle('active', tab === 'syscfg');
       if (tab === 'tasks') { loadTasks(); loadSuggestions(); }
       if (tab === 'llm') loadLLMPanel();
+      if (tab === 'syscfg') loadSysConfigPanel();
+    });
+  }
+
+  // ===== 系统配置面板（全局参数，业务规则由运营设定） =====
+  function buildSysConfigPanelHTML() {
+    return '<div class="task-panel">' +
+      '<div class="task-header"><h4>系统配置 · 全局参数</h4></div>' +
+      '<div id="syscfg-content"><div class="task-empty"><div class="icon">⚙️</div><div>加载中...</div></div></div>' +
+    '</div>';
+  }
+
+  function loadSysConfigPanel() {
+    var el = document.getElementById('syscfg-content');
+    if (!el) return;
+    api('GET', '/api/config', null, function(cfg) {
+      if (!cfg) { el.innerHTML = '<div class="task-empty"><div>加载失败</div></div>'; return; }
+      var html = '<div style="padding:10px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px">' +
+        '<div style="font-weight:600;margin-bottom:6px">任务/FAQ 统一语义仲裁阈值</div>' +
+        '<div style="font-size:12px;color:#666;margin-bottom:8px">用户输入同时命中任务和 FAQ 时，对比相似度判定通道。以下为全局默认值，保存立即生效；单个任务可在「任务流程」中单独覆盖。</div>' +
+        '<table style="font-size:13px;width:100%"><tr><td style="padding:4px 0">差距阈值（两侧差 &gt; 此值才判胜出，越小越倾向澄清）</td>' +
+        '<td style="text-align:right"><input id="arb-gap" type="number" step="0.01" min="0" max="1" value="' + cfg.arbGap + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">任务侧最低线（任务相似度低于此值不算"像任务"）</td>' +
+        '<td style="text-align:right"><input id="arb-task-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbTaskMin + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">FAQ 侧最低线（FAQ 相似度低于此值不算"像 FAQ"）</td>' +
+        '<td style="text-align:right"><input id="arb-faq-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbFaqMin + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">强命中线（无触发词时两侧都低于此值判域外，不澄清）</td>' +
+        '<td style="text-align:right"><input id="arb-strong-hit" type="number" step="0.01" min="0" max="1" value="' + cfg.arbStrongHit + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">语义触发线（例句向量相似度 ≥ 此值才算命中任务）</td>' +
+        '<td style="text-align:right"><input id="arb-vector-threshold" type="number" step="0.01" min="0" max="1" value="' + cfg.arbVectorThreshold + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">触发词基础分（触发词命中时任务侧抬升到此值）</td>' +
+        '<td style="text-align:right"><input id="arb-task-boost" type="number" step="0.01" min="0" max="1" value="' + cfg.arbTaskBoost + '" style="width:80px"></td></tr>' +
+        '<tr><td colspan="2" style="text-align:right;padding-top:10px"><button class="btn-sm btn-primary" id="arb-save-btn">保存全局阈值</button></td></tr>' +
+        '</table></div>' +
+        '<div style="margin-top:16px;padding:10px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px">' +
+        '<div style="font-weight:600;margin-bottom:6px">FAQ 识别参数</div>' +
+        '<table style="font-size:13px;width:100%"><tr><td style="padding:4px 0">最低置信度（低于此值判未匹配）</td>' +
+        '<td style="text-align:right"><input id="sys-min-conf" type="number" step="0.01" min="0" max="1" value="' + (cfg.minConfidence || 0.5) + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">追问确认阈值（低于此值且高于最低线 → 追问"是/不是"）</td>' +
+        '<td style="text-align:right"><input id="sys-clarify-th" type="number" step="0.01" min="0" max="1" value="' + (cfg.clarifyThreshold || 0.65) + '" style="width:80px"></td></tr>' +
+        '<tr><td style="padding:4px 0">Top-K 候选数</td>' +
+        '<td style="text-align:right"><input id="sys-topk" type="number" min="1" max="20" value="' + (cfg.topK || 5) + '" style="width:80px"></td></tr>' +
+        '<tr><td colspan="2" style="text-align:right;padding-top:10px"><button class="btn-sm btn-primary" id="sys-save-btn">保存 FAQ 参数</button></td></tr>' +
+        '</table></div>';
+      el.innerHTML = html;
+
+      // 保存仲裁阈值
+      var arbBtn = document.getElementById('arb-save-btn');
+      if (arbBtn) arbBtn.onclick = function() {
+        var gap = parseFloat(document.getElementById('arb-gap').value);
+        var taskMin = parseFloat(document.getElementById('arb-task-min').value);
+        var faqMin = parseFloat(document.getElementById('arb-faq-min').value);
+        var strongHit = parseFloat(document.getElementById('arb-strong-hit').value);
+        var vectorThreshold = parseFloat(document.getElementById('arb-vector-threshold').value);
+        var taskBoost = parseFloat(document.getElementById('arb-task-boost').value);
+        if ([gap, taskMin, faqMin, strongHit, vectorThreshold, taskBoost].some(isNaN)) { alert('请输入有效数字'); return; }
+        api('POST', '/api/config', { arbGap: gap, arbTaskMin: taskMin, arbFaqMin: faqMin, arbStrongHit: strongHit, arbVectorThreshold: vectorThreshold, arbTaskBoost: taskBoost }, function(res) {
+          if (res.success) { alert('全局阈值已保存并生效'); loadSysConfigPanel(); }
+          else alert(res.message || '保存失败');
+        });
+      };
+      // 保存 FAQ 参数
+      var faqBtn = document.getElementById('sys-save-btn');
+      if (faqBtn) faqBtn.onclick = function() {
+        var minConf = parseFloat(document.getElementById('sys-min-conf').value);
+        var clarifyTh = parseFloat(document.getElementById('sys-clarify-th').value);
+        var topK = parseInt(document.getElementById('sys-topk').value);
+        if (isNaN(minConf) || isNaN(clarifyTh) || isNaN(topK)) { alert('请输入有效数字'); return; }
+        api('POST', '/api/config', { minConfidence: minConf, clarifyThreshold: clarifyTh, topK: topK }, function(res) {
+          if (res.success) { alert('FAQ 参数已保存并生效'); loadSysConfigPanel(); }
+          else alert(res.message || '保存失败');
+        });
+      };
     });
   }
 
@@ -553,48 +633,12 @@
   }
 
   function loadLLMPanel() {
-    // 状态概览 + 仲裁阈值配置
+    // 状态概览
     api('GET', '/api/config', null, function(cfg) {
       var el = document.getElementById('llm-status');
       if (!el) return;
       var st = cfg.llmEnabled ? '<span class="status-tag on">已启用</span>' : '<span class="status-tag off">未启用</span>';
-      var arb = (cfg.arbGap !== undefined)
-        ? '<div style="margin-top:10px;padding:10px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px">' +
-            '<div style="font-weight:600;margin-bottom:6px">任务/FAQ 统一语义仲裁阈值</div>' +
-            '<div style="font-size:12px;color:#666;margin-bottom:8px">用户输入同时命中任务和 FAQ 时，对比相似度：差距超过阈值选显著高的一方；接近则追问用户二选一。</div>' +
-            '<table style="font-size:13px;width:100%"><tr><td style="padding:3px 0">差距阈值（相似度差 &gt; 此值才判胜出，越小越倾向澄清）</td>' +
-            '<td style="text-align:right"><input id="arb-gap" type="number" step="0.01" min="0" max="1" value="' + cfg.arbGap + '" style="width:80px"></td></tr>' +
-            '<tr><td style="padding:3px 0">任务侧最低线（低于此值不算"像任务"）</td>' +
-            '<td style="text-align:right"><input id="arb-task-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbTaskMin + '" style="width:80px"></td></tr>' +
-            '<tr><td style="padding:3px 0">FAQ 侧最低线（低于此值不算"像 FAQ"）</td>' +
-            '<td style="text-align:right"><input id="arb-faq-min" type="number" step="0.01" min="0" max="1" value="' + cfg.arbFaqMin + '" style="width:80px"></td></tr>' +
-            '<tr><td style="padding:3px 0">强命中线（两侧都低于此值判域外，不澄清）</td>' +
-            '<td style="text-align:right"><input id="arb-strong-hit" type="number" step="0.01" min="0" max="1" value="' + cfg.arbStrongHit + '" style="width:80px"></td></tr>' +
-            '<tr><td style="padding:3px 0">语义触发线（例句向量≥此值算命中任务）</td>' +
-            '<td style="text-align:right"><input id="arb-vector-threshold" type="number" step="0.01" min="0" max="1" value="' + cfg.arbVectorThreshold + '" style="width:80px"></td></tr>' +
-            '<tr><td style="padding:3px 0">触发词基础分（触发词命中时任务侧抬升到此值）</td>' +
-            '<td style="text-align:right"><input id="arb-task-boost" type="number" step="0.01" min="0" max="1" value="' + cfg.arbTaskBoost + '" style="width:80px"></td></tr>' +
-            '<tr><td colspan="2" style="text-align:right;padding-top:8px"><button class="btn-sm" id="arb-save-btn">保存阈值</button></td></tr>' +
-          '</div>'
-        : '';
-      el.innerHTML = st + ' ｜ 模型：' + esc(cfg.llmModel || '-') + ' ｜ 接口：' + esc(cfg.llmApiUrl || '-') + ' ｜ 理解模式：' + esc(cfg.nluMode || 'hybrid') + arb;
-      // 保存仲裁阈值
-      var saveBtn = document.getElementById('arb-save-btn');
-      if (saveBtn) {
-        saveBtn.onclick = function() {
-          var gap = parseFloat(document.getElementById('arb-gap').value);
-          var taskMin = parseFloat(document.getElementById('arb-task-min').value);
-          var faqMin = parseFloat(document.getElementById('arb-faq-min').value);
-          var strongHit = parseFloat(document.getElementById('arb-strong-hit').value);
-          var vectorThreshold = parseFloat(document.getElementById('arb-vector-threshold').value);
-          var taskBoost = parseFloat(document.getElementById('arb-task-boost').value);
-          if (isNaN(gap) || isNaN(taskMin) || isNaN(faqMin) || isNaN(strongHit) || isNaN(vectorThreshold) || isNaN(taskBoost)) { alert('请输入有效数字'); return; }
-          api('POST', '/api/config', { arbGap: gap, arbTaskMin: taskMin, arbFaqMin: faqMin, arbStrongHit: strongHit, arbVectorThreshold: vectorThreshold, arbTaskBoost: taskBoost }, function(res) {
-            if (res.success) { alert('阈值已保存并生效'); loadLLMPanel(); }
-            else alert(res.message || '保存失败');
-          });
-        };
-      }
+      el.innerHTML = st + ' ｜ 模型：' + esc(cfg.llmModel || '-') + ' ｜ 接口：' + esc(cfg.llmApiUrl || '-') + ' ｜ 理解模式：' + esc(cfg.nluMode || 'hybrid');
     });
     // 调用点清单
     api('GET', '/api/config/llm-prompts', null, function(res) {
