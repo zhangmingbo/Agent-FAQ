@@ -324,6 +324,21 @@ class FAQEngine {
         const taskState = this.taskEngine.getActiveTask(sessionId)
         _t('有任务上下文', { taskCode: taskState.taskCode, status: taskState.status })
 
+        // 0) 新任务意图确定性判定（触发词+仲裁，零 LLM 成本）：
+        //    用户明确要办另一件事（如"我想预约安装净水器"）→ 先切换任务。
+        //    必须放在 LLM 提取之前——否则 LLM 会把新任务意图当"任务内对话"消化掉，
+        //    永远触发不了 task_new（历史 bug：换表任务中"我想预约安装净水器"被 LLM 反问）。
+        const newTaskCode = await this.taskEngine.nlu.detectNewTask(text, {
+          tasks: [...this.taskEngine.taskDefs.values()],
+          currentCode: taskState.taskCode,
+          trace: traceSteps,
+        })
+        if (newTaskCode) {
+          console.log(`[TASK] 检测到新任务意图（确定性判定）: ${newTaskCode}，当前任务暂存`)
+          _t('新任务意图（确定性判定）', { from: taskState.taskCode, to: newTaskCode }, 'task')
+          await this.taskEngine.stash(sessionId)
+          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+        } else {
         // 任务进行中：先让任务对话（LLM 提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
         // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
         const taskResult = await this.taskEngine.processInput(sessionId, text)
@@ -433,6 +448,7 @@ class FAQEngine {
               : null
           }
         }
+        } // 场景 B：新任务预检 else 闭合
       }
 
       // ---------- 场景 C：无活跃任务 → 路由判定后决定触发任务或 FAQ ----------

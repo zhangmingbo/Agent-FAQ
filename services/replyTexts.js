@@ -20,8 +20,8 @@ export const DEFAULT_REPLY_TEXTS = {
   progress_all_filled: '信息已齐全，请确认',
   ask_business: '好的，请问您需要办理什么业务呢？',
   stashed_hint: '（您之前正在进行「{taskName}」，回复"继续"可接着办理）\n\n',
-  suspended_hint: '\n\n———\n📌 您正在进行「{taskName}」，回复"继续"可接着办理。',
-  task_faq_progress: '\n\n———\n📌 您正在进行「{taskName}」，还需要：{labels}',
+  suspended_hint: '\n\n———\n● 您正在进行「{taskName}」，回复"继续"可接着办理。',
+  task_faq_progress: '\n\n———\n● 您正在进行「{taskName}」，还需要：{labels}',
   clarify_options: '您的问题可能属于以下几种，请回复序号（1/2/3）选择：\n{options}',
   clarify_yes_no: '您是想咨询"{intentName}"吗？请回复"是"或"不是"',
   route_clarify_repeat_prefix: '抱歉，我没有理解您的选择。\n',
@@ -34,7 +34,7 @@ export const DEFAULT_REPLY_TEXTS = {
   guidance_item: '  {label}：❓ 待提供\n',
   guidance_filled_hint: '\n您可以直接回复对应内容，或说"修改XX"来更改已填信息。',
   confirm_prompt: '请确认以上信息，回复"确认"提交，或说"修改XX"更正。',
-  confirm_summary_header: '\n📋 请确认以下信息：',
+  confirm_summary_header: '\n☑ 请确认以下信息：',
   confirm_summary_item: '  {label}：{value}',
   slot_updated: '好的，{label}已更新为「{value}」。\n',
   submitting: '好的，正在为您提交。\n',
@@ -46,6 +46,8 @@ export const DEFAULT_REPLY_TEXTS = {
   modify_prompt_llm: '好的，请告诉我需要修改的内容。',
   action_fail_llm: '操作未能完成：{message}\n您可以回复"确认"重试，或回复"取消"。',
   complete_fallback: '已为您完成{taskName}。',
+  // 动作承诺校验：LLM 在非完成轮次声称"已转接/已提交"等未执行动作时，追加的澄清
+  claim_clarify_suffix: '\n（提醒：以上操作需要您确认后才会正式执行，目前尚未提交。）',
 
   // ===== 动作完成 =====
   repair_order_done: '已为您提交报修工单（单号 #{orderId}），我们会尽快处理。',

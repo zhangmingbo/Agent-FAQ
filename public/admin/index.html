@@ -756,6 +756,7 @@
               }
               // 固定话术 + 匹配词表（配置驱动，不允许硬编码）
               var tp = collectTextsPayload();
+              if (tp === null) return; // 含 emoji 等不支持字符，中止保存
               if (Object.keys(tp.replyTexts).length) { payload.replyTexts = tp.replyTexts; any = true; }
               if (Object.keys(tp.matchVocab).length) { payload.matchVocab = tp.matchVocab; any = true; }
               if (any) {
@@ -911,7 +912,7 @@
       var texts = document.createElement('div');
       texts.className = 'cfg-tab-panel';
       texts.id = 'cfg-tab-texts';
-      texts.innerHTML = '<div class="cfg-panel-desc">所有用户可见的对话文案（含校验提示、动作完成话术、匹配词表）。默认值已自动落库，改完点右上角"保存配置"生效。留空 = 用默认值。</div><div id="texts-form"></div>';
+      texts.innerHTML = '<div class="cfg-panel-desc">所有用户可见的对话文案（含校验提示、动作完成话术、匹配词表）。默认值已自动落库，改完点右上角"保存配置"生效。留空 = 用默认值。<br>注意：数据库为旧版 utf8，不支持 emoji 等 4 字节特殊符号，保存时会校验拦截。</div><div id="texts-form"></div>';
 
       // 原生内容（h3 识别参数 + el-form）→ 识别参数面板；三个注入区块 → 各自面板
       while (panel.firstChild) {
@@ -987,6 +988,7 @@
         ['modify_prompt_llm', '修改提示', '', 'LLM 对话中询问要修改的内容'],
         ['action_fail_llm', '动作失败（LLM版）', '{message}', '动作执行失败时的提示（LLM 版）'],
         ['complete_fallback', '完成兜底', '{taskName}', '任务未配完成文案时的兜底完成话术'],
+        ['claim_clarify_suffix', '动作承诺澄清', '', 'LLM 未执行动作却声称"已转接/已提交"时，追加的澄清话术（防编造）'],
       ]},
       { title: '动作完成', keys: [
         ['repair_order_done', '报修单完成', '{orderId}', '报修工单创建成功后的回复'],
@@ -1081,28 +1083,49 @@
     }
 
     // 收集固定话术 + 词表（右上角保存时调用）
+    // 4 字节字符（emoji 等）检测：数据库为 utf8mb3（旧 utf8），不支持这类字符，保存前拦截
+    function hasNonBmp(str) {
+      for (var i = 0; i < str.length; i++) {
+        var code = str.charCodeAt(i);
+        if (code >= 0xD800 && code <= 0xDBFF) return true; // 高代理对 = 非 BMP（4 字节）字符
+      }
+      return false;
+    }
+
+    // 收集固定话术 + 词表（右上角保存时调用）；含 emoji 等不支持字符时提示并返回 null 中止保存
     function collectTextsPayload() {
       var replyTexts = {};
+      var badFields = [];
       TEXT_GROUPS.forEach(function(g) {
         g.keys.forEach(function(k) {
           var el = document.getElementById('rt-' + k[0]);
           if (!el) return;
           var v = el.value.trim();
+          if (hasNonBmp(v)) badFields.push(k[1]);
           if (v) replyTexts[k[0]] = v;
         });
       });
       var matchVocab = {};
       var synEl = document.getElementById('mv-synonyms');
-      if (synEl) matchVocab.triggerSynonyms = textToSynonyms(synEl.value);
+      if (synEl) {
+        if (hasNonBmp(synEl.value)) badFields.push('触发词近义扩展表');
+        matchVocab.triggerSynonyms = textToSynonyms(synEl.value);
+      }
       var rtTaskEl = document.getElementById('mv-rt-task');
       if (rtTaskEl) {
+        if (hasNonBmp(rtTaskEl.value)) badFields.push('澄清关键词 · 办理');
         var tw = rtTaskEl.value.split(/[,，]/).map(function(w){ return w.trim(); }).filter(Boolean);
         if (tw.length) matchVocab.routeChoiceTask = tw;
       }
       var rtFaqEl = document.getElementById('mv-rt-faq');
       if (rtFaqEl) {
+        if (hasNonBmp(rtFaqEl.value)) badFields.push('澄清关键词 · 咨询');
         var fw = rtFaqEl.value.split(/[,，]/).map(function(w){ return w.trim(); }).filter(Boolean);
         if (fw.length) matchVocab.routeChoiceFaq = fw;
+      }
+      if (badFields.length) {
+        alert('以下字段包含不支持的字符（emoji 等特殊符号，数据库为旧版 utf8 不支持）：\n' + badFields.join('、') + '\n请移除后重新保存。');
+        return null;
       }
       return { replyTexts, matchVocab };
     }
@@ -1270,8 +1293,10 @@
       overlay.querySelector('#llm-prompt-value').value = p.default || '';
     };
     overlay.querySelector('#llm-prompt-save').onclick = function(){
+      var val = overlay.querySelector('#llm-prompt-value').value.trim();
+      if (hasNonBmp(val)) { alert('提示词包含不支持的字符（emoji 等特殊符号，数据库为旧版 utf8 不支持），请移除后保存。'); return; }
       var payload = {};
-      payload[p.key] = overlay.querySelector('#llm-prompt-value').value.trim();
+      payload[p.key] = val;
       api('POST', '/api/config/llm-prompts', { prompts: payload }, function(res) {
         if (res.success) { overlay.remove(); loadLLMPanel(); }
         else alert(res.message || '保存失败');

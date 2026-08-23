@@ -19,6 +19,12 @@ import { getReply } from '../replyTexts.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 
+/**
+ * 完成性承诺词（动作校验用）：LLM 只有真正执行了动作才能说"已转接/已提交"。
+ * 非完成轮次命中 → 追加澄清，防止 LLM 编造"已办理/已转接"等虚假承诺。
+ */
+const COMPLETE_CLAIM_RE = /(已转接|转接成功|已提交|提交成功|已登记|登记成功|已办理|已预约|预约成功|已安排|已完成|办好了|登记好了|提交好了|转接好了|已下单|下单成功|已申请|申请成功|已经帮您|已帮您)/
+
 class LLMDialogManager {
   /**
    * @param {import('./taskDefs.js').default} defs - 任务定义
@@ -99,6 +105,14 @@ class LLMDialogManager {
     }
 
     let reply = result.reply || (applied ? '好的，已记录。' : '请继续。')
+
+    // 4.5) 动作承诺校验：非完成轮次禁止"已转接/已提交/已登记"等完成性宣称。
+    //      LLM 只负责说话，动作执行由系统在用户确认后统一完成（_complete）——
+    //      在收集/确认阶段就宣称"已办理"属于编造，追加系统澄清避免误导用户。
+    if (COMPLETE_CLAIM_RE.test(reply)) {
+      console.warn('[TaskFlow-LLM] 检测到未执行的完成性承诺，追加澄清:', reply.slice(0, 50))
+      reply = reply + getReply('claim_clarify_suffix')
+    }
 
     // 5) 完整性检查 → 确认态（确定性门禁：必填全齐才算齐）
     const allFilled = Object.values(state.slots).every(s => !s.required || s.filled)
