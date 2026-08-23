@@ -1784,7 +1784,7 @@
               '</div>' +
             '</div>' +
             '<div style="margin-top:10px">' +
-              '<div style="font-size:12px;color:#888;margin-bottom:4px;line-height:1.7">提示词覆盖（可选）：<b>不会填就全部留空</b>，用全局模板。<br>· 想给这个任务换专属口吻 → 填「对话系统提示词」，例如：你是沁园净水器售后客服，正在帮用户办理「{taskName}」，请用亲切简洁的口吻，一次只问一个信息。<br>· 占位符：对话 {taskName}{slotDesc}{filledDesc}{history}{text}；提取 {taskName}{examples}{slotDesc}{filledDesc}{text}</div>' +
+              '<div style="font-size:12px;color:#888;margin-bottom:4px;line-height:1.7">提示词覆盖：<b>4 个框已预填当前全局提示词</b>，直接在里面改 = 定制本任务；不改 = 继续用全局；想用全局默认就清空该框。<br>为什么 4 个：对话 = 角色规则（系统）+ 每轮消息（用户）；提取 = 提取规则（系统）+ 字段描述（用户）。<br>注意：{xxx} 是占位符会自动替换，<b>别删</b>。想换口吻 → 改「对话系统提示词」开头那句"你是…售后客服"即可。</div>' +
               '<textarea id="tf-llm-dialogue-system" placeholder="对话系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
               '<textarea id="tf-llm-dialogue-user" placeholder="对话用户模板（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
               '<textarea id="tf-llm-extract-system" placeholder="提取系统提示词（可选）" rows="2" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
@@ -1816,6 +1816,26 @@
       '</div>' +
     '</div>';
     document.body.appendChild(overlay);
+
+    // 预填 LLM 提示词覆盖框：把当前全局提示词直接写进文本框
+    // （改了 = 定制本任务；不改 = 继续用全局；清空 = 用全局默认）
+    var globalPrompts = {};
+    api('GET', '/api/config/llm-prompts', null, function(res) {
+      if (!res || !res.success) return;
+      var map = {};
+      (res.data || []).forEach(function(p) { map[p.key] = p.value || ''; });
+      var gkeyMap = {
+        'dialogue-system': 'dialogue.system',
+        'dialogue-user': 'dialogue.user',
+        'extract-system': 'extract_slots.system',
+        'extract-user': 'extract_slots.user',
+      };
+      ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
+        globalPrompts[id] = map[gkeyMap[id]] || '';
+        var ta = overlay.querySelector('#tf-llm-' + id);
+        if (ta && !ta.value.trim()) ta.value = globalPrompts[id];
+      });
+    });
 
     // 事件绑定
     overlay.querySelector('#task-modal-close').onclick = function(){ overlay.remove(); };
@@ -1967,7 +1987,8 @@
           ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
             var key = id.split('-').map(function(w, i) { return i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join('');
             var v = overlay.querySelector('#tf-llm-' + id).value.trim();
-            if (v) prompts[key] = v;
+            // 与全局一致 = 没定制 → 不存（继续用全局）；改了才存；清空 = 用全局默认
+            if (v && v !== globalPrompts[id]) prompts[key] = v;
           });
           if (Object.keys(prompts).length) out.prompts = prompts;
           return Object.keys(out).length ? out : undefined;
