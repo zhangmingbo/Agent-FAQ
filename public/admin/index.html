@@ -874,8 +874,8 @@
       '</div>' +
       '<div style="padding:8px 24px;font-size:12px;color:#999">选择会话查看每一轮对话的后端处理逻辑（路由判定、通道选择、挂起/恢复等）。轨迹保存在内存中，重启后清空。</div>' +
       '<div style="flex:1;overflow-y:auto;padding:16px 24px">' +
-        '<div id="debug-overlay-sessions"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
-        '<div id="debug-overlay-trace" style="margin-top:16px"></div>' +
+        '<div id="debug-overlay-session-list"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
+        '<div id="debug-overlay-trace-view" style="margin-top:16px"></div>' +
       '</div>' +
     '</div>';
     document.body.appendChild(overlay);
@@ -887,10 +887,10 @@
       api('POST', '/api/debug/clear', null, function(res) {
         if (res.success) {
           // 浮层内重建列表
-          var area = document.getElementById('debug-overlay-sessions');
+          var area = document.getElementById('debug-overlay-session-list');
           area.innerHTML = '<div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div>';
           loadDebugSessions();
-          var traceView = document.getElementById('debug-overlay-trace');
+          var traceView = document.getElementById('debug-overlay-trace-view');
           if (traceView) traceView.innerHTML = '';
         }
       });
