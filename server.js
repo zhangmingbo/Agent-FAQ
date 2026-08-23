@@ -61,9 +61,12 @@ if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true })
 app.use(express.static(PUBLIC_DIR))
 app.use('/uploads', express.static(UPLOADS_DIR))
 
-// Vue 管理后台
+// Vue 管理后台（no-cache：管理界面脚本经常更新，禁止浏览器缓存旧版）
 app.get('/admin', (req, res) => res.redirect('/admin/'))
-app.use('/admin', express.static(join(PUBLIC_DIR, 'admin')))
+app.use('/admin', express.static(join(PUBLIC_DIR, 'admin'), {
+  maxAge: 0,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}))
 
 // 兼容旧路径 /admin.html → admin-legacy.html
 app.get('/admin.html', (req, res) => res.sendFile(join(PUBLIC_DIR, 'admin-legacy.html')))
