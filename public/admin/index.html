@@ -565,10 +565,84 @@
       rulesPanel.classList.toggle('active', tab === 'rules');
       tasksPanel.classList.toggle('active', tab === 'tasks');
       llmPanel.classList.toggle('active', tab === 'llm');
-      if (tab === 'tasks') { loadTasks(); loadSuggestions(); }
+      if (tab === 'tasks') { loadTasks(); }
       if (tab === 'llm') loadLLMPanel();
     });
   }
+
+  // ===== 问题追踪页：注入「表达挖掘」子页签 =====
+  // （原在规则引擎→任务流程 tab，已移至问题追踪页）
+  (function(){
+    var issuesInjected = false;
+    var observer = new MutationObserver(function(){
+      if (issuesInjected) return;
+      var tabbar = document.querySelector('.sub-tab-bar');
+      if (!tabbar) return;
+      if (tabbar.textContent.indexOf('未匹配') === -1) return;
+      issuesInjected = true;
+      injectSuggestTab(tabbar);
+    });
+    observer.observe(document.getElementById('app'), { childList: true, subtree: true });
+    var lastHref3 = location.href;
+    setInterval(function(){
+      if (location.href !== lastHref3) { lastHref3 = location.href; issuesInjected = false; }
+    }, 300);
+
+    function injectSuggestTab(tabbar) {
+      // 样式（原生 .sub-tab 带 scoped 属性，注入元素不命中，需补）
+      var st = document.createElement('style');
+      st.textContent =
+        '#suggest-issues-tab{padding:10px 20px;cursor:pointer;font-size:14px;color:#666;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.2s}' +
+        '#suggest-issues-tab:hover{color:#4361ee}' +
+        '#suggest-issues-tab.active{color:#4361ee;border-bottom-color:#4361ee;font-weight:600}' +
+        '.sub-tab-bar.issues-suggest-mode .sub-tab.active:not(#suggest-issues-tab){color:#666;border-bottom-color:transparent;font-weight:400}';
+      document.head.appendChild(st);
+
+      // 1) 追加子页签
+      var myTab = document.createElement('div');
+      myTab.className = 'sub-tab';
+      myTab.id = 'suggest-issues-tab';
+      myTab.textContent = '🔍 表达挖掘';
+      tabbar.appendChild(myTab);
+
+      // 2) 面板（追加到页面根，原生面板之后）
+      var panel = document.createElement('div');
+      panel.id = 'suggest-issues-panel';
+      panel.style.cssText = 'padding:16px 0';
+      panel.innerHTML =
+        '<div class="task-header"><h4>表达挖掘（未触发任务的高频话术）</h4>' +
+          '<button class="btn-sm" id="suggest-issues-refresh">⟳ 重新挖掘</button></div>' +
+        '<div style="color:#999;font-size:12px;margin:4px 0 8px">从真实对话日志中找出表达了办理意图但没触发任务的话术，匹配到任务后可一键采纳为意图例句。机器只推荐，由运营确认。</div>' +
+        '<div id="suggest-issues-area"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>';
+      panel.style.display = 'none';
+      tabbar.parentNode.appendChild(panel);
+      var area = document.getElementById('suggest-issues-area');
+
+      // 3) 页签切换：原生页签 → 原生面板；我们的页签 → 表达挖掘
+      tabbar.addEventListener('click', function(e) {
+        var t = e.target && e.target.closest ? e.target.closest('.sub-tab') : null;
+        if (!t) return;
+        var isMine = (t === myTab);
+        var children = Array.prototype.slice.call(tabbar.parentNode.children);
+        var start = children.indexOf(tabbar);
+        for (var i = start + 1; i < children.length; i++) {
+          children[i].style.display = (children[i] === panel) ? (isMine ? '' : 'none') : (isMine ? 'none' : '');
+        }
+        if (isMine) {
+          tabbar.querySelectorAll('.sub-tab').forEach(function(x){ x.classList.remove('active'); });
+          myTab.classList.add('active');
+          tabbar.classList.add('issues-suggest-mode'); // 压平原生 active 高亮
+          loadSuggestions(area);
+        } else {
+          myTab.classList.remove('active');
+          tabbar.classList.remove('issues-suggest-mode');
+        }
+      });
+
+      // 4) 重新挖掘按钮
+      document.getElementById('suggest-issues-refresh').onclick = function(){ loadSuggestions(area); };
+    }
+  })();
 
   // 对话规则 tab：匹配容错参数（确认/否认/无意义词的容错匹配判定）
   function ensureTipStyle() {
@@ -1423,10 +1497,6 @@
         '<button class="btn-sm btn-primary" id="task-add-btn">+ 新建任务</button>' +
       '</div>' +
       '<div id="task-list-area"><div class="task-empty"><div class="icon">📋</div><div>加载中...</div></div></div>' +
-      '<div class="task-header" style="margin-top:24px"><h4>表达挖掘（未触发任务的高频话术）</h4>' +
-        '<button class="btn-sm" id="suggest-refresh-btn">⟳ 重新挖掘</button></div>' +
-      '<div style="color:#999;font-size:12px;margin:4px 0 8px">从真实对话日志中找出表达了办理意图但没触发任务的话术，匹配到任务后可一键采纳为意图例句。机器只推荐，由运营确认。</div>' +
-      '<div id="suggest-area"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
     '</div>';
   }
 
@@ -1466,9 +1536,9 @@
     });
   }
 
-  // ===== 表达挖掘 =====
-  function loadSuggestions() {
-    var area = document.getElementById('suggest-area');
+  // ===== 表达挖掘（规则引擎任务tab 与 问题追踪页 共用） =====
+  function loadSuggestions(area) {
+    if (!area) area = document.getElementById('suggest-area');
     if (!area) return;
     api('GET', '/api/tasks/suggestions?limit=50', null, function(res) {
       if (!res.success) {
@@ -1506,18 +1576,16 @@
     api('POST', '/api/tasks/' + code + '/adopt-example', { text: text }, function(res) {
       if (res.success) {
         alert(res.message || '已采纳');
-        loadSuggestions();
+        var a1 = document.getElementById('suggest-area');
+        var a2 = document.getElementById('suggest-issues-area');
+        if (a1) loadSuggestions(a1);
+        if (a2) loadSuggestions(a2);
         loadTasks();
       } else {
         alert(res.message || '采纳失败');
       }
     });
   };
-
-  // 绑定刷新按钮
-  document.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'suggest-refresh-btn') { loadSuggestions(); }
-  });
 
   // ===== 会话调试（可视化交互图，从左侧导航打开） =====
   // 步骤级别 → 颜色/标签
