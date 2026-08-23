@@ -56,7 +56,7 @@ export async function executeApiStep(step, slots, trace = null) {
       step: step.key || null,
       url: step.url,
       method,
-      payload: JSON.stringify(payload).slice(0, 160),
+      payload,
     }, 'task')
     const res = await fetch(step.url, {
       method,
@@ -89,7 +89,8 @@ export async function executeApiStep(step, slots, trace = null) {
     if (step.resultSlot) message = message.split('{' + step.resultSlot + '}').join(result)
     traceService.traceStep(trace, '任务·接口结果', {
       ok: true,
-      result: String(result).slice(0, 120),
+      response: text, // 接口原始完整返回
+      result,
       resultSlot: step.resultSlot || null,
     }, 'task')
     return { ok: true, result, message }

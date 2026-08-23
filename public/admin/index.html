@@ -1677,7 +1677,7 @@
                 if (k !== 'taskTop' && k !== 'faqTop') rest[k] = d[k];
               });
               if (Object.keys(rest).length) lines.push(JSON.stringify(rest));
-              detail = ' <span style="color:#868e96">' + lines.map(function(l){ return '<div>' + esc(l) + '</div>'; }).join('') + '</span>';
+              detail = ' <span style="color:#868e96;word-break:break-all">' + lines.map(function(l){ return '<div style="white-space:pre-wrap">' + esc(l) + '</div>'; }).join('') + '</span>';
             }
           } catch(e) {}
           html += '<div style="font-size:12px;margin:3px 0;color:' + meta.color + '">' +
