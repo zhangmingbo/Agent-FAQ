@@ -556,10 +556,13 @@
       if (!h3 || h3.textContent.indexOf('识别参数') === -1) return;
       sysInjected = true;
       injectArbThresholds(panel);
+      injectNativeTips(panel);
+      placeTopRightSave();
     });
     sysObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
 
     function injectArbThresholds(panel) {
+      ensureArbTipStyle();
       // 追加仲裁阈值区块（插在现有 el-form 之后）
       var div = document.createElement('div');
       div.id = 'arb-threshold-block';
@@ -577,13 +580,7 @@
       if (!box) return;
       api('GET', '/api/config', null, function(cfg) {
         if (!cfg) return;
-        // 问号悬浮提示（纯 CSS，无 JS 依赖）
-        var tipStyle = '<style>' +
-          '.arb-tip{position:relative;display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#4361ee;color:#fff;font-size:11px;font-weight:bold;cursor:help;margin-left:6px;vertical-align:middle}' +
-          '.arb-tip .arb-tip-box{visibility:hidden;opacity:0;position:absolute;left:24px;top:-8px;width:300px;background:#2b2f3a;color:#e8eaed;font-size:12px;line-height:1.7;font-weight:normal;padding:12px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9999;transition:opacity .15s,visibility .15s;white-space:normal;text-align:left}' +
-          '.arb-tip:hover .arb-tip-box{visibility:visible;opacity:1}' +
-          '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}' +
-          '</style>';
+        ensureArbTipStyle();
         var row = function(label, id, val, desc) {
           return '<div style="margin-bottom:18px">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
@@ -593,7 +590,7 @@
             '<input id="' + id + '" type="number" step="0.01" min="0" max="1" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
           '</div>';
         };
-        var html = tipStyle +
+        var html =
           row('差距阈值', 'arb-gap', cfg.arbGap,
             '作用：决定"任务"和"FAQ"两边相似度差多少时直接判定胜出，而不是追问用户。<br>举例：用户说"我要预约上门服务"，任务侧 0.92、FAQ 侧 0.70，差 0.22 &gt; 0.08 → 直接进入任务。<br>调大：更倾向追问确认（保守）；调小：更倾向直接判定（果断）。<br>典型值：0.06~0.15，建议 0.08。') +
           row('任务侧最低线', 'arb-task-min', cfg.arbTaskMin,
@@ -606,23 +603,108 @@
             '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（触发词没覆盖但说法像例句的场景）。<br>举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 触发预约任务。<br>调大：减少语义误触发；调小：更多口语化表达能触发。<br>典型值：0.40~0.55，建议 0.45。') +
           row('触发词基础分', 'arb-task-boost', cfg.arbTaskBoost,
             '作用：话术命中任务触发词（如"预约""上门"）时，任务侧相似度抬升到此值——触发词是运营明确配置的信号。<br>举例："请个师父上门来看看吧"命中"上门" → 任务侧抬到 0.85，压过 FAQ 0.72 → 进入预约任务。<br>调大：触发词命中后更坚定走任务；调小：更易被 FAQ 反超。<br>典型值：0.80~0.92，建议 0.85。') +
-          '<button class="btn-sm btn-primary" id="arb-save-btn" style="padding:8px 20px;background:#4361ee;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">保存仲裁阈值</button>';
+          '<div style="font-size:12px;color:#999;margin-top:4px">仲裁阈值与上方识别参数共用右上角"保存配置"按钮，一起保存生效。</div>';
         box.innerHTML = html;
-        var btn = document.getElementById('arb-save-btn');
-        if (btn) btn.onclick = function() {
-          var gap = parseFloat(document.getElementById('arb-gap').value);
-          var taskMin = parseFloat(document.getElementById('arb-task-min').value);
-          var faqMin = parseFloat(document.getElementById('arb-faq-min').value);
-          var strongHit = parseFloat(document.getElementById('arb-strong-hit').value);
-          var vectorThreshold = parseFloat(document.getElementById('arb-vector-threshold').value);
-          var taskBoost = parseFloat(document.getElementById('arb-task-boost').value);
-          if ([gap, taskMin, faqMin, strongHit, vectorThreshold, taskBoost].some(isNaN)) { alert('请输入有效数字'); return; }
-          api('POST', '/api/config', { arbGap: gap, arbTaskMin: taskMin, arbFaqMin: faqMin, arbStrongHit: strongHit, arbVectorThreshold: vectorThreshold, arbTaskBoost: taskBoost }, function(res) {
-            if (res.success) { alert('仲裁阈值已保存并生效'); }
-            else alert(res.message || '保存失败');
+        // 与右上角"保存配置"按钮联动：点击时把仲裁阈值一并提交
+        if (!window.__arbLinked) {
+          window.__arbLinked = true;
+          document.addEventListener('click', function(e) {
+            if (!e.isTrusted) return; // 忽略程序化点击（右上角按钮内部触发原生保存）
+            var btn = e.target && e.target.closest ? e.target.closest('button') : null;
+            if (!btn) return;
+            var isSave = btn.textContent.indexOf('保存配置') >= 0;
+            if (!isSave) return;
+            // 原生保存触发后（异步），补提交仲裁阈值，并重挂被重渲染清掉的注释
+            setTimeout(function() {
+              var arb = {};
+              var ids = {
+                'arb-gap': 'arbGap', 'arb-task-min': 'arbTaskMin', 'arb-faq-min': 'arbFaqMin',
+                'arb-strong-hit': 'arbStrongHit', 'arb-vector-threshold': 'arbVectorThreshold', 'arb-task-boost': 'arbTaskBoost'
+              };
+              var any = false;
+              for (var id in ids) {
+                var el = document.getElementById(id);
+                if (!el) continue;
+                var v = parseFloat(el.value);
+                if (isNaN(v)) { alert('仲裁阈值格式错误：' + id); return; }
+                arb[ids[id]] = v;
+                any = true;
+              }
+              if (any) {
+                api('POST', '/api/config', arb, function(res) {
+                  if (!res.success) alert('仲裁阈值保存失败：' + (res.message || '未知错误'));
+                });
+              }
+              var p = document.querySelector('.config-panel');
+              if (p) injectNativeTips(p);
+            }, 300);
           });
-        };
+        }
       });
+    }
+
+    // 全局一次注入 tooltip 样式 + 隐藏原生底部保存按钮（CSS 规则跨 Vue 重渲染存活）
+    function ensureArbTipStyle() {
+      if (document.getElementById('arb-tip-style')) return;
+      var st = document.createElement('style');
+      st.id = 'arb-tip-style';
+      st.textContent =
+        '.arb-tip{position:relative;display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#4361ee;color:#fff;font-size:11px;font-weight:bold;cursor:help;margin-left:6px;vertical-align:middle}' +
+        '.arb-tip .arb-tip-box{visibility:hidden;opacity:0;position:absolute;left:24px;top:-8px;width:300px;background:#2b2f3a;color:#e8eaed;font-size:12px;line-height:1.7;font-weight:normal;padding:12px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9999;transition:opacity .15s,visibility .15s;white-space:normal;text-align:left}' +
+        '.arb-tip:hover .arb-tip-box{visibility:visible;opacity:1}' +
+        '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}' +
+        '.config-panel button.el-button--primary{display:none !important}';
+      document.head.appendChild(st);
+    }
+
+    // 给原生"识别参数"各字段的标签加问号悬浮注释（幂等，重渲染后可重挂）
+    function injectNativeTips(panel) {
+      ensureArbTipStyle();
+      var tips = {
+        '最低置信度阈值': '作用：FAQ 意图识别的最低门槛。用户话术与 FAQ 例句的相似度低于此值 → 判定"未匹配"，走兜底回复。<br>调大：更保守，减少答非所问（可能漏答）；调小：更宽松，更容易匹配上。<br>典型值：0.40~0.60，建议 0.50。',
+        '追问确认阈值': '作用：FAQ 识别得分达到此值视为"高置信度"→ 直接回答；低于此值但高于未匹配线时，机器人会先追问确认意图。<br>调大：更多情况先追问（更稳）；调小：更直接回答。<br>典型值：0.55~0.75，建议 0.65。',
+        'Top K 结果数': '作用：一次识别取回的候选 FAQ 条数，引擎从候选中挑最优答案。<br>调大：候选更多、覆盖更全（稍慢）；调小：响应更快。<br>典型值：3~8，建议 5。',
+        '无意义输入检测模式': '作用：识别"今天天气""你好"这类与净水器无关的闲聊/无意义输入，避免误答。<br>规则过滤：关键词+正则，免费快速；大模型判断：语义更准，但每次判断有成本。',
+        '会话超时时间（分钟）': '作用：用户超过该时长不再发言，会话（含进行中的任务状态）自动过期重置。<br>调大：长时间挂机不重置；调小：更早回收会话。<br>典型值：15~60，建议 30。'
+      };
+      var labels = panel.querySelectorAll('.el-form-item__label');
+      for (var i = 0; i < labels.length; i++) {
+        var lb = labels[i];
+        var txt = lb.textContent.trim();
+        var desc = tips[txt];
+        if (!desc) continue;
+        if (lb.querySelector('.arb-tip')) continue; // 已注入过
+        var tip = document.createElement('span');
+        tip.className = 'arb-tip';
+        tip.innerHTML = '?<span class="arb-tip-box">' + desc + '</span>';
+        lb.appendChild(tip);
+      }
+    }
+
+    // 右上角"刷新"按钮的位置换成"保存配置"（点击时触发原生保存逻辑）
+    function placeTopRightSave() {
+      ensureArbTipStyle();
+      if (document.getElementById('config-save-top-btn')) return;
+      var refreshBtn = null;
+      var btns = document.querySelectorAll('button.el-button--small');
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        if (b.closest('.config-panel')) continue;
+        if (b.textContent.trim() === '刷新') { refreshBtn = b; break; }
+      }
+      if (!refreshBtn) return;
+      var btn = document.createElement('button');
+      btn.id = 'config-save-top-btn';
+      btn.className = 'el-button el-button--small el-button--primary';
+      btn.textContent = '保存配置';
+      btn.style.marginLeft = '8px';
+      btn.onclick = function() {
+        var native = document.querySelector('.config-panel button.el-button--primary');
+        if (native && native.click) native.click();
+        else alert('未找到原生保存按钮');
+      };
+      refreshBtn.parentNode.insertBefore(btn, refreshBtn);
+      refreshBtn.remove();
     }
 
     // 路由变化时重置（进入/离开 /config 页面）
@@ -632,6 +714,12 @@
         lastHref2 = location.href;
         sysInjected = false;
       }
+      // 兜底：仍在配置页但右上角保存按钮被重渲染清掉时，重新放回
+      if (document.getElementById('config-save-top-btn')) return;
+      var panel = document.querySelector('.config-panel');
+      if (!panel) return;
+      var h3 = panel.querySelector('h3');
+      if (h3 && h3.textContent.indexOf('识别参数') !== -1) placeTopRightSave();
     }, 300);
   })();
 
