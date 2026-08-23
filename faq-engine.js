@@ -487,7 +487,26 @@ class FAQEngine {
    * @param {Array|null} traceSteps - 轨迹步骤数组（调试用，可选）
    */
   async _tryStartTask(sessionId, text, context, fromStash = false, traceSteps = null) {
-    const matchedTask = await this.taskEngine.matchTask(text, null, traceSteps)
+    let matchedTask = await this.taskEngine.matchTask(text, null, traceSteps)
+    // matchTask 有长度门槛（LLM≥3字/向量≥5字），短句如"安装"会被跳过；
+    // 但 route() 仲裁已判任务胜出（例句向量无长度门槛）——回退用仲裁结果补上
+    if (!matchedTask) {
+      try {
+        const arb = await this.taskEngine.nlu.arbitrateTaskFaq(text, {
+          taskState: null,
+          tasks: [...this.taskEngine.taskDefs.values()],
+        })
+        if (arb.channel === 'task_new' && arb.taskCode) {
+          const def = await this.taskEngine.get(arb.taskCode)
+          if (def) {
+            matchedTask = def
+            console.log(`[TASK] 仲裁回退触发任务: ${def.code} (${def.name})`)
+          }
+        }
+      } catch (e) {
+        console.error('[TASK] 仲裁回退失败:', e.message)
+      }
+    }
     if (!matchedTask) return null
 
     console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
