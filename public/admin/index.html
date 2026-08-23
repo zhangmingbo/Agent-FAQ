@@ -92,7 +92,7 @@
     .task-empty .icon{font-size:48px;margin-bottom:12px}
     /* 任务编辑弹窗 */
     .task-modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:999998;display:flex;align-items:center;justify-content:center}
-    .task-modal{background:#fff;border-radius:12px;width:680px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .task-modal{background:#fff;border-radius:12px;width:min(94vw,1200px);max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
     .task-modal-header{padding:20px 24px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:1;border-radius:12px 12px 0 0}
     .task-modal-header h3{margin:0;font-size:16px}
     .task-modal-header .close-btn{cursor:pointer;font-size:20px;color:#999;background:none;border:none;line-height:1}
@@ -1375,7 +1375,7 @@
   function showLLMPromptModal(p) {
     var overlay = document.createElement('div');
     overlay.className = 'task-modal-overlay';
-    overlay.innerHTML = '<div class="task-modal" style="width:680px">' +
+    overlay.innerHTML = '<div class="task-modal" style="width:min(94vw,900px)">' +
       '<div class="task-modal-header"><h3>' + esc(p.name) + '</h3><button class="close-btn" id="llm-modal-close">&times;</button></div>' +
       '<div class="task-modal-body">' +
         '<div style="font-size:12px;color:#888;margin-bottom:8px">' + esc(p.desc||'') + '</div>' +
