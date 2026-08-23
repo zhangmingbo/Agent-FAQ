@@ -111,6 +111,12 @@
     .slot-row .slot-type{width:90px}
     .slot-row .slot-required{width:50px;text-align:center}
     .slot-row .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
+    .step-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;padding:8px;background:#fff;border:1px solid #e9ecef;border-radius:6px}
+    .step-row input,.step-row select,.step-row textarea{padding:5px 7px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
+    .case-row,.map-row{display:flex;gap:4px;align-items:center;margin:3px 0;width:100%}
+    .case-row select,.case-row input,.map-row input{padding:4px 6px;font-size:12px;border:1px solid #ddd;border-radius:4px}
+    .case-del,.map-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:15px;padding:0 4px;line-height:1}
+    .branch-cases,.map-rows{width:100%}
     .keyword-tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#e8ecff;border-radius:12px;font-size:12px;margin:2px 4px 2px 0}
     .keyword-tag .remove{cursor:pointer;color:#999;font-size:14px}
     .keyword-tag .remove:hover{color:#e74c3c}
@@ -1901,8 +1907,10 @@
           '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
             '<button class="btn-sm" id="tf-auto-steps">⚡ 从槽位自动生成</button>' +
             '<button class="btn-sm" id="tf-add-step">+ 添加步骤</button>' +
+            '<button class="btn-sm" id="tf-preview-flow">预览流程</button>' +
           '</div>' +
-          '<div style="color:#999;font-size:12px;margin-top:4px">提示：点"从槽位自动生成"可一键生成「收集 → 确认 → 动作」流程，再按需增删调整；分支步骤在 JSON 里配置 cases</div>' +
+          '<div id="tf-flow-preview" style="display:none;margin-top:8px;border:1px dashed #ced4da;border-radius:8px;padding:10px;background:#fafbfc;font-size:12px"></div>' +
+          '<div style="color:#999;font-size:12px;margin-top:4px">提示：点"从槽位自动生成"可一键生成「收集 → 确认 → 动作」流程，再按需增删调整；分支条件用可视化行配置</div>' +
         '</div>' +
         '<div class="form-group"><label>完成提示语</label><textarea id="tf-complete" placeholder="所有信息收集完毕后的回复">' + esc(isEdit ? (task.completion_message || '') : '') + '</textarea></div>' +
       '</div>' +
@@ -2025,6 +2033,18 @@
       bindStepRowEvents(container.lastElementChild);
     };
     overlay.querySelector('#tf-auto-steps').onclick = autoGenerateSteps;
+    overlay.querySelector('#tf-preview-flow').onclick = function() {
+      var steps = collectStepRows();
+      var box = overlay.querySelector('#tf-flow-preview');
+      var errs = validateSteps(steps);
+      if (errs.length) {
+        box.style.display = 'block';
+        box.innerHTML = '<div style="color:#e03131;margin-bottom:6px">步骤有误，先修正再看预览：</div>' + errs.map(function(e) { return '<div>· ' + esc(e) + '</div>'; }).join('');
+        return;
+      }
+      box.style.display = 'block';
+      box.innerHTML = renderFlowPreview(steps);
+    };
     overlay.querySelectorAll('#tf-steps .step-row').forEach(bindStepRowEvents);
 
     // 保存
@@ -2058,6 +2078,12 @@
         });
       });
       var steps = collectStepRows();
+      // 前端校验：精确定位步骤/字段错误（后端 validateDef 双保险）
+      var stepErrors = validateSteps(steps);
+      if (stepErrors.length) {
+        alert('流程步骤有误：\n' + stepErrors.map(function(e) { return '· ' + e; }).join('\n'));
+        return;
+      }
       // 调用接口配置（仅当完成动作选 call_api 时）
       var apiAction = undefined;
       if (overlay.querySelector('#tf-action').value === 'call_api') {
@@ -2185,12 +2211,78 @@
   }
 
   // ===== v2 步骤 DSL 编辑器 =====
-  function buildStepRows(steps) {
-    if (!steps || !steps.length) return '<div style="color:#999;font-size:12px;padding:8px">暂无步骤，点击"从槽位自动生成"一键生成</div>';
-    return steps.map(function(s) { return buildOneStepRow(s); }).join('');
+
+  // 下拉选项 helper
+  function optHtml(value, label, selected) {
+    return '<option value="' + esc(value) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>';
+  }
+  function buildSlotOptions(sel, slotKeys) {
+    var html = optHtml('', '— 选择槽位 —', !sel);
+    slotKeys.forEach(function(k) { html += optHtml(k, k, sel === k); });
+    return html;
+  }
+  function buildStepKeyOptions(sel, stepKeys, placeholder) {
+    var html = optHtml('', '— ' + (placeholder || '选择步骤') + ' —', !sel);
+    stepKeys.forEach(function(k) { html += optHtml(k, k, sel === k); });
+    return html;
+  }
+  // 当前表单里的步骤 key（重建行/加行时取最新）
+  function currentStepKeys() {
+    var keys = [];
+    document.querySelectorAll('#tf-steps .step-row .step-key').forEach(function(el) {
+      var v = el.value.trim(); if (v) keys.push(v);
+    });
+    return keys;
+  }
+  // 当前表单里的槽位 key（槽位行 + 收集步骤的 slot_key）
+  function currentSlotKeys() {
+    var keys = [];
+    document.querySelectorAll('#tf-slots .slot-row .slot-key').forEach(function(el) {
+      var v = el.value.trim(); if (v) keys.push(v);
+    });
+    document.querySelectorAll('#tf-steps .step-row .step-slot').forEach(function(el) {
+      var v = el.value.trim(); if (v) keys.push(v);
+    });
+    return [...new Set(keys)];
   }
 
-  function buildOneStepRow(s) {
+  // 分支条件行
+  function buildCaseRow(c, stepKeys, slotKeys) {
+    c = c || {};
+    var when = c.when || {};
+    return '<div class="case-row">' +
+      '<select class="case-slot" style="width:110px">' + buildSlotOptions(when.slot, slotKeys) + '</select>' +
+      '<select class="case-op" style="width:90px">' + ['eq', 'contains', 'regex'].map(function(op) {
+        return '<option value="' + op + '"' + (when.op === op ? ' selected' : '') + '>' + ({eq:'等于',contains:'包含',regex:'匹配'})[op] + '</option>';
+      }).join('') + '</select>' +
+      '<input class="case-val" value="' + esc(when.value || '') + '" placeholder="条件值" style="width:110px">' +
+      '<select class="case-next" style="width:110px">' + buildStepKeyOptions(c.next, stepKeys, '跳转到…') + '</select>' +
+      '<button type="button" class="case-del" title="删除条件">&times;</button>' +
+    '</div>';
+  }
+
+  // key=value 映射行编辑器（fieldMap / fixedParams / resultMap 共用）
+  function buildMapRows(obj, clsPrefix, keyPlaceholder, valPlaceholder) {
+    var rows = Object.entries(obj || {}).map(function(pair) {
+      return '<div class="map-row">' +
+        '<input class="' + clsPrefix + '-key" value="' + esc(pair[0]) + '" placeholder="' + keyPlaceholder + '" style="width:130px">' +
+        '<input class="' + clsPrefix + '-val" value="' + esc(pair[1]) + '" placeholder="' + valPlaceholder + '" style="width:180px">' +
+        '<button type="button" class="map-del" title="删除">&times;</button>' +
+      '</div>';
+    }).join('');
+    return '<div class="map-rows">' + rows +
+      '<button type="button" class="btn-sm map-add" data-cls="' + clsPrefix + '" style="margin:2px 0 4px">+ 添加一行</button>' +
+      '</div>';
+  }
+
+  function buildStepRows(steps) {
+    if (!steps || !steps.length) return '<div style="color:#999;font-size:12px;padding:8px">暂无步骤，点击"从槽位自动生成"一键生成</div>';
+    var stepKeys = steps.map(function(s) { return s.key; }).filter(Boolean);
+    var slotKeys = currentSlotKeys();
+    return steps.map(function(s) { return buildOneStepRow(s, stepKeys, slotKeys); }).join('');
+  }
+
+  function buildOneStepRow(s, stepKeys, slotKeys) {
     s = s || {};
     var collectExtra = s.type === 'collect' ?
       '<input class="step-slot" value="' + esc(s.slot_key||'') + '" placeholder="槽位key" style="width:90px">' +
@@ -2207,18 +2299,21 @@
       '<select class="step-api-method"><option value="POST"' + ((s.method||'POST')==='POST'?' selected':'') + '>POST</option><option value="GET"' + (s.method==='GET'?' selected':'') + '>GET</option></select>' +
       '<input class="step-api-rs" value="' + esc(s.resultSlot||'') + '" placeholder="结果槽位key" style="width:90px">' +
       '<input class="step-api-rf" value="' + esc(s.resultField||'') + '" placeholder="结果字段(如 data.x)" style="width:100px">' +
-      '<textarea class="step-api-fm" rows="2" placeholder="请求入参：每行 槽位key=接口字段（支持 data.x 嵌套），如 phone=phone、name=data.name">' + esc((function(){ var fm=s.fieldMap||{},arr=[]; for(var k in fm) arr.push(k+'='+fm[k]); return arr.join('\n'); })()) + '</textarea>' +
-      '<textarea class="step-api-fixed" rows="2" placeholder="固定入参：每行 接口字段=固定值（如 appId=10086、channel=qinyuan）">' + esc((function(){ var fp=s.fixedParams||{},arr=[]; for(var k in fp) arr.push(k+'='+fp[k]); return arr.join('\n'); })()) + '</textarea>' +
-      '<textarea class="step-api-rm" rows="2" placeholder="结果映射(多字段，优先于单字段)：每行 槽位key=接口字段路径，如 order_number=data.orderNo、order_status=data.status">' + esc((function(){ var rm=s.resultMap||{},arr=[]; for(var k in rm) arr.push(k+'='+rm[k]); return arr.join('\n'); })()) + '</textarea>' +
+      '<div style="font-size:11px;color:#888">请求入参（槽位key = 接口字段）</div>' + buildMapRows(s.fieldMap, 'fm', '槽位key', '接口字段') +
+      '<div style="font-size:11px;color:#888">固定入参（接口字段 = 固定值）</div>' + buildMapRows(s.fixedParams, 'fp', '接口字段', '固定值') +
+      '<div style="font-size:11px;color:#888">结果映射（槽位key = 接口字段路径，优先于单字段）</div>' + buildMapRows(s.resultMap, 'rm', '槽位key', '字段路径如 data.orderNo') +
       '<input class="step-api-msg" value="' + esc(s.done_message||'') + '" placeholder="回复话术(支持 {结果槽位})" style="width:200px">' : '';
     var subtaskExtra = s.type === 'subtask' ?
       '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
-      '<input class="step-return" value="' + esc(s.on_return||'') + '" placeholder="返回步骤">' : '';
+      '<select class="step-return" style="width:110px">' + buildStepKeyOptions(s.on_return, stepKeys, '返回步骤') + '</select>' : '';
     var messageExtra = s.type === 'message' ?
       '<input class="step-text" value="' + esc(s.text||'') + '" placeholder="回复内容">' : '';
     var branchExtra = s.type === 'branch' ?
-      '<textarea class="step-cases" rows="1" placeholder=\'[{"when":{"slot":"type","op":"eq","value":"漏水"},"next":"leak"}]\'>' + esc(JSON.stringify(s.cases||[])) + '</textarea>' +
-      '<input class="step-default" value="' + esc(s.default_next||'') + '" placeholder="默认下一步" style="width:110px">' : '';
+      '<div class="branch-cases" style="margin:2px 0">' +
+        (s.cases || []).map(function(c) { return buildCaseRow(c, stepKeys, slotKeys); }).join('') +
+      '</div>' +
+      '<button type="button" class="btn-sm branch-add-case" style="margin:2px 4px 2px 0">+ 添加条件</button>' +
+      '<select class="step-default" style="width:130px">' + buildStepKeyOptions(s.default_next, stepKeys, '默认下一步') + '</select>' : '';
     return '<div class="step-row">' +
       '<input class="step-key" value="' + esc(s.key||'') + '" placeholder="步骤key" style="width:100px">' +
       '<select class="step-type">' +
@@ -2249,6 +2344,31 @@
       var next = row.nextElementSibling;
       if (next && next.classList.contains('step-row')) row.parentNode.insertBefore(next, row);
     };
+    // 行内动态子元素事件（分支条件行 / 映射行的增删）——事件委托
+    row.addEventListener('click', function(e) {
+      var t = e.target;
+      if (t.classList.contains('case-del')) {
+        var cr = t.closest('.case-row');
+        if (cr) cr.remove();
+      } else if (t.classList.contains('map-del')) {
+        var mr = t.closest('.map-row');
+        if (mr) mr.remove();
+      } else if (t.classList.contains('branch-add-case')) {
+        var wrap = row.querySelector('.branch-cases');
+        if (wrap) wrap.insertAdjacentHTML('beforeend', buildCaseRow(null, currentStepKeys(), currentSlotKeys()));
+      } else if (t.classList.contains('map-add')) {
+        var mw = t.closest('.map-rows');
+        if (mw) {
+          var cls = t.getAttribute('data-cls');
+          var ph = cls === 'fm' ? ['槽位key', '接口字段'] : (cls === 'fp' ? ['接口字段', '固定值'] : ['槽位key', '字段路径如 data.orderNo']);
+          mw.insertAdjacentHTML('beforeend',
+            '<div class="map-row">' +
+            '<input class="' + cls + '-key" placeholder="' + ph[0] + '" style="width:130px">' +
+            '<input class="' + cls + '-val" placeholder="' + ph[1] + '" style="width:180px">' +
+            '<button type="button" class="map-del" title="删除">&times;</button></div>');
+        }
+      }
+    });
     // 类型切换：重读全部步骤、更新该行类型后整体重渲染
     var typeSel = row.querySelector('.step-type');
     if (typeSel) typeSel.onchange = function() {
@@ -2262,70 +2382,103 @@
   }
 
   function collectStepRows() {
+    // 安全读取：类型切换瞬间 DOM 可能还是旧类型表单（如 collect 行切到 branch），
+    // 元素不存在时按空处理，避免 null.value 崩溃
+    function q(row, cls) { var el = row.querySelector(cls); return el ? el.value.trim() : ''; }
+    function qr(row, cls) { var el = row.querySelector(cls); return el ? el.value : ''; }
     var steps = [];
     document.querySelectorAll('#tf-steps .step-row').forEach(function(row) {
-      var key = row.querySelector('.step-key').value.trim();
-      var type = row.querySelector('.step-type').value;
+      var key = q(row, '.step-key');
+      var type = qr(row, '.step-type');
       if (!key) return;
-      var step = { key: key, type: type, next: row.querySelector('.step-next').value.trim() || undefined };
+      var step = { key: key, type: type, next: q(row, '.step-next') || undefined };
       if (type === 'collect') {
-        step.slot_key = (row.querySelector('.step-slot').value || key).trim();
-        step.prompt = row.querySelector('.step-prompt').value.trim();
-        step.extract = { method: row.querySelector('.step-extract').value.trim() || 'text', rule: row.querySelector('.step-rule').value.trim() };
-        var vr = row.querySelector('.step-validate').value.trim();
-        var vk = row.querySelector('.step-reask').value.trim();
+        step.slot_key = (q(row, '.step-slot') || key).trim();
+        step.prompt = q(row, '.step-prompt');
+        step.extract = { method: q(row, '.step-extract') || 'text', rule: q(row, '.step-rule') };
+        var vr = q(row, '.step-validate');
+        var vk = q(row, '.step-reask');
         if (vr) step.validate = { rule: vr, reask: vk };
       } else if (type === 'action') {
-        step.action = row.querySelector('.step-action').value.trim() || 'complete_message';
-        var dm = row.querySelector('.step-msg').value.trim();
+        step.action = q(row, '.step-action') || 'complete_message';
+        var dm = q(row, '.step-msg');
         if (dm) step.done_message = dm;
       } else if (type === 'api') {
-        step.url = row.querySelector('.step-api-url').value.trim();
-        step.method = row.querySelector('.step-api-method').value || 'POST';
-        step.resultSlot = row.querySelector('.step-api-rs').value.trim() || undefined;
-        step.resultField = row.querySelector('.step-api-rf').value.trim() || undefined;
-        var fm = {};
-        row.querySelector('.step-api-fm').value.split('\n').forEach(function(l) {
-          l = l.trim(); if (!l) return;
-          var eq = l.indexOf('=');
-          if (eq <= 0) return;
-          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
-          if (k) fm[k] = v;
-        });
+        step.url = q(row, '.step-api-url');
+        step.method = qr(row, '.step-api-method') || 'POST';
+        step.resultSlot = q(row, '.step-api-rs') || undefined;
+        step.resultField = q(row, '.step-api-rf') || undefined;
+        var fm = readMapRows(row, 'fm');
         if (Object.keys(fm).length) step.fieldMap = fm;
-        var fp = {};
-        row.querySelector('.step-api-fixed').value.split('\n').forEach(function(l) {
-          l = l.trim(); if (!l) return;
-          var eq = l.indexOf('=');
-          if (eq <= 0) return;
-          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
-          if (k) fp[k] = v;
-        });
+        var fp = readMapRows(row, 'fp');
         if (Object.keys(fp).length) step.fixedParams = fp;
         // 回复话术：允许存空字符串（空 = 调用接口后不向用户回显结果）
-        step.done_message = row.querySelector('.step-api-msg').value.trim();
-        // 结果映射（多字段）：每行 槽位key=接口字段路径，优先于 resultSlot/resultField
-        var rm = {};
-        row.querySelector('.step-api-rm').value.split('\n').forEach(function(l) {
-          l = l.trim(); if (!l) return;
-          var eq = l.indexOf('=');
-          if (eq <= 0) return;
-          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
-          if (k && v) rm[k] = v;
-        });
+        step.done_message = q(row, '.step-api-msg');
+        // 结果映射（多字段）：槽位key=接口字段路径，优先于 resultSlot/resultField
+        var rm = readMapRows(row, 'rm');
         if (Object.keys(rm).length) step.resultMap = rm;
       } else if (type === 'subtask') {
-        step.task = row.querySelector('.step-task').value.trim();
-        step.on_return = row.querySelector('.step-return').value.trim();
+        step.task = q(row, '.step-task');
+        step.on_return = q(row, '.step-return') || undefined;
       } else if (type === 'message') {
-        step.text = row.querySelector('.step-text').value.trim();
+        step.text = q(row, '.step-text');
       } else if (type === 'branch') {
-        try { step.cases = JSON.parse(row.querySelector('.step-cases').value || '[]'); } catch(e) { step.cases = []; }
-        step.default_next = row.querySelector('.step-default').value.trim() || undefined;
+        var cases = [];
+        row.querySelectorAll('.case-row').forEach(function(crow) {
+          var slot = qr(crow, '.case-slot');
+          var op = qr(crow, '.case-op');
+          var val = q(crow, '.case-val');
+          var next = qr(crow, '.case-next');
+          if (!slot || !op || !next) return; // 不完整的条件行忽略（保存前校验会提示）
+          cases.push({ when: { slot: slot, op: op, value: val }, next: next });
+        });
+        if (cases.length) step.cases = cases;
+        var dflt = q(row, '.step-default');
+        if (dflt) step.default_next = dflt;
       }
       steps.push(step);
     });
     return steps;
+  }
+
+  // 读取映射行区：{ key: value }（fm/fp/rm 共用）
+  function readMapRows(row, clsPrefix) {
+    var m = {};
+    row.querySelectorAll('.map-row').forEach(function(mrow) {
+      var kEl = mrow.querySelector('.' + clsPrefix + '-key');
+      var vEl = mrow.querySelector('.' + clsPrefix + '-val');
+      if (!kEl || !vEl) return;
+      var k = kEl.value.trim(), v = vEl.value.trim();
+      if (k && v) m[k] = v;
+    });
+    return m;
+  }
+
+  // 流程步骤前端校验（保存前）：精确定位第几步、哪个字段
+  function validateSteps(steps) {
+    var errors = [];
+    var keys = new Set(steps.map(function(s) { return s.key; }));
+    steps.forEach(function(s, i) {
+      var where = '步骤' + (i + 1) + '「' + (s.key || '?') + '」';
+      if (!s.key) { errors.push(where + '：缺少步骤 key'); return; }
+      if (s.type === 'collect' && !s.slot_key) errors.push(where + '：缺少槽位 key');
+      if (s.type === 'api' && !s.url) errors.push(where + '：缺少接口地址');
+      if (s.type === 'action' && !s.action) errors.push(where + '：缺少动作名');
+      if (s.type === 'subtask' && !s.task) errors.push(where + '：缺少子任务 code');
+      if (s.type === 'branch') {
+        (s.cases || []).forEach(function(c, ci) {
+          var cwhere = where + ' 条件' + (ci + 1);
+          if (!c.when || !c.when.slot) errors.push(cwhere + '：未选择槽位');
+          if (!c.when || !c.when.op) errors.push(cwhere + '：未选择操作符');
+          if (!c.when || c.when.value === undefined || c.when.value === '') errors.push(cwhere + '：缺少条件值');
+          if (!c.next) errors.push(cwhere + '：未选择跳转目标');
+          else if (!keys.has(c.next)) errors.push(cwhere + '：跳转目标「' + c.next + '」不存在');
+        });
+        if (s.default_next && !keys.has(s.default_next)) errors.push(where + '：默认下一步「' + s.default_next + '」不存在');
+      }
+      if (s.next && !keys.has(s.next)) errors.push(where + '：下一步「' + s.next + '」不存在');
+    });
+    return errors;
   }
 
   // 从槽位自动生成：收集 → 确认 → 动作
@@ -2359,6 +2512,56 @@
     var container = document.getElementById('tf-steps');
     container.innerHTML = buildStepRows(steps);
     container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
+  }
+
+  // 流程链预览：从起点按 next 渲染步骤链（分支显示条件出口）
+  function renderFlowPreview(steps) {
+    if (!steps || !steps.length) return '<div style="color:#999">暂无步骤</div>';
+    var byKey = {};
+    steps.forEach(function(s) { byKey[s.key] = s; });
+    var referenced = new Set();
+    steps.forEach(function(s) {
+      if (s.next) referenced.add(s.next);
+      (s.cases || []).forEach(function(c) { if (c.next) referenced.add(c.next); });
+      if (s.default_next) referenced.add(s.default_next);
+    });
+    var start = steps.find(function(s) { return !referenced.has(s.key); }) || steps[0];
+    var typeLabel = { collect: '收集', confirm: '确认', action: '动作', api: '调用接口', branch: '分支', subtask: '子任务', message: '回复' };
+    var opLabel = { eq: '等于', contains: '包含', regex: '匹配' };
+    var visited = new Set();
+    var html = '';
+    function nodeHtml(s) {
+      var color = { collect: '#4361ee', confirm: '#2f9e44', action: '#e8590c', api: '#0c8599', branch: '#7b2ff7', subtask: '#e64980', message: '#868e96' }[s.type] || '#666';
+      var label = typeLabel[s.type] || s.type;
+      var sub = '';
+      if (s.type === 'collect' && s.slot_key) sub = ' · ' + s.slot_key;
+      if (s.type === 'api' && s.url) sub = ' · ' + String(s.url).replace(/^https?:\/\//, '').slice(0, 40);
+      if (s.type === 'action' && s.action) sub = ' · ' + s.action;
+      return '<span style="display:inline-block;border-left:3px solid ' + color + ';background:#fff;border-radius:6px;padding:4px 10px;box-shadow:0 1px 2px rgba(0,0,0,.08)">' + esc(s.key) + ' [' + label + ']' + esc(sub) + '</span>';
+    }
+    function walk(s) {
+      if (!s || visited.has(s.key)) return;
+      visited.add(s.key);
+      html += '<div style="margin:6px 0">' + nodeHtml(s) + '</div>';
+      if (s.type === 'branch') {
+        (s.cases || []).forEach(function(c) {
+          var cond = (c.when ? (c.when.slot + ' ' + (opLabel[c.when.op] || c.when.op) + ' ' + c.when.value) : '?');
+          html += '<div style="margin:2px 0 2px 26px;color:#e8590c">↳ 若 ' + esc(cond) + ' → ' + esc(c.next) + '</div>';
+          walk(byKey[c.next]);
+        });
+        if (s.default_next) {
+          html += '<div style="margin:2px 0 2px 26px;color:#868e96">↳ 否则 → ' + esc(s.default_next) + '</div>';
+          walk(byKey[s.default_next]);
+        }
+      } else if (s.next) {
+        html += '<div style="margin:2px 0 2px 26px;color:#adb5bd">↓ ' + esc(s.next) + '</div>';
+        walk(byKey[s.next]);
+      } else {
+        html += '<div style="margin:2px 0 2px 26px;color:#adb5bd">↓ 结束</div>';
+      }
+    }
+    walk(start);
+    return html;
   }
 
   // ===== 删除任务 =====
