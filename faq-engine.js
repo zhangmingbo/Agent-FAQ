@@ -301,55 +301,108 @@ class FAQEngine {
         }
       }
 
-      // ---------- 场景 B：活跃任务（未挂起）→ 路由四选一 ----------
+      // ---------- 场景 B：活跃任务（未挂起）→ 先任务对话（LLM 提取），失败才路由判定 ----------
       else if (hasActive) {
         console.log('[TASK] 检测到活跃任务，进入任务对话模式')
         const taskState = this.taskEngine.getActiveTask(sessionId)
-        const route = await this.taskEngine.nlu.route(text, {
-          taskState,
-          tasks: [...this.taskEngine.taskDefs.values()],
-          filledDesc: this._taskFilledDesc(taskState),
-          trace: traceSteps,
-        })
-        console.log(`[TASK] 路由判定: ${route}`)
-        _t('路由判定', { route, taskState: taskState.taskCode, status: taskState.status }, route === 'clarify' ? 'warn' : 'task')
+        _t('有任务上下文', { taskCode: taskState.taskCode, status: taskState.status })
 
-        if (route === 'clarify') {
-          // 拿不准：任务中插话无法区分是继续办理还是咨询 → 追问二选一
-          console.log('[TASK] 路由拿不准，追问用户')
-          context.pendingRoute = {
-            taskCode: taskState.taskCode,
-            taskName: taskState.taskName,
-            triggerText: text,
-            askedAt: Date.now(),
-          }
-          response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
-        } else if (route === 'faq') {
-          // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
-          console.log('[TASK] 路由→FAQ，任务挂起')
-          _t('任务挂起（FAQ 插话）', { taskCode: taskState.taskCode })
-          const faqResponse = await this._handleRecognize(text, context)
-          if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
-            this.taskEngine.suspend(sessionId)
-            response = {
-              ...faqResponse,
-              answer: faqResponse.answer + this._suspendedHint(taskState),
-              source: 'task_suspended_faq',
+        // 任务进行中：先让任务对话（LLM 提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
+        // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
+        const taskResult = await this.taskEngine.processInput(sessionId, text)
+
+        if (taskResult && (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask)) {
+          // 任务内：提取到槽位/确认/取消/重问 → 直接用任务回复
+          _t('任务内回复（LLM 提取）', { extracted: taskResult.extracted, isComplete: taskResult.isComplete, cancelled: taskResult.cancelled, reask: taskResult.reask })
+          if (taskResult.question && taskResult.questionText) {
+            // 边答边问：先 FAQ 回答问题，再接任务进度提示
+            console.log('[TASK] 检测到边答边问，FAQ 回答:', taskResult.questionText)
+            _t('边答边问（LLM 判 question）', { question: taskResult.questionText }, 'llm')
+            const faqResponse = await this._handleRecognize(taskResult.questionText, context)
+            if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+              response = {
+                ...faqResponse,
+                answer: faqResponse.answer + '\n' + taskResult.reply,
+                source: 'task_faq',
+              }
+            } else {
+              response = {
+                intent_code: `task:${taskResult.taskState.taskCode}`,
+                confidence: 1,
+                source: 'task_progress',
+                answer: taskResult.reply,
+              }
             }
           } else {
-            // FAQ 也没匹配到 → 回任务通道继续引导
-            response = await this._handleTaskTurn(sessionId, text, context)
+            response = {
+              intent_code: `task:${taskResult.taskState.taskCode}`,
+              confidence: 1,
+              source: taskResult.isComplete ? 'task_complete' : (taskResult.cancelled ? 'task_cancelled' : 'task_progress'),
+              answer: taskResult.reply,
+            }
           }
-        } else if (route === 'task_new') {
-          // 用户想办另一件事 → 中断暂存当前任务，触发新任务
-          console.log('[TASK] 路由→新任务，当前任务中断暂存')
-          _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
-          await this.taskEngine.stash(sessionId)
-          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
         } else {
-          // task_continue → 任务对话（原逻辑）
-          _t('进入任务对话', { taskCode: taskState.taskCode, route })
-          response = await this._handleTaskTurn(sessionId, text, context)
+          // LLM 提取失败（用户没说槽位、也没确认/取消）→ 可能是任务外（插话/换任务/澄清），用路由判定
+          _t('任务对话未提取到槽位，转路由判定', {}, 'warn')
+          const route = await this.taskEngine.nlu.route(text, {
+            taskState,
+            tasks: [...this.taskEngine.taskDefs.values()],
+            filledDesc: this._taskFilledDesc(taskState),
+            trace: traceSteps,
+          })
+          console.log(`[TASK] 提取失败后路由判定: ${route}`)
+          _t('路由判定（任务外）', { route }, route === 'clarify' ? 'warn' : 'task')
+
+          if (route === 'clarify') {
+            // 拿不准：任务中插话无法区分是继续办理还是咨询 → 追问二选一
+            console.log('[TASK] 路由拿不准，追问用户')
+            context.pendingRoute = {
+              taskCode: taskState.taskCode,
+              taskName: taskState.taskName,
+              triggerText: text,
+              askedAt: Date.now(),
+            }
+            response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+          } else if (route === 'faq') {
+            // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
+            console.log('[TASK] 路由→FAQ，任务挂起')
+            _t('任务挂起（FAQ 插话）', { taskCode: taskState.taskCode })
+            const faqResponse = await this._handleRecognize(text, context)
+            if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
+              this.taskEngine.suspend(sessionId)
+              response = {
+                ...faqResponse,
+                answer: faqResponse.answer + this._suspendedHint(taskState),
+                source: 'task_suspended_faq',
+              }
+            } else {
+              // FAQ 也没匹配到 → 回任务通道继续引导
+              response = taskResult
+                ? {
+                    intent_code: `task:${taskResult.taskState.taskCode}`,
+                    confidence: 1,
+                    source: 'task_progress',
+                    answer: taskResult.reply,
+                  }
+                : null
+            }
+          } else if (route === 'task_new') {
+            // 用户想办另一件事 → 中断暂存当前任务，触发新任务
+            console.log('[TASK] 路由→新任务，当前任务中断暂存')
+            _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
+            await this.taskEngine.stash(sessionId)
+            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+          } else {
+            // task_continue → 用任务引擎的引导回复（提取失败但路由认为还在任务内）
+            response = taskResult
+              ? {
+                  intent_code: `task:${taskResult.taskState.taskCode}`,
+                  confidence: 1,
+                  source: 'task_progress',
+                  answer: taskResult.reply,
+                }
+              : null
+          }
         }
       }
 
@@ -429,6 +482,7 @@ class FAQEngine {
 
   /**
    * 任务对话轮次（task_continue 通道）—— 原 processInput 处理逻辑
+   * 注：场景 B 已内联此逻辑（先 LLM 提取、失败才路由判定），本方法保留备用
    */
   async _handleTaskTurn(sessionId, text, context) {
     const taskResult = await this.taskEngine.processInput(sessionId, text)
