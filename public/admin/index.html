@@ -2488,11 +2488,14 @@
     var apiExtra = s.type === 'api' ?
       '<input class="step-api-url" value="' + esc(s.url||'') + '" placeholder="接口地址" style="width:190px">' +
       '<select class="step-api-method"><option value="POST"' + ((s.method||'POST')==='POST'?' selected':'') + '>POST</option><option value="GET"' + (s.method==='GET'?' selected':'') + '>GET</option></select>' +
-      '<input class="step-api-rs" value="' + esc(s.resultSlot||'') + '" placeholder="结果槽位key" style="width:90px">' +
-      '<input class="step-api-rf" value="' + esc(s.resultField||'') + '" placeholder="结果字段(如 data.x)" style="width:100px">' +
       '<div style="font-size:11px;color:#888">请求入参（槽位key = 接口字段）</div>' + buildMapRows(s.fieldMap, 'fm', '槽位key', '接口字段') +
       '<div style="font-size:11px;color:#888">固定入参（接口字段 = 固定值）</div>' + buildMapRows(s.fixedParams, 'fp', '接口字段', '固定值') +
-      '<div style="font-size:11px;color:#888">结果映射（槽位key = 接口字段路径，优先于单字段）</div>' + buildMapRows(s.resultMap, 'rm', '槽位key', '字段路径如 data.orderNo') +
+      '<div style="font-size:11px;color:#888">结果映射（槽位key = 接口字段路径，接口返回写入对应槽位）</div>' + (function() {
+        var merged = Object.assign({}, s.resultMap || {});
+        // 旧版单字段（resultSlot/resultField）自动迁移进结果映射
+        if (s.resultSlot && !merged[s.resultSlot]) merged[s.resultSlot] = s.resultField || '';
+        return buildMapRows(merged, 'rm', '槽位key', '字段路径如 data.orderNo');
+      })() +
       '<input class="step-api-msg" value="' + esc(s.done_message||'') + '" placeholder="回复话术(支持 {结果槽位})" style="width:200px">' : '';
     var subtaskExtra = s.type === 'subtask' ?
       '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
@@ -2597,15 +2600,13 @@
       } else if (type === 'api') {
         step.url = q(row, '.step-api-url');
         step.method = qr(row, '.step-api-method') || 'POST';
-        step.resultSlot = q(row, '.step-api-rs') || undefined;
-        step.resultField = q(row, '.step-api-rf') || undefined;
         var fm = readMapRows(row, 'fm');
         if (Object.keys(fm).length) step.fieldMap = fm;
         var fp = readMapRows(row, 'fp');
         if (Object.keys(fp).length) step.fixedParams = fp;
         // 回复话术：允许存空字符串（空 = 调用接口后不向用户回显结果）
         step.done_message = q(row, '.step-api-msg');
-        // 结果映射（多字段）：槽位key=接口字段路径，优先于 resultSlot/resultField
+        // 结果映射：槽位key=接口字段路径（旧版单字段 resultSlot/resultField 已并入此表）
         var rm = readMapRows(row, 'rm');
         if (Object.keys(rm).length) step.resultMap = rm;
       } else if (type === 'subtask') {
