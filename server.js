@@ -102,6 +102,21 @@ app.use('/api/', adminLimiter)
 
 // ========== 注册路由 ==========
 
+// 假接口（联调测试用）：任务"调用接口"步骤可直接指向 /api/mock/xxx
+// 返回 OrderNo（兼容 orderNo/orrder_num/order_num 字段名，含 data.* 层级），并回显请求体
+app.use('/api/mock', (req, res) => {
+  const orderNo = 'QY' + new Date().toISOString().replace(/\D/g, '').slice(0, 14) + String(Math.floor(Math.random() * 900) + 100)
+  const received = (req.body && typeof req.body === 'object') ? req.body : {}
+  res.json({
+    code: 0,
+    message: 'success',
+    orderNo,
+    orrder_num: orderNo,
+    order_num: orderNo,
+    data: { orderNo, orrder_num: orderNo, order_num: orderNo, status: '已受理', received },
+  })
+})
+
 // 健康检查
 app.use('/api', createHealthRouter(engine))
 

@@ -76,6 +76,7 @@ export function authMiddleware(req, res, next) {
     '/api/auth/login',
     '/api/auth/verify',
     '/api/health',
+    '/api/mock', // 假接口（联调测试用，无需登录）
   ]
 
   // 静态文件不需要认证

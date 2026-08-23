@@ -293,17 +293,18 @@ class LLMDialogManager {
     const task = this.defs.get(state.taskCode)
     if (!task?.steps) return []
     const out = []
+    state.apiSteps = state.apiSteps || {}
     for (let i = 0; i < task.steps.length; i++) {
       const step = task.steps[i]
-      if (step.type !== 'api' || !step.resultSlot) continue
-      const slot = state.slots[step.resultSlot]
-      if (slot && slot.filled) continue // 已执行过（结果已写入）
+      if (step.type !== 'api') continue
+      if (state.apiSteps[step.key]) continue // 已执行过（防止每轮重复调用）
       // 前置步骤若是 collect，其槽位填好才执行（如：填完电话 → 查订单）
       const prev = i > 0 ? task.steps[i - 1] : null
       const prereqFilled = !prev || prev.type !== 'collect' || !!(state.slots[prev.slot_key] && state.slots[prev.slot_key].filled)
       if (!prereqFilled) continue
       const r = await executeApiStep(step, this._slotValues(state))
-      if (r.ok && state.slots[step.resultSlot]) {
+      state.apiSteps[step.key] = true
+      if (r.ok && step.resultSlot && state.slots[step.resultSlot]) {
         state.slots[step.resultSlot].value = r.result
         state.slots[step.resultSlot].filled = true
       }
