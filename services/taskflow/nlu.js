@@ -31,15 +31,16 @@ class TaskNLU {
     /** @type {'rule'|'hybrid'|'llm'} */
     this.mode = 'hybrid'
     this.nlpEngine = null
-    this.vectorThreshold = 0.45
     /**
      * 任务/FAQ 统一语义仲裁阈值（运营可配，管理后台写入 sys_config）
      *   gap       差距阈值：任务与 FAQ 相似度差 > gap 才判显著胜出，否则澄清
      *   taskMin   任务侧最低线：低于此值不算"像任务"
      *   faqMin    FAQ 侧最低线：低于此值不算"像 FAQ"
      *   strongHit 强命中线：两侧都低于此值判"域外"（无真实业务信号，不澄清直接业务引导）
+     *   vectorThreshold 语义触发线：任务例句向量相似度 ≥ 此值才算语义命中
+     *   taskBoost 触发词基础分：触发词命中时任务侧抬升到此分（允许 FAQ 例句原话反超）
      */
-    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55, strongHit: 0.72 }
+    this.arbConfig = { gap: 0.08, taskMin: 0.45, faqMin: 0.55, strongHit: 0.72, vectorThreshold: 0.45, taskBoost: 0.85 }
     /** @type {Map<string, Array>} code -> 意图例句向量 */
     this._vectors = new Map()
     /**
@@ -61,8 +62,10 @@ class TaskNLU {
       taskMin: num(cfg.taskMin, this.arbConfig.taskMin ?? 0.45),
       faqMin: num(cfg.faqMin, this.arbConfig.faqMin ?? 0.55),
       strongHit: num(cfg.strongHit, this.arbConfig.strongHit ?? 0.72),
+      vectorThreshold: num(cfg.vectorThreshold, this.arbConfig.vectorThreshold ?? 0.45),
+      taskBoost: num(cfg.taskBoost, this.arbConfig.taskBoost ?? 0.85),
     }
-    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin} strongHit=${this.arbConfig.strongHit}`)
+    console.log(`[TaskNLU] 仲裁阈值: gap=${this.arbConfig.gap} taskMin=${this.arbConfig.taskMin} faqMin=${this.arbConfig.faqMin} strongHit=${this.arbConfig.strongHit} vectorThreshold=${this.arbConfig.vectorThreshold} taskBoost=${this.arbConfig.taskBoost}`)
   }
 
   /** 设置模式 */
@@ -194,7 +197,7 @@ class TaskNLU {
         if (!best || sim > best.sim) best = { code, sim }
       }
     }
-    if (best && best.sim >= this.vectorThreshold) {
+    if (best && best.sim >= (this.arbConfig.vectorThreshold ?? 0.45)) {
       console.log(`[TaskNLU] 语义触发: ${best.code} (sim=${best.sim.toFixed(3)})`)
       return tasks.find(t => t.code === best.code) || null
     }
@@ -512,10 +515,10 @@ class TaskNLU {
       if (byRule && !negated) {
         byRuleHit = true
         matchedTask = byRule
-        // 触发词命中 → 任务侧强信号（0.85）：运营配置的高置信表达，仍允许 FAQ 例句原话(0.9+)反超。
+        // 触发词命中 → 任务侧强信号（默认 0.85，运营可配）：允许 FAQ 例句原话(0.9+)反超。
         // 触发词指向与语义最高任务一致时抬升（"请个师父上门来看看吧"→任务），
         // 若语义更贴其他任务（"更换"命中换表但语义"换滤芯"→预约）不覆盖语义判定
-        taskBoost = { taskCode: byRule.code, score: 0.85 }
+        taskBoost = { taskCode: byRule.code, score: this.arbConfig.taskBoost ?? 0.85 }
       }
 
       // 2.2 任务/FAQ 统一语义仲裁（同步对比，谁高选谁，接近则澄清）

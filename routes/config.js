@@ -54,6 +54,8 @@ export function createRouter(engine) {
       arbTaskMin: parseFloat(config.arb_task_min) || 0.45,
       arbFaqMin: parseFloat(config.arb_faq_min) || 0.55,
       arbStrongHit: parseFloat(config.arb_strong_hit) || 0.72,
+      arbVectorThreshold: parseFloat(config.arb_vector_threshold) || 0.45,
+      arbTaskBoost: parseFloat(config.arb_task_boost) || 0.85,
     })
   }))
 
@@ -91,17 +93,21 @@ export function createRouter(engine) {
     }
 
     // 任务/FAQ 统一语义仲裁阈值（保存即生效）
-    if (req.body.arbGap !== undefined || req.body.arbTaskMin !== undefined || req.body.arbFaqMin !== undefined || req.body.arbStrongHit !== undefined) {
+    if (req.body.arbGap !== undefined || req.body.arbTaskMin !== undefined || req.body.arbFaqMin !== undefined || req.body.arbStrongHit !== undefined || req.body.arbVectorThreshold !== undefined || req.body.arbTaskBoost !== undefined) {
       if (req.body.arbGap !== undefined) await configRepo.set('arb_gap', req.body.arbGap)
       if (req.body.arbTaskMin !== undefined) await configRepo.set('arb_task_min', req.body.arbTaskMin)
       if (req.body.arbFaqMin !== undefined) await configRepo.set('arb_faq_min', req.body.arbFaqMin)
       if (req.body.arbStrongHit !== undefined) await configRepo.set('arb_strong_hit', req.body.arbStrongHit)
+      if (req.body.arbVectorThreshold !== undefined) await configRepo.set('arb_vector_threshold', req.body.arbVectorThreshold)
+      if (req.body.arbTaskBoost !== undefined) await configRepo.set('arb_task_boost', req.body.arbTaskBoost)
       const cfg = await configRepo.getAll()
       engine.taskEngine?.nlu?.setArbConfig?.({
         gap: cfg.arb_gap,
         taskMin: cfg.arb_task_min,
         faqMin: cfg.arb_faq_min,
         strongHit: cfg.arb_strong_hit,
+        vectorThreshold: cfg.arb_vector_threshold,
+        taskBoost: cfg.arb_task_boost,
       })
     }
 
