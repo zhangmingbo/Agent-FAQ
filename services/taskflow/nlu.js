@@ -443,8 +443,7 @@ class TaskNLU {
       _t('无任务上下文')
     }
 
-    // 2) 新任务意图判定：规则快检（含否定防护）+ 完整 matchTask（触发词/LLM/意图例句向量）
-    //    意图例句向量语义是关键——"安排人来安装"这类表达触发词没覆盖但例句语义命中
+    // 2) 新任务意图判定：规则快检（含否定防护）+ 任务/FAQ 统一语义仲裁（同步对比）
     let byRuleHit = false
     let consultHint = false
     let matchedTask = null
@@ -463,34 +462,38 @@ class TaskNLU {
         if (!consultHint) return 'task_new'
       }
 
-      // 2.2 规则未命中或被否定 → 走完整 matchTask（LLM 判定 + 意图例句向量语义）
-      //    命中后必须与 FAQ 统一仲裁（同一模型对比相似度，谁高选谁），
-      //    防止"查一下用气量"这类 FAQ 例句原话被任务例句语义误抢
-      if (!matchedTask && this.mode !== 'rule') {
-        _t('走完整 matchTask（LLM 判定 + 意图例句向量）')
-        try {
-          const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null, trace)
-          _t('matchTask 结果', { hit: hit ? hit.code : null })
-          if (hit) {
-            // 语义/LLM 命中任务 → 与 FAQ 仲裁
-            const arb = await this.arbitrateTaskFaq(t, ctx)
-            _t('任务/FAQ 统一仲裁', {
-              taskScore: arb.taskScore ? arb.taskScore.toFixed(3) : null,
-              faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
-              taskHit: arb.taskCode || null,
-              faqHit: arb.faqCode ? arb.faqCode + '(' + (arb.faqName || '') + ')' : null,
-              channel: arb.channel,
-            }, arb.channel === 'clarify' ? 'warn' : 'task')
-            if (arb.channel === 'faq') return 'faq'
-            if (arb.channel === 'clarify') return 'clarify'
-            // arb.task_new → 任务胜出
-            matchedTask = hit
-            consultHint = /(多少钱|收费|价格|怎么|如何|正常吗|原因|为什么|能不能|能否|吗)[，,。？?]?$|(多少钱|收费|价格|怎么|如何|为什么)[，,。？?]/.test(t)
-            if (!consultHint) return 'task_new'
+      // 2.2 任务/FAQ 统一语义仲裁（同步对比，谁高选谁，接近则澄清）
+      //    不依赖 matchTask 是否命中——两侧同时打分，避免"任务未命中就漏掉 FAQ"
+      //    （如"你是谁"：任务侧短句跳过向量，但 FAQ 侧 selfI_Introduce 高置信）
+      if (this.mode !== 'rule') {
+        const arb = await this.arbitrateTaskFaq(t, ctx)
+        _t('任务/FAQ 统一仲裁（同步）', {
+          taskScore: arb.taskScore ? arb.taskScore.toFixed(3) : null,
+          faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
+          taskHit: arb.taskCode || null,
+          faqHit: arb.faqCode ? arb.faqCode + '(' + (arb.faqName || '') + ')' : null,
+          channel: arb.channel,
+        }, arb.channel === 'clarify' ? 'warn' : 'task')
+        if (arb.channel === 'faq') return 'faq'
+        if (arb.channel === 'task_new') return 'task_new'
+        // 仲裁判 clarify 且有一侧达线（接近）→ 追问用户；双低（都未达线）→ 继续
+        if (arb.taskScore > 0 || arb.faqScore > 0) return 'clarify'
+
+        // 仲裁双低（任务/FAQ 语义都拿不准）→ 走完整 matchTask（LLM judgeTrigger 补强）
+        if (!matchedTask) {
+          _t('仲裁双低，走完整 matchTask（LLM 判定补强）')
+          try {
+            const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null, trace)
+            _t('matchTask 结果', { hit: hit ? hit.code : null })
+            if (hit) {
+              // 向量双低时 LLM judgeTrigger 判定为任务 → 采信
+              matchedTask = hit
+              return 'task_new'
+            }
+          } catch (e) {
+            _t('matchTask 异常', { message: e.message }, 'error')
+            console.error('[TaskNLU] 路由 matchTask 判定失败:', e.message)
           }
-        } catch (e) {
-          _t('matchTask 异常', { message: e.message }, 'error')
-          console.error('[TaskNLU] 路由 matchTask 判定失败:', e.message)
         }
       }
     } else {
