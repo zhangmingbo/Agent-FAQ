@@ -50,6 +50,51 @@ register('complete_message', async (ctx) => {
   return { ok: true, message: ctx.step?.done_message || ctx.task.completion_message || getReply('complete_fallback', { taskName: ctx.task.name }) }
 })
 
+/**
+ * 调用接口（任务级配置）：用户确认后，把收集的槽位 POST/GET 到任务里配的接口生成工单
+ * 配置来源：任务定义 api_action = { url, method, fieldMap, successMessage }
+ *   - fieldMap：{ 槽位key: 接口字段名 }；未配置则传全部槽位
+ *   - successMessage：成功话术（留空用默认 replyTexts.api_action_done）
+ */
+register('call_api', async (ctx) => {
+  const cfg = ctx.task?.api_action || {}
+  if (!cfg.url) {
+    return { ok: false, message: '任务未配置接口地址' }
+  }
+  const slots = ctx.slots || {}
+  let payload
+  if (cfg.fieldMap && Object.keys(cfg.fieldMap).length) {
+    payload = {}
+    for (const [slotKey, apiField] of Object.entries(cfg.fieldMap)) {
+      const v = slots[slotKey]
+      payload[apiField] = (v !== undefined && v !== null) ? String(v) : ''
+    }
+  } else {
+    payload = { ...slots }
+  }
+
+  try {
+    const method = (cfg.method || 'POST').toUpperCase()
+    const res = await fetch(cfg.url, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...(cfg.headers || {}) },
+      body: method === 'GET' ? undefined : JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      console.error(`[TaskFlow] 接口调用失败 HTTP ${res.status}:`, (await res.text()).slice(0, 200))
+      return { ok: false, message: getReply('api_action_fail', { code: res.status }) }
+    }
+    const data = await res.json().catch(() => null)
+    const orderNo = data?.orderNo || data?.order_no || data?.id || data?.orderId || ''
+    let message = cfg.successMessage || getReply('api_action_done')
+    if (orderNo) message = message.split('{orderNo}').join(String(orderNo))
+    return { ok: true, message }
+  } catch (e) {
+    console.error('[TaskFlow] 接口调用异常:', e.message)
+    return { ok: false, message: getReply('api_action_fail', { code: '' }) }
+  }
+})
+
 register('create_repair_order', async (ctx) => {
   await pool.execute(
     `CREATE TABLE IF NOT EXISTS repair_order (

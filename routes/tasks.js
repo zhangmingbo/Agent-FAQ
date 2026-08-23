@@ -91,7 +91,7 @@ export function createRouter() {
 
   // 创建/更新任务
   router.post('/tasks', asyncHandler(async (req, res) => {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, completion_message, on_complete, status } = req.body
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, completion_message, on_complete, status } = req.body
 
     if (!code || !name) {
       res.status(400).json({ success: false, message: '编码和名称不能为空' })
@@ -120,7 +120,7 @@ export function createRouter() {
       code, name, description, trigger_keywords, slots, steps, intent_examples,
       clarify_question, clarify_options,
       arb_gap, arb_task_min, arb_faq_min, arb_strong_hit,
-      llm,
+      llm, api_action,
       completion_message, on_complete, status,
     })
 

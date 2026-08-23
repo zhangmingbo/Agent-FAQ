@@ -54,6 +54,9 @@ export const DEFAULT_REPLY_TEXTS = {
   transfer_human: '好的，正在为您转接人工客服，请稍候...\n客服热线：400-123-4567',
   meter_replace_done: '已为您登记换表申请（单号 #{orderId}），师傅会尽快联系您确认上门时间。',
   service_appointment_done: '已为您预约{serviceType}服务（单号 #{orderId}），售后会在24小时内联系您，请保持电话畅通。',
+  // 任务「调用接口」完成动作的默认话术（任务里可配 successMessage 覆盖）
+  api_action_done: '已为您提交成功。',
+  api_action_fail: '提交失败，请稍后重试。',
 
   // ===== 槽位校验提示 =====
   validate_required: '请提供{label}',

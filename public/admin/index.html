@@ -1035,6 +1035,8 @@
         ['transfer_human', '转人工', '', '转接人工客服时的回复'],
         ['meter_replace_done', '换表完成', '{orderId}', '换表申请登记成功后的回复'],
         ['service_appointment_done', '预约完成', '{serviceType} {orderId}', '预约服务创建成功后的回复'],
+        ['api_action_done', '接口提交成功', '{orderNo}', '任务"调用接口"完成动作成功后的默认回复（任务里可配 successMessage 覆盖）'],
+        ['api_action_fail', '接口提交失败', '{code}', '任务"调用接口"完成动作失败后的默认回复'],
       ]},
       { title: '槽位校验提示', keys: [
         ['validate_required', '必填为空', '{label}', '必填槽位为空时'],
@@ -1812,6 +1814,19 @@
         '<div class="form-group"><label>完成动作（可选）</label>' +
           '<select id="tf-action"><option value="complete_message">仅回复完成话术</option></select>' +
           '<input id="tf-action-msg" placeholder="动作成功后回复（完成话术）" value="' + esc(isEdit ? (task.completion_message || '') : '') + '" style="margin-top:6px">' +
+          '<div id="tf-api-action" style="display:none;border:1px solid #e8ecff;border-radius:8px;padding:10px;margin-top:8px;background:#fafbff">' +
+            '<div style="font-size:12px;color:#555;margin-bottom:6px"><b>调用接口配置</b>（用户确认后系统自动把收集的字段提交到接口生成工单）</div>' +
+            '<input id="tf-api-url" placeholder="接口地址，如 https://api.example.com/order/create" value="' + esc(isEdit && task.api_action ? (task.api_action.url || '') : '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;margin-bottom:6px">' +
+            '<div style="margin-bottom:6px"><span style="font-size:12px;color:#666;margin-right:6px">请求方式</span>' +
+              '<select id="tf-api-method" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+                '<option value="POST"' + (isEdit && task.api_action && task.api_action.method === 'GET' ? '' : ' selected') + '>POST</option>' +
+                '<option value="GET"' + (isEdit && task.api_action && task.api_action.method === 'GET' ? ' selected' : '') + '>GET</option>' +
+              '</select></div>' +
+            '<div style="font-size:12px;color:#888;margin-bottom:4px">字段映射（每行：槽位key=接口字段名；留空=传全部收集字段）</div>' +
+            '<textarea id="tf-api-fieldmap" rows="3" placeholder="phone=phone&#10;customer_name=name&#10;service_type=serviceType" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:6px">' + esc(isEdit && task.api_action && task.api_action.fieldMap ? Object.entries(task.api_action.fieldMap).map(function(x){ return x[0] + '=' + x[1]; }).join('\n') : '') + '</textarea>' +
+            '<input id="tf-api-success-msg" placeholder="成功话术（留空用默认：已为您提交成功；支持 {orderNo} 占位符）" value="' + esc(isEdit && task.api_action ? (task.api_action.successMessage || '') : '') + '" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+            '<div style="font-size:11px;color:#999;margin-top:4px">保存后请点「⚡ 从槽位自动生成」重建流程步骤，完成动作才会真正执行接口调用。</div>' +
+          '</div>' +
         '</div>' +
         '<div class="form-group"><label>流程步骤（v2 步骤 DSL）</label>' +
           '<div id="tf-steps">' + buildStepRows(isEdit ? (task.steps || []) : []) + '</div>' +
@@ -1921,10 +1936,19 @@
       if (!sel) return;
       var actions = (res.success && res.data && res.data.length) ? res.data : ['complete_message'];
       sel.innerHTML = actions.map(function(a) {
-        return '<option value="' + esc(a) + '">' + esc(a) + '</option>';
+        var label = a === 'call_api' ? '调用接口（任务里配置）' : a;
+        return '<option value="' + esc(a) + '">' + esc(label) + '</option>';
       }).join('');
       if (isEdit && task.on_complete && actions.indexOf(task.on_complete) >= 0) sel.value = task.on_complete;
+      toggleApiAction();
     });
+    // 选择"调用接口"时显示接口配置块
+    function toggleApiAction() {
+      var block = overlay.querySelector('#tf-api-action');
+      if (!block) return;
+      block.style.display = (overlay.querySelector('#tf-action').value === 'call_api') ? '' : 'none';
+    }
+    overlay.querySelector('#tf-action').addEventListener('change', toggleApiAction);
 
     // v2 步骤编辑器
     overlay.querySelector('#tf-add-step').onclick = function() {
@@ -1966,6 +1990,26 @@
         });
       });
       var steps = collectStepRows();
+      // 调用接口配置（仅当完成动作选 call_api 时）
+      var apiAction = undefined;
+      if (overlay.querySelector('#tf-action').value === 'call_api') {
+        var apiUrl = overlay.querySelector('#tf-api-url').value.trim();
+        if (!apiUrl) { alert('选择"调用接口"后请填写接口地址'); return; }
+        var fieldMap = {};
+        overlay.querySelector('#tf-api-fieldmap').value.split('\n').forEach(function(l) {
+          l = l.trim(); if (!l) return;
+          var eq = l.indexOf('=');
+          if (eq <= 0) return;
+          var k = l.slice(0, eq).trim(), v = l.slice(eq + 1).trim();
+          if (k) fieldMap[k] = v;
+        });
+        apiAction = {
+          url: apiUrl,
+          method: overlay.querySelector('#tf-api-method').value || 'POST',
+          fieldMap: Object.keys(fieldMap).length ? fieldMap : undefined,
+          successMessage: overlay.querySelector('#tf-api-success-msg').value.trim() || undefined,
+        };
+      }
       var data = {
         code: code,
         name: name,
@@ -2016,6 +2060,7 @@
         })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: overlay.querySelector('#tf-action').value || '',
+        api_action: apiAction,
         status: 1,
       };
       api('POST', '/api/tasks', data, function(res) {
