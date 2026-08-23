@@ -74,6 +74,7 @@
     /* 阈值区：自适应列数（宽屏多列，窄屏自动收） */
     .cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 44px}
     .cfg-item{margin-bottom:16px}
+    .cfg-comment{font-size:12px;color:#999;margin-top:4px;line-height:1.5}
     .cfg-note{font-size:12px;color:#999;margin-top:10px}
     /* 固定话术：响应式多列卡片（按屏幕宽度自动 1~3 列） */
     .texts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px 24px;align-items:start}
@@ -690,29 +691,36 @@
       api('GET', '/api/config', null, function(cfg) {
         if (!cfg) return;
         ensureArbTipStyle();
-        var row = function(label, id, val, desc) {
+        var row = function(label, id, val, desc, short) {
           return '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
               ' <span style="color:#999;font-weight:normal">（当前 ' + val + '）</span>' +
               '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
             '</div>' +
             '<input id="' + id + '" type="number" step="0.01" min="0" max="1" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+            (short ? '<div class="cfg-comment">' + short + '</div>' : '') +
           '</div>';
         };
         var html =
           '<div class="cfg-grid">' +
           row('差距阈值', 'arb-gap', cfg.arbGap,
-            '作用：决定"任务"和"FAQ"两边相似度差多少时直接判定胜出，而不是追问用户。<br>举例：用户说"我要预约上门服务"，任务侧 0.92、FAQ 侧 0.70，差 0.22 &gt; 0.08 → 直接进入任务。<br>调大：更倾向追问确认（保守）；调小：更倾向直接判定（果断）。<br>典型值：0.06~0.15，建议 0.08。') +
+            '作用：决定"任务"和"FAQ"两边相似度差多少时直接判定胜出，而不是追问用户。<br>举例：用户说"我要预约上门服务"，任务侧 0.92、FAQ 侧 0.70，差 0.22 &gt; 0.08 → 直接进入任务。<br>调大：更倾向追问确认（保守）；调小：更倾向直接判定（果断）。<br>典型值：0.06~0.15，建议 0.08。',
+            '任务与 FAQ 分数差多少时直接判胜出，不再追问') +
           row('任务侧最低线', 'arb-task-min', cfg.arbTaskMin,
-            '作用：任务例句相似度低于此值，就不算"像这个任务"，不会触发任务。<br>举例："习近平是谁"与任务例句最高相似度 0.40 &lt; 0.45 → 不触发任何任务。<br>调大：减少任务误触发（可能漏真实预约）；调小：更容易触发（易误触）。<br>典型值：0.40~0.55，建议 0.45。') +
+            '作用：任务例句相似度低于此值，就不算"像这个任务"，不会触发任务。<br>举例："习近平是谁"与任务例句最高相似度 0.40 &lt; 0.45 → 不触发任何任务。<br>调大：减少任务误触发（可能漏真实预约）；调小：更容易触发（易误触）。<br>典型值：0.40~0.55，建议 0.45。',
+            '任务例句相似度低于此线，不算"像这个任务"') +
           row('FAQ 侧最低线', 'arb-faq-min', cfg.arbFaqMin,
-            '作用：FAQ 例句相似度低于此值，就不算"匹配到 FAQ"，不会用 FAQ 回答。<br>举例："今天天气"与所有 FAQ 例句相似度都 &lt; 0.55 → 不匹配 FAQ。<br>调大：减少 FAQ 误匹配（可能漏答）；调小：更容易匹配（易答非所问）。<br>典型值：0.50~0.65，建议 0.55。') +
+            '作用：FAQ 例句相似度低于此值，就不算"匹配到 FAQ"，不会用 FAQ 回答。<br>举例："今天天气"与所有 FAQ 例句相似度都 &lt; 0.55 → 不匹配 FAQ。<br>调大：减少 FAQ 误匹配（可能漏答）；调小：更容易匹配（易答非所问）。<br>典型值：0.50~0.65，建议 0.55。',
+            'FAQ 例句相似度低于此线，不算"匹配到 FAQ"') +
           row('强命中线', 'arb-strong-hit', cfg.arbStrongHit,
-            '作用：无触发词时，任务和 FAQ 两侧相似度都低于此值 → 判定"域外问题"（与净水器业务无关），直接业务引导，不追问。<br>举例："我家门坏了"任务 0.64、FAQ 0.61，都 &lt; 0.72 → 域外。<br>调大：更多输入判为域外（严格）；调小：更多弱匹配进澄清。<br>典型值：0.65~0.80，建议 0.72。') +
+            '作用：无触发词时，任务和 FAQ 两侧相似度都低于此值 → 判定"域外问题"（与净水器业务无关），直接业务引导，不追问。<br>举例："我家门坏了"任务 0.64、FAQ 0.61，都 &lt; 0.72 → 域外。<br>调大：更多输入判为域外（严格）；调小：更多弱匹配进澄清。<br>典型值：0.65~0.80，建议 0.72。',
+            '两侧都低于此线时判"域外"，直接业务引导') +
           row('语义触发线', 'arb-vector-threshold', cfg.arbVectorThreshold,
-            '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（触发词没覆盖但说法像例句的场景）。<br>举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 触发预约任务。<br>调大：减少语义误触发；调小：更多口语化表达能触发。<br>典型值：0.40~0.55，建议 0.45。') +
+            '作用：任务意图例句的向量相似度达到此值，才算"语义命中任务"（触发词没覆盖但说法像例句的场景）。<br>举例："安排人来安装"与例句"我买的净水机，你们派人来安装"相似度 0.73 ≥ 0.45 → 触发预约任务。<br>调大：减少语义误触发；调小：更多口语化表达能触发。<br>典型值：0.40~0.55，建议 0.45。',
+            '例句向量达到此线才算"语义命中任务"') +
           row('触发词基础分', 'arb-task-boost', cfg.arbTaskBoost,
-            '作用：话术命中任务触发词（如"预约""上门"）时，任务侧相似度抬升到此值——触发词是运营明确配置的信号。<br>举例："请个师父上门来看看吧"命中"上门" → 任务侧抬到 0.85，压过 FAQ 0.72 → 进入预约任务。<br>调大：触发词命中后更坚定走任务；调小：更易被 FAQ 反超。<br>典型值：0.80~0.92，建议 0.85。') +
+            '作用：话术命中任务触发词（如"预约""上门"）时，任务侧相似度抬升到此值——触发词是运营明确配置的信号。<br>举例："请个师父上门来看看吧"命中"上门" → 任务侧抬到 0.85，压过 FAQ 0.72 → 进入预约任务。<br>调大：触发词命中后更坚定走任务；调小：更易被 FAQ 反超。<br>典型值：0.80~0.92，建议 0.85。',
+            '命中任务触发词时，任务侧相似度抬升到此分') +
           '</div>' +
           '<div class="cfg-note">以上各分区参数共用右上角"保存配置"按钮，一起保存生效。</div>';
         box.innerHTML = html;
@@ -783,7 +791,7 @@
       api('GET', '/api/config', null, function(cfg) {
         if (!cfg) return;
         ensureArbTipStyle();
-        var row = function(label, id, val, desc, o) {
+        var row = function(label, id, val, desc, short, o) {
           o = o || {};
           return '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
@@ -791,24 +799,35 @@
               '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
             '</div>' +
             '<input id="' + id + '" type="number" step="' + (o.step || '0.01') + '" min="' + (o.min || 0) + '" max="' + (o.max || 1) + '" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+            (short ? '<div class="cfg-comment">' + short + '</div>' : '') +
           '</div>';
         };
         box.innerHTML =
           '<div class="cfg-grid">' +
           row('候选竞争判定上限', 'faq-compete-ceiling', cfg.faqCompeteCeiling,
-            '作用：FAQ 候选 top1 与 top2 是不同意图，且 top1 相似度低于此值时，才进入"候选竞争追问"（列 1/2/3 让用户选）。<br>top1 ≥ 此值视为答案确定，直接回答不追问。<br>调大：更少列选项追问（认为够确定）；调小：更易进入候选竞争。<br>典型值：0.90~0.98，建议 0.95。') +
+            '作用：FAQ 候选 top1 与 top2 是不同意图，且 top1 相似度低于此值时，才进入"候选竞争追问"（列 1/2/3 让用户选）。<br>top1 ≥ 此值视为答案确定，直接回答不追问。<br>调大：更少列选项追问（认为够确定）；调小：更易进入候选竞争。<br>典型值：0.90~0.98，建议 0.95。',
+            'top1 低于此线才进入候选竞争追问',
+            { min: 0.8, max: 1, step: 0.01 }) +
           row('候选竞争差距阈值', 'faq-compete-gap', cfg.faqCompeteGap,
-            '作用：top1 与 top2 相似度差距小于此值才认为"两个候选都很像" → 列选项追问；差距更大说明 top1 明显更优，直接回答。<br>调大：更易触发候选竞争（保守）；调小：更直接回答。<br>典型值：0.03~0.10，建议 0.06。') +
+            '作用：top1 与 top2 相似度差距小于此值才认为"两个候选都很像" → 列选项追问；差距更大说明 top1 明显更优，直接回答。<br>调大：更易触发候选竞争（保守）；调小：更直接回答。<br>典型值：0.03~0.10，建议 0.06。',
+            'top1 与 top2 差小于此线才追问选项') +
           row('LLM 意图重排触发线', 'llm-rerank-ceiling', cfg.llmRerankCeiling,
-            '作用：启用大模型时，FAQ 相似度低于此值且候选≥2，才调用 LLM 重新排序意图（更精准但每次有成本）。<br>调大：更少调 LLM 重排（省成本）；调小：更多低分场景重排。<br>典型值：0.85~0.95，建议 0.90。') +
+            '作用：启用大模型时，FAQ 相似度低于此值且候选≥2，才调用 LLM 重新排序意图（更精准但每次有成本）。<br>调大：更少调 LLM 重排（省成本）；调小：更多低分场景重排。<br>典型值：0.85~0.95，建议 0.90。',
+            'FAQ 得分低于此线且候选≥2 才调 LLM 重排') +
           row('短句判定长度', 'short-text-len', cfg.shortTextLen,
-            '作用：长度低于此值的输入不走向量相似度匹配（向量对短词不可靠，如"习近平"误配"查明细"），只接受"正则命中/例句包含原词"的确定性匹配。<br>调大：更多短输入走确定性匹配；调小：更少。<br>典型值：3~5，建议 4。', { min: 2, max: 10, step: 1 }) +
+            '作用：长度低于此值的输入不走向量相似度匹配（向量对短词不可靠，如"习近平"误配"查明细"），只接受"正则命中/例句包含原词"的确定性匹配。<br>调大：更多短输入走确定性匹配；调小：更少。<br>典型值：3~5，建议 4。',
+            '低于此长度的输入不走向量匹配',
+            { min: 2, max: 10, step: 1 }) +
           row('短句正则命中分', 'short-regex-hit', cfg.shortRegexHit,
-            '作用：短句命中正则（如"转人工"）时给的相似度分数。<br>调大：更坚定命中；调小：可能被其它判定压过。<br>典型值：0.90~0.99，建议 0.95。') +
+            '作用：短句命中正则（如"转人工"）时给的相似度分数。<br>调大：更坚定命中；调小：可能被其它判定压过。<br>典型值：0.90~0.99，建议 0.95。',
+            '短句命中正则时给的相似度') +
           row('短句包含命中分', 'short-contains-hit', cfg.shortContainsHit,
-            '作用：短句原文出现在某 FAQ 例句里（"换芯"在"上门换滤芯"）时给的相似度。<br>典型值：0.85~0.95，建议 0.90。') +
+            '作用：短句原文出现在某 FAQ 例句里（"换芯"在"上门换滤芯"）时给的相似度。<br>典型值：0.85~0.95，建议 0.90。',
+            '短句例句包含原词时给的相似度') +
           row('任务向量最短长度', 'task-vec-min-len', cfg.taskVecMinLen,
-            '作用：任务意图例句的向量语义触发只对长度≥此值的输入生效（太短只走触发词，避免短句噪声误触发任务）。<br>调大：更少语义触发（只靠触发词）；调小：更多短句也能语义触发。<br>典型值：4~8，建议 5。', { min: 2, max: 15, step: 1 }) +
+            '作用：任务意图例句的向量语义触发只对长度≥此值的输入生效（太短只走触发词，避免短句噪声误触发任务）。<br>调大：更少语义触发（只靠触发词）；调小：更多短句也能语义触发。<br>典型值：4~8，建议 5。',
+            '任务语义触发只对≥此长度的输入生效',
+            { min: 2, max: 15, step: 1 }) +
           '</div>';
       });
     }
@@ -833,7 +852,7 @@
       api('GET', '/api/config', null, function(cfg) {
         if (!cfg) return;
         ensureArbTipStyle();
-        var row = function(label, id, val, desc, o) {
+        var row = function(label, id, val, desc, short, o) {
           o = o || {};
           return '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">' + label +
@@ -841,20 +860,27 @@
               '<span class="arb-tip">?<span class="arb-tip-box">' + desc + '</span></span>' +
             '</div>' +
             '<input id="' + id + '" type="number" step="' + (o.step || '0.01') + '" min="' + (o.min || 0) + '" max="' + (o.max || 1) + '" value="' + val + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+            (short ? '<div class="cfg-comment">' + short + '</div>' : '') +
           '</div>';
         };
         box.innerHTML =
           '<div class="cfg-grid">' +
           row('加相似问建议线', 'analysis-recommend-threshold', cfg.analysisRecommendThreshold,
-            '作用：问题分析页里，FAQ 命中且相似度高于此值 → 建议"加入该 FAQ 相似问"；低于则建议新建。<br>调大：更保守地建议加入；调小：更多建议加入。<br>典型值：0.20~0.40，建议 0.30。') +
+            '作用：问题分析页里，FAQ 命中且相似度高于此值 → 建议"加入该 FAQ 相似问"；低于则建议新建。<br>调大：更保守地建议加入；调小：更多建议加入。<br>典型值：0.20~0.40，建议 0.30。',
+            'FAQ 命中且高于此线 → 建议加相似问') +
           row('低置信过滤上限', 'analysis-max-confidence', cfg.analysisMaxConfidence,
-            '作用：分析页"低置信度"列表只展示相似度低于此值的日志（高于此值算正常命中，不进分析）。<br>调大：更多日志进低置信分析；调小：只看更低的。<br>典型值：0.60~0.80，建议 0.70。') +
+            '作用：分析页"低置信度"列表只展示相似度低于此值的日志（高于此值算正常命中，不进分析）。<br>调大：更多日志进低置信分析；调小：只看更低的。<br>典型值：0.60~0.80，建议 0.70。',
+            '相似度低于此值才算低置信，进分析列表') +
           row('挖掘最短长度', 'suggest-min-len', cfg.suggestMinLen,
-            '作用：任务建议挖掘时，短于此长度的表达不进候选池（太短多为语气词/碎片）。<br>典型值：3~6，建议 4。', { min: 2, max: 10, step: 1 }) +
+            '作用：任务建议挖掘时，短于此长度的表达不进候选池（太短多为语气词/碎片）。<br>典型值：3~6，建议 4。',
+            '短于此长度的表达不进候选池',
+            { min: 2, max: 10, step: 1 }) +
           row('挖掘相似度线', 'suggest-sim-threshold', cfg.suggestSimThreshold,
-            '作用：候选表达与任务例句的语义相似度低于此值 → 不算"像该任务"，不入建议。<br>调大：建议更保守（可能漏）；调小：更多候选（噪声多）。<br>典型值：0.45~0.65，建议 0.55。') +
+            '作用：候选表达与任务例句的语义相似度低于此值 → 不算"像该任务"，不入建议。<br>调大：建议更保守（可能漏）；调小：更多候选（噪声多）。<br>典型值：0.45~0.65，建议 0.55。',
+            '低于此线不算"像该任务"，不入建议') +
           row('触发词最低分', 'suggest-keyword-min-score', cfg.suggestKeywordMinScore,
-            '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。') +
+            '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。',
+            '命中触发词但综合分仍低 → 不算候选') +
           '</div>';
       });
     }
@@ -922,59 +948,60 @@
     }
 
     // ===== 固定话术 tab：所有用户可见文案（配置驱动，不允许硬编码） =====
+    // 条目：[key, 显示名, 可用变量, 作用注释]
     var TEXT_GROUPS = [
       { title: '兜底 / 域外', keys: [
-        ['domain_fallback', '域外引导话术', ''],
-        ['meaningless', '无意义回复', ''],
-        ['no_answer', '确认后无答案', ''],
+        ['domain_fallback', '域外引导话术', '', '任务/FAQ 都没匹配上（域外问题）时的引导回复'],
+        ['meaningless', '无意义回复', '', '检测到无意义输入（闲聊/语气词）时的回复'],
+        ['no_answer', '确认后无答案', '', '追问确认后仍找不到该 FAQ 答案时的回复'],
       ]},
       { title: '澄清 / 进度', keys: [
-        ['continue_task', '继续办理提示', '{taskName} {hint}'],
-        ['progress_needed', '还缺信息提示', '{labels}'],
-        ['progress_all_filled', '信息齐全提示', ''],
-        ['ask_business', '无任务询问', ''],
-        ['stashed_hint', '暂存任务提示', '{taskName}'],
-        ['suspended_hint', '挂起任务提示', '{taskName}'],
-        ['task_faq_progress', '任务中答FAQ后进度', '{taskName} {labels}'],
-        ['clarify_options', 'FAQ候选竞争追问', '{options}'],
-        ['clarify_yes_no', 'FAQ二选一确认', '{intentName}'],
-        ['route_clarify_repeat_prefix', '澄清重复追问前缀', ''],
+        ['continue_task', '继续办理提示', '{taskName} {hint}', '澄清后用户选"办理"，继续任务的提示'],
+        ['progress_needed', '还缺信息提示', '{labels}', '任务还缺信息时的进度片段（接在继续办理后）'],
+        ['progress_all_filled', '信息齐全提示', '', '任务信息已齐全时的进度片段'],
+        ['ask_business', '无任务询问', '', '澄清后无任务可办时，反问用户办什么'],
+        ['stashed_hint', '暂存任务提示', '{taskName}', '切换新任务时提示有暂存的旧任务可恢复'],
+        ['suspended_hint', '挂起任务提示', '{taskName}', 'FAQ 插话后提示任务已挂起，回复"继续"恢复'],
+        ['task_faq_progress', '任务中答FAQ后进度', '{taskName} {labels}', '任务中答完 FAQ 后附带的任务进度'],
+        ['clarify_options', 'FAQ候选竞争追问', '{options}', '多个 FAQ 候选都很像时，列选项让用户选'],
+        ['clarify_yes_no', 'FAQ二选一确认', '{intentName}', 'FAQ 中置信度时"是/不是"确认（faq 未配 followUp 时用）'],
+        ['route_clarify_repeat_prefix', '澄清重复追问前缀', '', '澄清追问未识别用户选择时，重复追问的前缀'],
       ]},
       { title: '任务对话（规则版）', keys: [
-        ['slot_prompt_fallback', '槽位提示兜底', '{label}'],
-        ['modify_prompt', '修改提示', '{label}'],
-        ['direct_input', '直接输入新值', '{label}'],
-        ['guidance_header', '智能引导开头', ''],
-        ['guidance_item', '引导条目', '{label}'],
-        ['guidance_filled_hint', '引导补充', ''],
-        ['confirm_prompt', '确认提示', ''],
-        ['confirm_summary_header', '确认清单标题', ''],
-        ['confirm_summary_item', '确认清单条目', '{label} {value}'],
-        ['slot_updated', '槽位更新确认', '{label} {value}'],
-        ['submitting', '提交中', ''],
-        ['modify_reask', '重新提供提示', ''],
-        ['action_fail_rule', '动作失败（规则版）', '{message}'],
-        ['cancel_done', '取消完成', ''],
+        ['slot_prompt_fallback', '槽位提示兜底', '{label}', '槽位未配置提问话术时的兜底提问'],
+        ['modify_prompt', '修改提示', '{label}', '用户说"修改XX"后，询问新值'],
+        ['direct_input', '直接输入新值', '{label}', '修改未带新值时，提示直接输入'],
+        ['guidance_header', '智能引导开头', '', '连续没听懂时的引导开头'],
+        ['guidance_item', '引导条目', '{label}', '引导中每个缺失字段的行'],
+        ['guidance_filled_hint', '引导补充', '', '引导末尾提示可修改已填信息'],
+        ['confirm_prompt', '确认提示', '', '信息收集齐后的确认提示'],
+        ['confirm_summary_header', '确认清单标题', '', '确认清单的标题行'],
+        ['confirm_summary_item', '确认清单条目', '{label} {value}', '确认清单每行的格式'],
+        ['slot_updated', '槽位更新确认', '{label} {value}', '确认态修改槽位后的确认'],
+        ['submitting', '提交中', '', '用户确认后提交时的提示'],
+        ['modify_reask', '重新提供提示', '', '否认确认后请用户重新提供信息'],
+        ['action_fail_rule', '动作失败（规则版）', '{message}', '动作执行失败时的提示（规则版）'],
+        ['cancel_done', '取消完成', '', '取消任务的确认回复'],
       ]},
       { title: '任务对话（LLM 版）', keys: [
-        ['modify_prompt_llm', '修改提示', ''],
-        ['action_fail_llm', '动作失败（LLM版）', '{message}'],
-        ['complete_fallback', '完成兜底', '{taskName}'],
+        ['modify_prompt_llm', '修改提示', '', 'LLM 对话中询问要修改的内容'],
+        ['action_fail_llm', '动作失败（LLM版）', '{message}', '动作执行失败时的提示（LLM 版）'],
+        ['complete_fallback', '完成兜底', '{taskName}', '任务未配完成文案时的兜底完成话术'],
       ]},
       { title: '动作完成', keys: [
-        ['repair_order_done', '报修单完成', '{orderId}'],
-        ['transfer_human', '转人工', ''],
-        ['meter_replace_done', '换表完成', '{orderId}'],
-        ['service_appointment_done', '预约完成', '{serviceType} {orderId}'],
+        ['repair_order_done', '报修单完成', '{orderId}', '报修工单创建成功后的回复'],
+        ['transfer_human', '转人工', '', '转接人工客服时的回复'],
+        ['meter_replace_done', '换表完成', '{orderId}', '换表申请登记成功后的回复'],
+        ['service_appointment_done', '预约完成', '{serviceType} {orderId}', '预约服务创建成功后的回复'],
       ]},
       { title: '槽位校验提示', keys: [
-        ['validate_required', '必填为空', '{label}'],
-        ['validate_len_min', '长度不足', '{n}'],
-        ['validate_len_max', '长度超限', '{n}'],
-        ['validate_number', '非数字', ''],
-        ['validate_phone', '手机号错误', ''],
-        ['validate_enum', '枚举不匹配', '{options}'],
-        ['validate_format', '格式错误', ''],
+        ['validate_required', '必填为空', '{label}', '必填槽位为空时'],
+        ['validate_len_min', '长度不足', '{n}', '长度低于下限时'],
+        ['validate_len_max', '长度超限', '{n}', '长度超过上限时'],
+        ['validate_number', '非数字', '', '要求数字格式时'],
+        ['validate_phone', '手机号错误', '', '手机号格式错误时'],
+        ['validate_enum', '枚举不匹配', '{options}', '不在可选范围内时'],
+        ['validate_format', '格式错误', '', '正则格式不匹配时'],
       ]},
     ];
 
@@ -989,13 +1016,14 @@
         TEXT_GROUPS.forEach(function(g) {
           html += '<div class="text-group"><h4>' + g.title + '</h4>';
           g.keys.forEach(function(k) {
-            var key = k[0], label = k[1], vars = k[2];
+            var key = k[0], label = k[1], vars = k[2], desc = k[3] || '';
             var val = (rt[key] !== undefined && rt[key] !== null) ? rt[key] : '';
             html += '<div style="margin-bottom:14px">' +
               '<div style="font-size:13px;color:#555;margin-bottom:4px">' + label +
                 (vars ? ' <span style="color:#bbb;font-weight:normal;font-size:12px">可用变量：' + vars + '</span>' : '') +
               '</div>' +
               '<textarea id="rt-' + key + '" rows="2" class="rt-textarea">' + esc(val) + '</textarea>' +
+              (desc ? '<div class="cfg-comment">' + desc + '</div>' : '') +
             '</div>';
           });
           html += '</div>';
@@ -1006,12 +1034,15 @@
             '<div style="margin-bottom:14px">' +
               '<div style="font-size:13px;color:#555;margin-bottom:4px">触发词近义扩展表 <span style="color:#bbb;font-weight:normal;font-size:12px">每行一个词条：词=扩展1,扩展2</span></div>' +
               '<textarea id="mv-synonyms" rows="7" class="rt-textarea">' + esc(synonymsToText(mv.triggerSynonyms)) + '</textarea>' +
+              '<div class="cfg-comment">任务触发词命中时并入扩展表达，覆盖口语化说法</div>' +
             '</div>' +
             '<div>' +
               '<div style="font-size:13px;color:#555;margin-bottom:4px">澄清关键词 · 办理 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
               '<textarea id="mv-rt-task" rows="3" class="rt-textarea">' + esc((mv.routeChoiceTask || []).join(',')) + '</textarea>' +
+              '<div class="cfg-comment">澄清追问时判定用户选"办理"的关键词</div>' +
               '<div style="font-size:13px;color:#555;margin:14px 0 4px">澄清关键词 · 咨询 <span style="color:#bbb;font-weight:normal;font-size:12px">逗号分隔</span></div>' +
               '<textarea id="mv-rt-faq" rows="3" class="rt-textarea">' + esc((mv.routeChoiceFaq || []).join(',')) + '</textarea>' +
+              '<div class="cfg-comment">澄清追问时判定用户选"咨询"的关键词</div>' +
             '</div>' +
           '</div>' +
         '</div>';
@@ -1104,6 +1135,19 @@
         tip.className = 'arb-tip';
         tip.innerHTML = '?<span class="arb-tip-box">' + desc + '</span>';
         lb.appendChild(tip);
+      }
+      // 原生 Top K 字段无说明文字，补一行可见注释（原生其它字段自带 desc）
+      var items = panel.querySelectorAll('.el-form-item');
+      for (var j = 0; j < items.length; j++) {
+        var lbl = items[j].querySelector('.el-form-item__label');
+        if (!lbl || lbl.textContent.indexOf('Top K') === -1) continue;
+        var content = items[j].querySelector('.el-form-item__content');
+        if (content && !content.querySelector('.cfg-comment')) {
+          var cm = document.createElement('div');
+          cm.className = 'cfg-comment';
+          cm.textContent = '一次取回候选 FAQ 条数，引擎从中挑最优答案';
+          content.appendChild(cm);
+        }
       }
     }
 
