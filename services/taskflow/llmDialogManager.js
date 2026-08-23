@@ -340,7 +340,7 @@ class LLMDialogManager {
         _t('任务对话·中间接口步骤', { step: step.key, reason: '前置槽位未填：' + (prev?.slot_key || '?') }, 'info')
         continue
       }
-      const r = await executeApiStep(step, this._slotValues(state), trace)
+      const r = await executeApiStep(step, this._slotValues(state), trace, state.vars)
       _t('任务对话·中间接口步骤', { step: step.key, ok: r.ok, resultSlot: step.resultSlot || null, resultSlots: r.results && Object.keys(r.results).length ? Object.keys(r.results) : null }, r.ok ? 'task' : 'error')
       state.apiSteps[step.key] = true
       if (r.ok) {
@@ -351,6 +351,8 @@ class LLMDialogManager {
             state.slots[slotKey].filled = true
           }
         }
+        // 出参变量 → 任务上下文（供后续步骤/判断/话术引用）
+        state.vars = { ...(state.vars || {}), ...(r.vars || {}) }
       }
       if (r.message) out.push(r.message)
     }

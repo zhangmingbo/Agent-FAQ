@@ -1,22 +1,20 @@
 /**
- * 任务动作注册表（v2：输出型动作）
+ * 任务动作注册表（v2/v3：输出型动作 + 统一接口调用）
  *
  * 定位：任务流程引擎不记录业务数据；动作 = 把收集的数据「输出」给外部系统
- *   - call_api          通过 HTTP 调用外部接口（Webhook 本质）：支持重试/超时/出参提取/入参映射
+ *   - call_api          统一接口调用（与流程中间 api 步骤同一套配置/执行，见 httpCall.js）
  *   - complete_message  仅回复完成话术（无副作用）
- *   - transfer_human    转人工提示
+ *   - transfer_human    转人工提示（v3 P4 将升级为「转人工事件」）
  *
  * 动作签名：async (ctx) => { ok:boolean, message?:string, error?:string, log?:{...} }
  *   ctx = { sessionId, task, state, slots: {key: value}, step, params }
  *   log（可选）：{ url, payload, response, retries } —— runAction 统一写入 action_log，
  *   作为流程引擎的输出审计（外部系统未就绪时在此查看/补发），不存储业务数据。
- *
- * 未来扩展：投递抽象 deliver(payload, cfg)，当前实现 HTTP(Webhook)，
- * 支持 MQ 时新增 delivery:'mq' 分支，业务代码不变。
  */
 
 import pool from '../../db/pool.js'
 import { getReply } from '../replyTexts.js'
+import { executeHttpCall, deliver } from './httpCall.js'
 
 const actions = new Map()
 
@@ -111,38 +109,6 @@ async function logAction(ctx, entry) {
   }
 }
 
-// ========== 投递抽象（当前 HTTP/Webhook，未来 MQ 在此扩展） ==========
-
-/**
- * 投递输出数据
- * @param {Object} payload - 输出数据
- * @param {Object} cfg - { url, method, headers, timeout, delivery }
- * @returns {Promise<{ok:boolean, status?:number, text?:string, error?:string}>}
- */
-async function deliver(payload, cfg) {
-  if (cfg.delivery === 'mq') {
-    return { ok: false, error: '消息队列投递未实现（当前仅支持 HTTP/Webhook）' }
-  }
-  const method = (cfg.method || 'POST').toUpperCase()
-  const timeoutMs = Math.max(1000, parseInt(cfg.timeout) || 10000)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(cfg.url, {
-      method,
-      headers: { 'Content-Type': 'application/json', ...(cfg.headers || {}) },
-      body: method === 'GET' ? undefined : JSON.stringify(payload),
-      signal: controller.signal,
-    })
-    const text = await res.text()
-    return { ok: res.ok, status: res.status, text }
-  } catch (e) {
-    return { ok: false, error: e.name === 'AbortError' ? `超时(${timeoutMs}ms)` : e.message }
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 // ========== 内置动作 ==========
 
 register('complete_message', async (ctx) => {
@@ -154,13 +120,10 @@ register('transfer_human', async () => {
 })
 
 /**
- * 输出动作：把收集的槽位数据投递到外部接口（Webhook）
+ * 统一接口调用动作（与流程中间 api 步骤同一套配置/执行，见 httpCall.js）
  * 配置（任务级 api_action 或步骤级 params，后者优先合并）：
- *   { url, method, headers, fieldMap, fixedParams, successMessage, retries, timeout }
- *   - fieldMap：{ 槽位key: 接口字段名 }；未配置则传全部槽位
- *   - fixedParams：固定入参（覆盖同名字段）
- *   - successMessage：成功话术（支持 {orderNo} 占位符）
- *   - retries：失败重试次数（默认 3），timeout：超时毫秒（默认 10000）
+ *   { url, method, headers, body, result, retries, timeout, done_message }
+ *   兼容旧字段：fieldMap / fixedParams / successMessage
  */
 register('call_api', async (ctx) => {
   const stepCfg = ctx.step?.params || {}
@@ -168,70 +131,16 @@ register('call_api', async (ctx) => {
   if (!cfg.url) {
     return { ok: false, message: '未配置输出接口地址（任务「完成动作」或步骤 params.url）', error: '未配置输出接口地址' }
   }
-
-  // 组装输出数据
-  const slots = ctx.slots || {}
-  let payload
-  if (cfg.fieldMap && Object.keys(cfg.fieldMap).length) {
-    payload = {}
-    for (const [slotKey, apiField] of Object.entries(cfg.fieldMap)) {
-      const v = slots[slotKey]
-      setPath(payload, apiField, (v !== undefined && v !== null) ? String(v) : '')
-    }
-  } else {
-    payload = { ...slots }
+  const r = await executeHttpCall(cfg, {
+    slots: ctx.slots || {},
+    vars: ctx.state?.vars || {},
+    idempotencyKey: ctx.idempotencyKey,
+  })
+  if (r.ok) {
+    return { ok: true, message: r.message || getReply('api_action_done'), log: r.log }
   }
-  if (cfg.fixedParams && typeof cfg.fixedParams === 'object') {
-    for (const [k, v] of Object.entries(cfg.fixedParams)) {
-      if (v && typeof v === 'object') setPath(payload, k, v)
-      else setPath(payload, k, String(v === undefined || v === null ? '' : v))
-    }
-  }
-
-  // 投递 + 重试
-  const retryN = parseInt(cfg.retries, 10)
-  const retries = Number.isNaN(retryN) ? 3 : Math.max(0, retryN)
-  let lastErr = ''
-  let responseText = ''
-  let attempt = 0
-  for (; attempt <= retries; attempt++) {
-    const r = await deliver(payload, cfg)
-    if (r.ok) {
-      responseText = r.text || ''
-      // 出参提取（业务单号等，供 {orderNo} 插值）
-      let orderNo = ''
-      try {
-        const d = JSON.parse(responseText)
-        orderNo = d?.orderNo || d?.order_no || d?.orderId || d?.id || d?.data?.orderNo || d?.data?.order_no || ''
-      } catch { /* 非 JSON */ }
-      let message = cfg.successMessage || getReply('api_action_done')
-      if (orderNo) message = message.split('{orderNo}').join(String(orderNo))
-      return { ok: true, message, log: { url: cfg.url, payload, response: responseText.slice(0, 2000), retries: attempt } }
-    }
-    lastErr = r.error || `HTTP ${r.status || '?'}`
-    responseText = r.text || ''
-    if (attempt < retries) await new Promise(res => setTimeout(res, 800))
-  }
-  console.error(`[TaskFlow] 输出动作失败(重试${retries}次): ${lastErr}`)
-  return {
-    ok: false,
-    message: getReply('api_action_fail', { code: '' }),
-    error: lastErr,
-    log: { url: cfg.url, payload, response: responseText.slice(0, 2000), retries: attempt },
-  }
+  return { ok: false, message: r.message || getReply('api_action_fail', { code: '' }), error: r.error, log: r.log }
 })
-
-/** 按点路径写入嵌套对象：setPath(obj, 'data.phone', v) → obj.data.phone = v */
-function setPath(obj, path, value) {
-  const keys = String(path).split('.')
-  let cur = obj
-  for (let i = 0; i < keys.length - 1; i++) {
-    const k = keys[i]
-    if (typeof cur[k] !== 'object' || cur[k] === null) cur[k] = {}
-    cur = cur[k]
-  }
-  cur[keys[keys.length - 1]] = value
-}
 
 export default { register, runAction, listActions, ensureActionLogTable, deliver }
 export { deliver }
