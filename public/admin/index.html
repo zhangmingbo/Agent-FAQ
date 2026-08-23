@@ -536,7 +536,7 @@
       rulesPanel.classList.toggle('active', tab === 'rules');
       tasksPanel.classList.toggle('active', tab === 'tasks');
       llmPanel.classList.toggle('active', tab === 'llm');
-      if (tab === 'tasks') loadTasks();
+      if (tab === 'tasks') { loadTasks(); loadSuggestions(); }
       if (tab === 'llm') loadLLMPanel();
     });
   }
@@ -636,6 +636,10 @@
         '<button class="btn-sm btn-primary" id="task-add-btn">+ 新建任务</button>' +
       '</div>' +
       '<div id="task-list-area"><div class="task-empty"><div class="icon">📋</div><div>加载中...</div></div></div>' +
+      '<div class="task-header" style="margin-top:24px"><h4>表达挖掘（未触发任务的高频话术）</h4>' +
+        '<button class="btn-sm" id="suggest-refresh-btn">⟳ 重新挖掘</button></div>' +
+      '<div style="color:#999;font-size:12px;margin:4px 0 8px">从真实对话日志中找出表达了办理意图但没触发任务的话术，匹配到任务后可一键采纳为意图例句。机器只推荐，由运营确认。</div>' +
+      '<div id="suggest-area"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
     '</div>';
   }
 
@@ -674,6 +678,59 @@
       area.innerHTML = html;
     });
   }
+
+  // ===== 表达挖掘 =====
+  function loadSuggestions() {
+    var area = document.getElementById('suggest-area');
+    if (!area) return;
+    api('GET', '/api/tasks/suggestions?limit=50', null, function(res) {
+      if (!res.success) {
+        area.innerHTML = '<div class="task-empty"><div>加载失败</div></div>';
+        return;
+      }
+      var items = (res.data && res.data.items) || [];
+      if (!items.length) {
+        area.innerHTML = '<div class="task-empty"><div class="icon">✅</div><div>暂无待挖掘表达（暂无匹配到任务的未命中话术）</div></div>';
+        return;
+      }
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead><tr>' +
+        '<th>话术</th><th style="width:70px">次数</th><th style="width:160px">匹配任务</th><th style="width:90px">相似度</th><th style="width:70px">信号</th><th style="width:90px">操作</th>' +
+        '</tr></thead><tbody>';
+      items.forEach(function(s) {
+        var score = Math.round((s.score || 0) * 100) + '%';
+        var signal = s.reason === 'keyword' ? '<span class="status-tag on">触发词</span>' : '<span class="status-tag" style="border-color:#f0ad4e;color:#f0ad4e">语义</span>';
+        html += '<tr>';
+        html += '<td>' + esc(s.text) + '</td>';
+        html += '<td>' + s.count + '</td>';
+        html += '<td>' + esc(s.matchedName || s.matchedTask || '-') + '</td>';
+        html += '<td>' + score + '</td>';
+        html += '<td>' + signal + '</td>';
+        html += '<td><button class="btn-sm" onclick="adoptSuggestion(\'' + esc(s.matchedTask) + '\',\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">采纳</button></td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '<div style="color:#999;font-size:12px;margin-top:8px">采纳后该话术加入匹配任务的意图例句，下次同款表达可直接触发任务。</div>';
+      area.innerHTML = html;
+    });
+  }
+
+  window.adoptSuggestion = function(code, text) {
+    if (!confirm('将「' + text + '」采纳为「' + code + '」的意图例句？')) return;
+    api('POST', '/api/tasks/' + code + '/adopt-example', { text: text }, function(res) {
+      if (res.success) {
+        alert(res.message || '已采纳');
+        loadSuggestions();
+        loadTasks();
+      } else {
+        alert(res.message || '采纳失败');
+      }
+    });
+  };
+
+  // 绑定刷新按钮
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'suggest-refresh-btn') { loadSuggestions(); }
+  });
 
   // ===== 编辑/新建任务弹窗 =====
   window.editTask = function(code) {

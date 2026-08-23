@@ -6,6 +6,7 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import taskEngine from '../services/taskflow/index.js'
+import taskSuggestService from '../services/taskSuggestService.js'
 import { listActions } from '../services/taskflow/actionRegistry.js'
 
 export function createRouter() {
@@ -14,6 +15,52 @@ export function createRouter() {
   // 获取可用动作列表（供管理后台步骤配置下拉）
   router.get('/tasks/actions', asyncHandler(async (req, res) => {
     res.json({ success: true, data: listActions() })
+  }))
+
+  // 表达挖掘：未触发任务的高频表达 + 任务匹配建议（运营工具，机器推荐人决定）
+  router.get('/tasks/suggestions', asyncHandler(async (req, res) => {
+    const limit = parseInt(req.query.limit) || 50
+    // 注入共享 NLP 引擎（与 taskEngine 同一个，避免二次加载模型）
+    taskSuggestService.setNlpEngine(taskEngine.nlu.nlpEngine)
+    const result = await taskSuggestService.suggest({
+      limit,
+      taskDefs: taskEngine.taskDefs,
+      vectors: taskEngine.nlu._vectors,
+    })
+    res.json({ success: true, data: result })
+  }))
+
+  // 采纳候选：把一条表达追加到任务的意图例句（运营点「采纳」触发）
+  router.post('/tasks/:code/adopt-example', asyncHandler(async (req, res) => {
+    const { code } = req.params
+    const { text } = req.body
+    if (!text || !text.trim()) {
+      res.status(400).json({ success: false, message: '缺少表达内容' })
+      return
+    }
+    const def = await taskEngine.get(code)
+    if (!def) {
+      res.status(404).json({ success: false, message: '任务不存在' })
+      return
+    }
+    const examples = Array.isArray(def.intent_examples) ? [...def.intent_examples] : []
+    const t = text.trim()
+    if (!examples.includes(t)) examples.push(t)
+    await taskEngine.save({
+      code: def.code,
+      name: def.name,
+      description: def.description,
+      trigger_keywords: def.trigger_keywords,
+      slots: def.slots,
+      steps: def.steps,
+      intent_examples: examples,
+      clarify_question: def.clarify_question,
+      clarify_options: def.clarify_options,
+      completion_message: def.completion_message,
+      on_complete: def.on_complete,
+      status: def.status,
+    })
+    res.json({ success: true, message: `已采纳，例句已加入「${def.name}」` })
   }))
 
   // 获取所有任务列表
