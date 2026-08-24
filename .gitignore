@@ -17,3 +17,4 @@ logs/
 tt.xml
 000666.xml
 
+*.tar.gz
