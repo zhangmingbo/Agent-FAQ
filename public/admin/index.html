@@ -618,7 +618,7 @@
       panel.id = 'suggest-issues-panel';
       panel.style.cssText = 'padding:16px 0';
       panel.innerHTML =
-        '<div class="task-header"><h4>表达挖掘（未触发任务的高频话术）</h4>' +
+        '<div class="task-header" style="text-align:left"><h4 style="text-align:left">表达挖掘（未触发任务的高频话术）</h4>' +
           '<button class="btn-sm" id="suggest-issues-refresh">⟳ 重新挖掘</button></div>' +
         '<div style="color:#999;font-size:12px;margin:4px 0 8px">从真实对话日志中找出表达了办理意图但没触发任务的话术，匹配到任务后可一键采纳为意图例句。机器只推荐，由运营确认。</div>' +
         '<div id="suggest-issues-area"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>';
@@ -1558,7 +1558,7 @@
         area.innerHTML = '<div class="task-empty"><div class="icon">✅</div><div>暂无待挖掘表达（暂无匹配到任务的未命中话术）</div></div>';
         return;
       }
-      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead><tr>' +
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead style="text-align:left"><tr>' +
         '<th style="width:40%">话术</th><th style="width:70px">次数</th><th style="width:170px">匹配任务</th><th style="width:80px">相似度</th><th style="width:70px">信号</th><th style="width:150px">操作</th>' +
         '</tr></thead><tbody>';
       items.forEach(function(s) {
