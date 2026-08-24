@@ -1988,6 +1988,26 @@
   injectLogoutBtn();
 
 
+  // ===== 头部调整：删除右上角「刷新」按钮 + LOGO 区改名「智能体平台」 =====
+  function adjustHeader() {
+    // ① 删除右上角"刷新"按钮（保留登出按钮）
+    document.querySelectorAll('.el-header.topbar button').forEach(function(b) {
+      if (b.getAttribute('data-logout-btn')) return;
+      if (b.textContent.trim() === '刷新') b.remove();
+    });
+    // ② 侧边栏 LOGO/首菜单「FAQ 管理」→「智能体平台」
+    document.querySelectorAll('.el-menu .el-menu-item span').forEach(function(s) {
+      if (s.textContent.trim() === 'FAQ 管理' && !s.getAttribute('data-brand-renamed')) {
+        s.textContent = '智能体平台';
+        s.setAttribute('data-brand-renamed', '1');
+      }
+    });
+  }
+  var headerObserver = new MutationObserver(adjustHeader);
+  headerObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
+  adjustHeader();
+
+
   // ===== 问题追踪（未匹配/低置信度）批量处理：多选 + 批量处理 / 批量加入相似问 =====
   var issueFaqOptionsLoaded = false;
   function collectIssueTexts() {
