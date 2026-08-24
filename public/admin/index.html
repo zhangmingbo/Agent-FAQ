@@ -1961,6 +1961,27 @@
   injectActionLogMenu();
 
 
+  // ===== 右上角登出按钮注入 =====
+  function injectLogoutBtn() {
+    var header = document.querySelector('.el-header.topbar');
+    if (!header || header.querySelector('[data-logout-btn]')) return;
+    var btn = document.createElement('button');
+    btn.setAttribute('data-logout-btn', '1');
+    btn.className = 'el-button el-button--small';
+    btn.style.cssText = 'margin-left:auto';
+    btn.innerHTML = '<span>登出</span>';
+    btn.onclick = function() {
+      if (!confirm('确认退出登录？')) return;
+      try { localStorage.removeItem('faq_admin_token'); } catch (e) { /* ignore */ }
+      location.reload();
+    };
+    header.appendChild(btn);
+  }
+  var logoutObserver = new MutationObserver(injectLogoutBtn);
+  logoutObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
+  injectLogoutBtn();
+
+
   // ===== 编辑/新建任务弹窗 =====
   window.editTask = function(code) {
     api('GET', '/api/tasks/' + code, null, function(res) {
