@@ -16,6 +16,7 @@ COPY repositories/ ./repositories/
 COPY routes/ ./routes/
 COPY rules/ ./rules/
 COPY scripts/ ./scripts/
+COPY services/ ./services/
 COPY public/ ./public/
 COPY db.js faq-library.js faq-engine.js server.js intent-recognizer.js intents-library.js .env.example ./
 
