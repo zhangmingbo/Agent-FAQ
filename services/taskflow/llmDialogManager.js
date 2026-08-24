@@ -19,6 +19,7 @@ import { get as getPrompt } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import { getReply } from '../replyTexts.js'
 import traceService from '../traceService.js'
+import { evaluateCondition, describeCondition } from './condition.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
 
@@ -148,9 +149,12 @@ class LLMDialogManager {
     _t('任务对话·槽位应用', { applied: appliedList, discarded: discardedList }, 'task')
     _t('任务对话·槽位状态', { filled: filledNow, unfilled: unfilledNow || '(全齐)' }, 'task')
 
+    // 4.3) 确定性分支判定（LLM 版执行 branch 步骤：条件判断复用 condition.js）
+    await this._runBranchSteps(state, trace)
+
     let reply = result.reply || (applied ? '好的，已记录。' : '请继续。')
 
-    // 4.5) 中间"调用接口"步骤（确定性触发，不依赖 LLM 信号）：前置槽位填好后自动执行
+    // 4.5) 中间"调用接口"步骤（确定性触发，不依赖 LLM 信号）：前置槽位填好 + 所在分支匹配时执行
     const apiReplies = await this._runPendingApiSteps(state, trace)
     if (apiReplies.length) reply = reply + (reply ? '\n' : '') + apiReplies.join('\n')
 
@@ -342,8 +346,42 @@ class LLMDialogManager {
   }
 
   /**
+   * 确定性分支判定（LLM 版执行 branch 步骤）
+   * 每轮槽位应用后扫描任务 steps 中的 branch 步骤：条件满足 → 记录 state.branches[key]=目标步骤。
+   * 未命中且无 default_next 的分支不标记，等待后续轮次槽位填好再判。
+   * 判定结果影响：中间 api 步骤触发（所在分支匹配才执行）。
+   */
+  async _runBranchSteps(state, trace = null) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
+    const task = this.defs.get(state.taskCode)
+    if (!task?.steps) return
+    state.branches = state.branches || {}
+    const ctx = { slots: state.slots, vars: state.vars || {}, result: state.vars || {} }
+    for (let i = 0; i < task.steps.length; i++) {
+      const step = task.steps[i]
+      if (step.type !== 'branch') continue
+      if (state.branches[step.key]) continue // 已判定
+      // 前置 collect 未填 → 等待（分支依赖的输入未就绪，避免第一轮误走 default）
+      const prev = i > 0 ? task.steps[i - 1] : null
+      if (prev && prev.type === 'collect' && !(state.slots[prev.slot_key] && state.slots[prev.slot_key].filled)) continue
+      let to = null
+      for (const c of (step.cases || [])) {
+        if (await evaluateCondition(c.when, ctx)) { to = c.next; break }
+      }
+      if (!to) to = step.default_next
+      if (!to) continue // 未命中且无默认 → 等待后续轮次
+      state.branches[step.key] = to
+      _t('任务对话·分支判定', {
+        step: step.key,
+        cases: (step.cases || []).map((c) => describeCondition(c.when)),
+        to,
+      }, 'rule')
+    }
+  }
+
+  /**
    * 执行"待触发的中间 api 步骤"（确定性，不靠 LLM 信号）：
-   * 前置 collect 步骤的槽位已填、且结果槽位尚未写入 → 执行，结果写入 resultSlot。
+   * 前置 collect 步骤的槽位已填、且所在分支匹配（若前一/相关步骤是 branch）→ 执行，结果写入 resultSlot。
    * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Promise<string[]>} 各步骤的回显话术
    */
@@ -360,12 +398,24 @@ class LLMDialogManager {
         _t('任务对话·中间接口步骤', { step: step.key, reason: '已执行过，跳过' }, 'info')
         continue // 已执行过（防止每轮重复调用）
       }
-      // 前置步骤若是 collect，其槽位填好才执行（如：填完电话 → 查订单）
-      const prev = i > 0 ? task.steps[i - 1] : null
-      const prereqFilled = !prev || prev.type !== 'collect' || !!(state.slots[prev.slot_key] && state.slots[prev.slot_key].filled)
-      if (!prereqFilled) {
-        _t('任务对话·中间接口步骤', { step: step.key, reason: '前置槽位未填：' + (prev?.slot_key || '?') }, 'info')
-        continue
+      // 分支前置：若本 api 步骤被某个 branch 步骤的出口（cases.next / default_next）引用，
+      // 则必须等该分支判定命中本步骤才执行（保证分支后的 api 只在对应分支触发）
+      const branchGates = task.steps.filter(s => s.type === 'branch' &&
+        (s.default_next === step.key || (s.cases || []).some(c => c.next === step.key)))
+      if (branchGates.length) {
+        const gateHit = branchGates.some(b => state.branches && state.branches[b.key] === step.key)
+        if (!gateHit) {
+          _t('任务对话·中间接口步骤', { step: step.key, reason: '所在分支未命中：' + branchGates.map(b => b.key).join('/') }, 'info')
+          continue
+        }
+      } else {
+        // 前置步骤若是 collect，其槽位填好才执行（如：填完电话 → 查订单）
+        const prev = i > 0 ? task.steps[i - 1] : null
+        const prereqFilled = !prev || prev.type !== 'collect' || !!(state.slots[prev.slot_key] && state.slots[prev.slot_key].filled)
+        if (!prereqFilled) {
+          _t('任务对话·中间接口步骤', { step: step.key, reason: '前置槽位未填：' + (prev?.slot_key || '?') }, 'info')
+          continue
+        }
       }
       const r = await executeApiStep(step, this._slotValues(state), trace, state.vars)
       _t('任务对话·中间接口步骤', { step: step.key, ok: r.ok, resultSlot: step.resultSlot || null, resultSlots: r.results && Object.keys(r.results).length ? Object.keys(r.results) : null }, r.ok ? 'task' : 'error')

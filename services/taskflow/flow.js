@@ -18,7 +18,7 @@
 
 import pool from '../../db/pool.js'
 import { executeHttpCall, resolveTemplate } from './httpCall.js'
-import { evaluateCondition } from './condition.js'
+import { evaluateCondition, describeCondition } from './condition.js'
 import traceService from '../traceService.js'
 
 /** 编排执行入口
@@ -55,17 +55,6 @@ export async function runFlow(flow, ctx, trace = null) {
     _t('任务对话·执行编排', { ok: false, error: (e.message || '').slice(0, 100) }, 'error')
     return { ok: false, message: e.message || '编排执行失败', error: e.message, log: { url: null, payload: { flow: 'fail', steps: (flow.steps || []).length }, response: '' } }
   }
-}
-
-/** 简单描述条件（trace 用） */
-function describeCondition(when) {
-  if (!when) return '?'
-  if (when.and) return 'and(' + when.and.map(describeCondition).join(' & ') + ')'
-  if (when.or) return 'or(' + when.or.map(describeCondition).join(' | ') + ')'
-  if (when.source === 'fn') return `fn:${when.ref}`
-  if (when.source === 'expr') return `expr:${when.expr}`
-  if (when.source === 'time') return `time:${when.op}`
-  return `${when.source || 'slot'}.${when.ref || when.slot} ${when.op} ${when.value}`
 }
 
 async function runSteps(steps, exec, ctx, idemKey, depth, trace = null) {

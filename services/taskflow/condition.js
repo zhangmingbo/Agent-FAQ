@@ -65,6 +65,18 @@ export function evalOp(op, actual, expected) {
 
 // ========== 判断源取值 ==========
 
+/** 简单描述条件（trace 用，供 dialogManager / flow / llmDialogManager 共用） */
+export function describeCondition(when) {
+  if (!when) return '?'
+  if (when.and) return 'and(' + when.and.map(describeCondition).join(' & ') + ')'
+  if (when.or) return 'or(' + when.or.map(describeCondition).join(' | ') + ')'
+  if (when.source === 'fn') return 'fn:' + when.ref
+  if (when.source === 'expr') return 'expr:' + when.expr
+  if (when.source === 'time') return 'time:' + when.op
+  return `${when.source || 'slot'}.${when.ref || when.slot} ${when.op} ${when.value}`
+}
+
+/** 判断源取值：slot/var/result（点路径），兼容旧 { slot, op, value } */
 function resolveSource(cond, ctx) {
   const source = cond.source || 'slot'
   const ref = cond.ref || cond.slot // 兼容旧格式 { slot, op, value }
@@ -213,4 +225,4 @@ export async function isBusinessHour(date) {
 registerJudge('is_workday', async (date) => isWorkday(date ? new Date(date) : new Date()))
 registerJudge('is_business_hour', async () => isBusinessHour(new Date()))
 
-export default { registerJudge, listJudges, evaluateCondition, evalOp, isWorkday, isBusinessHour }
+export default { registerJudge, listJudges, evaluateCondition, evalOp, isWorkday, isBusinessHour, describeCondition }

@@ -23,7 +23,7 @@ import { TaskState } from './stateMachine.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import { getReply } from '../replyTexts.js'
 import traceService from '../traceService.js'
-import { evaluateCondition } from './condition.js'
+import { evaluateCondition, describeCondition } from './condition.js'
 import { runFlow } from './flow.js'
 
 const CANCEL_PATTERNS = ['取消', '算了', '不办了', '不需要了', '退出', '停止', '不弄了', '放弃']
@@ -845,13 +845,7 @@ class DialogManager {
 
   /** 分支条件描述（trace 用） */
   describeCase(c) {
-    const w = (c && c.when) || {}
-    if (w.source === 'fn') return 'fn:' + w.ref
-    if (w.source === 'expr') return 'expr:' + w.expr
-    if (w.source === 'time') return 'time:' + w.op
-    if (w.and) return 'and(...)'
-    if (w.or) return 'or(...)'
-    return (w.source || 'slot') + '.' + (w.ref || w.slot) + ' ' + w.op + ' ' + (w.value !== undefined ? w.value : '')
+    return describeCondition((c && c.when) || null)
   }
 
   _isCancel(text) {

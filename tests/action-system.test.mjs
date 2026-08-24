@@ -12,6 +12,7 @@ import { runAction, listActions, ensureActionLogTable } from '../services/taskfl
 import { runFlow } from '../services/taskflow/flow.js'
 import { TaskState, canTransition } from '../services/taskflow/stateMachine.js'
 import DialogManager from '../services/taskflow/dialogManager.js'
+import LLMDialogManager from '../services/taskflow/llmDialogManager.js'
 
 const BASE = 'http://localhost:3001'
 let pass = 0, fail = 0
@@ -295,6 +296,86 @@ const br3 = await runBranchFlow(['分支流程测试', '办理', '随便问问']
 t('端到端 分支③ 默认→normal_q', br3.branch && br3.branch.to === 'normal_q')
 t('端到端 分支判定写入 trace', !!br1.branch && br1.branch.step === 'branch_step' && br1.branch.cases.length === 2)
 await fetch(BASE + '/api/tasks/test_branch', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
+
+// ================= ⑪ LLM 版对话支持 branch 步骤 =================
+await section('⑪ LLM 版对话分支（_runBranchSteps + 分支后 api 触发）')
+const llmBranchDef = {
+  code: 't', name: 't',
+  steps: [
+    { key: 'c_reason', type: 'collect', slot_key: 'reason' },
+    { key: 'branch_step', type: 'branch',
+      cases: [{ when: { source: 'slot', ref: 'reason', op: 'contains', value: '漏水' }, next: 'leak_api' }],
+      default_next: 'normal_api' },
+    { key: 'leak_api', type: 'api', url: 'u1' },
+    { key: 'normal_api', type: 'api', url: 'u2' },
+  ],
+}
+const llmMgr = new LLMDialogManager({ get: () => llmBranchDef }, null)
+const mkLlmState = (reasonValue) => ({
+  taskCode: 't', status: TaskState.COLLECTING,
+  slots: { reason: { value: reasonValue, filled: !!reasonValue } }, vars: {}, history: [], turnCount: 1,
+})
+const ls0 = mkLlmState(null)
+const lt0 = []
+await llmMgr._runBranchSteps(ls0, lt0)
+t('LLM版 前置未填 → 不判定', !ls0.branches || !ls0.branches.branch_step)
+const ls1 = mkLlmState('厨房漏水了')
+const lt1 = []
+await llmMgr._runBranchSteps(ls1, lt1)
+t('LLM版 命中 → branches=leak_api', ls1.branches && ls1.branches.branch_step === 'leak_api')
+t('LLM版 命中 → trace 记录', lt1.length === 1 && lt1[0].step === '任务对话·分支判定' && lt1[0].detail.to === 'leak_api')
+const ls2 = mkLlmState('测试原因XYZ')
+await llmMgr._runBranchSteps(ls2, [])
+t('LLM版 default → normal_api', ls2.branches && ls2.branches.branch_step === 'normal_api')
+const lt3 = []
+await llmMgr._runBranchSteps(ls1, lt3)
+t('LLM版 已判定不重复', lt3.length === 0)
+
+// 端到端：LLM 版任务分支 → 分支后 api 触发（独特 reason 避免路由撞车）
+const llmTaskDef = {
+  code: 'test_llm_branch', name: 'LLM分支测试', status: 1, trigger_keywords: ['LLM分支测试'],
+  slots: [
+    { key: 'reason', label: '原因', prompt: '请问是什么情况？', required: true },
+    { key: 'leak_result', label: '漏水单号', required: false },
+  ],
+  steps: [
+    { key: 'c_reason', type: 'collect', slot_key: 'reason' },
+    { key: 'branch_step', type: 'branch',
+      cases: [{ when: { source: 'slot', ref: 'reason', op: 'contains', value: '漏水' }, next: 'leak_api' }],
+      default_next: 'normal_api' },
+    { key: 'leak_api', type: 'api', url: BASE + '/api/mock/order/create', method: 'POST',
+      body: { phone: '{slot.phone}', branch: 'leak' }, resultMap: { leak_result: 'data.orderNo' }, done_message: '' },
+    { key: 'normal_api', type: 'api', url: BASE + '/api/mock/order/create', method: 'POST',
+      body: { phone: '{slot.phone}', branch: 'normal' }, resultMap: { leak_result: 'data.orderNo' }, done_message: '' },
+  ],
+  on_complete: 'complete_message',
+}
+const llmSave = await fetch(BASE + '/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(llmTaskDef) }).then(r => r.json())
+t('创建 LLM 版分支任务', llmSave.success === true)
+async function runLlmBranch(reason) {
+  const sid = 'llm-branch-' + Date.now()
+  for (const txt of ['LLM分支测试', '办理', reason, '确认']) {
+    await fetch(BASE + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: txt, sessionId: sid }) }).then(r => r.json())
+  }
+  const g = await fetch(BASE + '/api/debug/session/' + sid, { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())
+  let branch = null
+  const apiCalls = []
+  for (const turn of (g.data.turns || [])) {
+    for (const s of turn.steps) {
+      if (s.step === '任务对话·分支判定') branch = s.detail
+      if (s.step === '任务·调用接口') apiCalls.push(s.detail.payload)
+    }
+  }
+  return { branch, apiCalls }
+}
+const lc1 = await runLlmBranch('厨房漏水了')
+t('LLM版端到端 漏水 → 分支判定 leak_api', lc1.branch && lc1.branch.to === 'leak_api')
+t('LLM版端到端 漏水 → 触发 leak_api', lc1.apiCalls.some(p => p && p.branch === 'leak'))
+t('LLM版端到端 漏水 → 未触发 normal_api', !lc1.apiCalls.some(p => p && p.branch === 'normal'))
+const lc2 = await runLlmBranch('测试原因XYZ')
+t('LLM版端到端 默认 → 分支判定 normal_api', lc2.branch && lc2.branch.to === 'normal_api')
+t('LLM版端到端 默认 → 触发 normal_api', lc2.apiCalls.some(p => p && p.branch === 'normal'))
+await fetch(BASE + '/api/tasks/test_llm_branch', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
 
 // ================= 汇总 =================
 console.log('\n========================================')
