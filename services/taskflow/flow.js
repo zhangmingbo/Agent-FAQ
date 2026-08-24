@@ -19,9 +19,12 @@
 import pool from '../../db/pool.js'
 import { executeHttpCall, resolveTemplate } from './httpCall.js'
 import { evaluateCondition } from './condition.js'
+import traceService from '../traceService.js'
 
-/** 编排执行入口 */
-export async function runFlow(flow, ctx) {
+/** 编排执行入口
+ * @param {Array|null} trace - 轨迹步骤数组（调试用：记录每步调接口与分支判断） */
+export async function runFlow(flow, ctx, trace = null) {
+  const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
   const slots = ctx.slots || {}
   const idemKey = resolveTemplate(flow.idempotencyKey || '{sessionId}-{taskCode}-submit', {
     slots,
@@ -35,6 +38,7 @@ export async function runFlow(flow, ctx) {
   // 幂等检查：该幂等键已有成功记录 → 跳过
   const prev = await findFlowSuccess(idemKey)
   if (prev) {
+    _t('任务对话·执行编排', { ok: true, idempotent: true, idempotencyKey: idemKey }, 'task')
     return { ok: true, message: prev.message || '该次提交此前已完成（幂等命中）', idempotent: true, log: { url: null, payload: null, response: prev.response } }
   }
 
@@ -44,14 +48,28 @@ export async function runFlow(flow, ctx) {
     results: {},
   }
   try {
-    await runSteps(flow.steps || [], exec, ctx, idemKey, 0)
+    _t('任务对话·执行编排', { ok: true, steps: (flow.steps || []).length, idempotencyKey: idemKey }, 'task')
+    await runSteps(flow.steps || [], exec, ctx, idemKey, 0, trace)
     return { ok: true, message: '已完成', log: { url: null, payload: { flow: 'done', steps: (flow.steps || []).length }, response: '' } }
   } catch (e) {
+    _t('任务对话·执行编排', { ok: false, error: (e.message || '').slice(0, 100) }, 'error')
     return { ok: false, message: e.message || '编排执行失败', error: e.message, log: { url: null, payload: { flow: 'fail', steps: (flow.steps || []).length }, response: '' } }
   }
 }
 
-async function runSteps(steps, exec, ctx, idemKey, depth) {
+/** 简单描述条件（trace 用） */
+function describeCondition(when) {
+  if (!when) return '?'
+  if (when.and) return 'and(' + when.and.map(describeCondition).join(' & ') + ')'
+  if (when.or) return 'or(' + when.or.map(describeCondition).join(' | ') + ')'
+  if (when.source === 'fn') return `fn:${when.ref}`
+  if (when.source === 'expr') return `expr:${when.expr}`
+  if (when.source === 'time') return `time:${when.op}`
+  return `${when.source || 'slot'}.${when.ref || when.slot} ${when.op} ${when.value}`
+}
+
+async function runSteps(steps, exec, ctx, idemKey, depth, trace = null) {
+  const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
   if (depth > 5) throw new Error('编排嵌套过深（超过 5 层）')
   for (const step of steps || []) {
     if (step.type === 'http') {
@@ -62,8 +80,10 @@ async function runSteps(steps, exec, ctx, idemKey, depth) {
         idempotencyKey: idemKey,
         sessionId: ctx.sessionId,
         taskCode: ctx.task?.code,
+        trace,
       }
       const r = await executeHttpCall(step, httpCtx)
+      _t('任务对话·编排步骤', { step: step.name || 'http', type: 'http', ok: r.ok, error: r.error || undefined }, r.ok ? 'task' : 'error')
       await logFlowStep(ctx, step, idemKey, r)
       if (!r.ok) {
         throw new Error(`编排步骤「${step.name || step.type}」失败: ${r.error || r.message}`)
@@ -73,7 +93,8 @@ async function runSteps(steps, exec, ctx, idemKey, depth) {
       }
     } else if (step.type === 'branch') {
       const hit = await evaluateCondition(step.when, { slots: exec.slots, vars: exec.vars, result: exec.results })
-      await runSteps(hit ? step.then : step.else, exec, ctx, idemKey, depth + 1)
+      _t('任务对话·编排分支', { when: describeCondition(step.when), hit, to: hit ? 'then' : 'else' }, 'rule')
+      await runSteps(hit ? step.then : step.else, exec, ctx, idemKey, depth + 1, trace)
     } else {
       throw new Error(`编排步骤类型不支持: ${step.type || '?'}`)
     }

@@ -168,6 +168,7 @@ register('call_api', async (ctx) => {
     idempotencyKey: ctx.idempotencyKey,
     sessionId: ctx.sessionId,
     taskCode: ctx.task?.code,
+    trace: ctx.trace,
   })
   if (r.ok) {
     return { ok: true, message: r.message || getReply('api_action_done'), log: r.log }

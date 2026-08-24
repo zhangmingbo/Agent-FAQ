@@ -582,7 +582,7 @@ class DialogManager {
     let events = []
     // 任务级动作编排优先（v3 P3）
     if (task?.on_complete && typeof task.on_complete === 'object' && Array.isArray(task.on_complete.steps)) {
-      result = await runFlow(task.on_complete, { sessionId: state.sessionId, task, state, slots })
+      result = await runFlow(task.on_complete, { sessionId: state.sessionId, task, state, slots }, trace)
       _t('任务对话·执行编排', { ok: result.ok, error: result.error || undefined, idempotent: !!result.idempotent }, result.ok ? 'task' : 'error')
       if (!result.ok) {
         state.status = TaskState.COLLECTING
@@ -596,7 +596,7 @@ class DialogManager {
         }
       }
     } else {
-      result = await runAction(step.action, ctx)
+      result = await runAction(step.action, { ...ctx, trace })
       events = result.events || []
     }
 

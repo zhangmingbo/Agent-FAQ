@@ -221,7 +221,7 @@ class LLMDialogManager {
 
     if (isFlow) {
       // 任务级动作编排（v3 P3）
-      const r = await runFlow(task.on_complete, baseCtx)
+      const r = await runFlow(task.on_complete, baseCtx, trace)
       if (r.ok) {
         state.status = TaskState.DONE
         message = r.message || task.completion_message || getReply('complete_fallback', { taskName: task.name })
@@ -233,7 +233,7 @@ class LLMDialogManager {
         return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state, events }
       }
     } else if (actionStep) {
-      const ctx = { ...baseCtx, step: actionStep, params: actionStep.params || {} }
+      const ctx = { ...baseCtx, step: actionStep, params: actionStep.params || {}, trace }
       const result = await runAction(actionStep.action, ctx)
       events = result.events || []
       if (result.ok) {
