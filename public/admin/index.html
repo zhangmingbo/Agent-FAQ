@@ -1559,18 +1559,19 @@
         return;
       }
       var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead><tr>' +
-        '<th>话术</th><th style="width:70px">次数</th><th style="width:160px">匹配任务</th><th style="width:90px">相似度</th><th style="width:70px">信号</th><th style="width:90px">操作</th>' +
+        '<th style="width:40%">话术</th><th style="width:70px">次数</th><th style="width:170px">匹配任务</th><th style="width:80px">相似度</th><th style="width:70px">信号</th><th style="width:150px">操作</th>' +
         '</tr></thead><tbody>';
       items.forEach(function(s) {
         var score = Math.round((s.score || 0) * 100) + '%';
         var signal = s.reason === 'keyword' ? '<span class="status-tag on">触发词</span>' : '<span class="status-tag" style="border-color:#f0ad4e;color:#f0ad4e">语义</span>';
         html += '<tr>';
-        html += '<td>' + esc(s.text) + '</td>';
+        html += '<td style="word-break:break-all">' + esc(s.text) + '</td>';
         html += '<td>' + s.count + '</td>';
         html += '<td>' + esc(s.matchedName || s.matchedTask || '-') + '</td>';
         html += '<td>' + score + '</td>';
         html += '<td>' + signal + '</td>';
-        html += '<td><button class="btn-sm" onclick="adoptSuggestion(\'' + esc(s.matchedTask) + '\',\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">采纳</button></td>';
+        html += '<td><button class="btn-sm" onclick="adoptSuggestion(\'' + esc(s.matchedTask) + '\',\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">采纳</button> ' +
+          '<button class="btn-sm btn-danger" onclick="ignoreSuggestion(\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">删除</button></td>';
         html += '</tr>';
       });
       html += '</tbody></table></div>';
@@ -1590,7 +1591,20 @@
         if (a2) loadSuggestions(a2);
         loadTasks();
       } else {
-        alert(res.message || '采纳失败');
+        alert(res.message || '采纳失败');      }
+    });
+  };
+
+  // 删除（忽略）无价值话术：加入忽略列表，下次挖掘不再出现
+  window.ignoreSuggestion = function(text) {
+    if (!confirm('删除话术「' + text + '」？\n删除后该话术不再出现在表达挖掘列表中。')) return;
+    api('POST', '/api/tasks/suggestions/ignore', { text: text }, function(res) {
+      alert(res.message || (res.success ? '已删除' : '删除失败'));
+      if (res.success) {
+        var a1 = document.getElementById('suggest-area');
+        var a2 = document.getElementById('suggest-issues-area');
+        if (a1) loadSuggestions(a1);
+        if (a2) loadSuggestions(a2);
       }
     });
   };

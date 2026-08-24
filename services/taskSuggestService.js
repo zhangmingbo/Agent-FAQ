@@ -15,6 +15,7 @@
 
 import * as chatLogRepo from '../repositories/chatLogRepo.js'
 import { cosineSimilarity } from '../src/similarity.js'
+import * as configRepo from '../repositories/configRepo.js'
 
 /** 闲聊/无意义噪声过滤（避免"我的妈/啊啊啊"污染候选池） */
 const NOISE_RE = /^(嗯|哦|啊|哈|呵|呃|哦哦|嗯嗯|好的|好|ok|okay|谢谢|感谢|再见|拜拜|88|哈哈|呵呵|呵呵呵|我的妈|天哪|啊啊|哇|咦|唉|哎|嗯嗯嗯|.。！!?？~\s]{1,})$|^(.)\1{2,}$|^[.。…！!?？~～\-—_]{2,}$|^\d+$|^[\u4e00-\u9fa5]{1,2}$/
@@ -38,6 +39,31 @@ class TaskSuggestService {
     this.minLen = 4
     this.simThreshold = 0.55
     this.keywordMinScore = 0.75
+    /** 运营手动删除（忽略）的候选话术，持久化在 sys_config.suggest_ignored */
+    this.ignored = []
+  }
+
+  /** 启动/配置时加载已忽略话术列表（sys_config.suggest_ignored，JSON 数组） */
+  async loadIgnored() {
+    try {
+      const raw = await configRepo.get('suggest_ignored')
+      if (raw) {
+        const list = JSON.parse(raw)
+        if (Array.isArray(list)) this.ignored = list
+      }
+    } catch (e) {
+      console.warn('[Suggest] 加载忽略列表失败:', e.message)
+    }
+    return this.ignored
+  }
+
+  /** 删除（忽略）一条候选话术：加入忽略列表并持久化 */
+  async ignore(text) {
+    const t = String(text || '').trim()
+    if (!t) return false
+    if (!this.ignored.includes(t)) this.ignored.push(t)
+    await configRepo.set('suggest_ignored', JSON.stringify(this.ignored))
+    return true
   }
 
   /** 运行时更新挖掘参数（管理后台保存后调用） */
@@ -72,11 +98,12 @@ class TaskSuggestService {
       console.error('[Suggest] 读取未匹配日志失败:', e.message)
     }
 
-    // 2) 过滤噪声 + 匹配任务
+    // 2) 过滤噪声 + 匹配任务（已忽略的话术直接跳过）
     const items = []
     for (const c of candidates) {
       const text = (c.text || '').trim()
       if (text.length < this.minLen) continue
+      if (this.ignored.includes(text)) continue
       if (NOISE_RE.test(text)) continue
       if (NEGATION_RE.test(text)) continue
       if (CANCEL_RE.test(text)) continue

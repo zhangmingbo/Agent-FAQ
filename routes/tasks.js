@@ -30,6 +30,17 @@ export function createRouter() {
     res.json({ success: true, data: result })
   }))
 
+  // 删除（忽略）一条候选话术：加入忽略列表（sys_config.suggest_ignored），下次挖掘不再出现
+  router.post('/tasks/suggestions/ignore', asyncHandler(async (req, res) => {
+    const { text } = req.body || {}
+    if (!text) {
+      res.status(400).json({ success: false, message: '缺少话术内容' })
+      return
+    }
+    await taskSuggestService.ignore(text)
+    res.json({ success: true, message: '已删除该话术，下次挖掘不再出现' })
+  }))
+
   // 采纳候选：把一条表达追加到任务的意图例句（运营点「采纳」触发）
   router.post('/tasks/:code/adopt-example', asyncHandler(async (req, res) => {
     const { code } = req.params

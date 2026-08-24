@@ -175,6 +175,7 @@ async function start() {
       simThreshold: dbConfig.suggest_sim_threshold,
       keywordMinScore: dbConfig.suggest_keyword_min_score,
     })
+    await taskSuggestService.loadIgnored()
     // 固定话术 / 匹配词表（首次启动自动落库，之后以库为准）
     if (!dbConfig.reply_texts) {
       await configRepo.set('reply_texts', JSON.stringify(DEFAULT_REPLY_TEXTS))
