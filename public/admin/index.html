@@ -1037,10 +1037,16 @@
         recog.appendChild(node);
       }
       // 识别参数面板加一行说明
+      // 注意：h3 可能嵌在 Vue 组件内（父不是 recog），取其 nextSibling 会
+      // 触发 insertBefore "not a child of this node" 错误导致整页注入中断——
+      // 仅当 h3 是 recog 直接子节点时才用 nextSibling，否则插到 recog 最前
       var recogDesc = document.createElement('div');
       recogDesc.className = 'cfg-panel-desc';
       recogDesc.innerHTML = '作用于 FAQ 意图识别与会话层（最低门槛 / 追问 / 候选数 / 无意义检测 / 会话超时）。';
-      recog.insertBefore(recogDesc, recog.querySelector('h3') ? recog.querySelector('h3').nextSibling : recog.firstChild);
+      var recogH3 = null;
+      recog.querySelectorAll('h3').forEach(function(h) { if (!recogH3 && h.parentNode === recog) recogH3 = h; });
+      var recogRef = (recogH3 && recogH3.parentNode === recog) ? recogH3.nextSibling : null;
+      recog.insertBefore(recogDesc, recogRef || recog.firstChild);
 
       // 组装
       panel.appendChild(tabs);
@@ -2007,7 +2013,7 @@
   }
   function injectIssueBatch() {
     if (!document.querySelector('.sub-tab-bar')) return;
-    // ① 每行首列注入复选框（不新增列，避免破坏对齐）
+    // ① 每行首列注入复选框（cell 改 flex 横排：checkbox 在序号左边，同一行垂直居中）
     document.querySelectorAll('.el-table__body-wrapper tbody tr').forEach(function(row) {
       if (row.querySelector('[data-issue-check]')) return;
       var firstCell = row.querySelector('td .cell');
@@ -2015,8 +2021,11 @@
       var cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.setAttribute('data-issue-check', '1');
-      cb.style.cssText = 'margin-right:6px;vertical-align:middle;cursor:pointer';
+      cb.style.cssText = 'flex-shrink:0;margin:0 4px 0 0;cursor:pointer';
       cb.onchange = updateIssueCount;
+      firstCell.style.display = 'flex';
+      firstCell.style.alignItems = 'center';
+      firstCell.style.justifyContent = 'center';
       firstCell.insertBefore(cb, firstCell.firstChild);
     });
     // ② 表格上方注入批量工具栏

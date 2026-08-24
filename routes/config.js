@@ -15,9 +15,13 @@ import llmClient from '../services/llmClient.js'
 export function createRouter(engine) {
   const router = Router()
 
+  // LLM 调用节点配置（页面单独刷新用；主数据已含在 GET /config 的 llmNodes）
+  router.get('/config/llm-nodes', asyncHandler(async (req, res) => {
+    res.json({ success: true, data: llmClient.getNodes() })
+  }))
+
   // 获取 LLM 提示词注册表（管理后台「LLM 智能层」用）
-  router.get('/config/llm-prompts', asyncHandler(async (req, res) => {
-    const data = await llmPrompts.getAll()
+  router.get('/config/llm-prompts', asyncHandler(async (req, res) => {    const data = await llmPrompts.getAll()
     res.json({ success: true, data })
   }))
 
