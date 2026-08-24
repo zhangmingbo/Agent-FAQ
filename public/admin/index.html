@@ -1982,6 +1982,43 @@
   injectLogoutBtn();
 
 
+  // ===== 问题追踪（未匹配/低置信度）操作列注入「删除」按钮 =====
+  // 数据源为 chat_log 聚合，删除 = 删除该问题文本的全部对话记录
+  function injectIssueDeleteBtns() {
+    if (!document.querySelector('.sub-tab-bar')) return;
+    document.querySelectorAll('.el-table__body-wrapper tbody tr').forEach(function(row) {
+      if (row.querySelector('[data-issue-del]')) return;
+      var cell = row.querySelector('td:last-child .cell');
+      if (!cell) return;
+      // 问题文本：第 2 列的 expand-cell（去掉"✓ 已添加"等 tag）
+      var textEl = row.querySelector('td:nth-child(2) .cell .expand-cell span') ||
+                   row.querySelector('td:nth-child(2)');
+      if (!textEl) return;
+      var text = textEl.textContent.trim();
+      if (!text) return;
+      var btn = document.createElement('button');
+      btn.setAttribute('data-issue-del', '1');
+      btn.type = 'button';
+      btn.className = 'el-button el-button--danger el-button--small';
+      btn.style.marginLeft = '6px';
+      btn.innerHTML = '<span>删除</span>';
+      btn.onclick = function() {
+        if (!confirm('删除问题「' + text + '」的全部对话记录？\n删除后该问题不再出现在未匹配/低置信度列表，也会从表达挖掘数据源中移除。')) return;
+        api('POST', '/api/chat-log/delete', { text: text }, function(res) {
+          alert(res.message || (res.success ? '已删除' : '删除失败'));
+          if (res.success) location.reload();
+        });
+      };
+      cell.appendChild(btn);
+    });
+  }
+  var issueObserver = new MutationObserver(function() {
+    if (document.querySelector('.sub-tab-bar')) injectIssueDeleteBtns();
+  });
+  issueObserver.observe(document.body, { childList: true, subtree: true });
+  injectIssueDeleteBtns();
+
+
   // ===== 编辑/新建任务弹窗 =====
   window.editTask = function(code) {
     api('GET', '/api/tasks/' + code, null, function(res) {

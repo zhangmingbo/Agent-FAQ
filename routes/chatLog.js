@@ -46,5 +46,16 @@ export function createRouter(engine) {
     res.json({ success: true, count: logs.length, logs })
   }))
 
+  // 删除某问题文本对应的对话记录（未匹配/低置信度列表的「删除」按钮）
+  router.post('/chat-log/delete', asyncHandler(async (req, res) => {
+    const { text } = req.body || {}
+    if (!text) {
+      res.status(400).json({ success: false, message: '缺少问题文本' })
+      return
+    }
+    const count = await chatLogRepo.deleteByText(text)
+    res.json({ success: true, message: '已删除 ' + count + ' 条对话记录' })
+  }))
+
   return router
 }

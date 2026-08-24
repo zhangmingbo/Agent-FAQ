@@ -11,8 +11,7 @@ import pool from '../db/pool.js'
  */
 export async function log({ sessionId, userId, userText, intentCode, confidence, source, answer, meaningful }) {
   await pool.execute(
-    'INSERT INTO chat_log (session_id, user_id, user_text, intent_code, confidence, source, answer, meaningful) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [sessionId, userId, userText, intentCode || null, confidence || 0, source || null, answer, meaningful]
+    'INSERT INTO chat_log (session_id, user_id, user_text, intent_code, confidence, source, answer, meaningful) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',    [sessionId, userId, userText, intentCode || null, confidence || 0, source || null, answer, meaningful]
   )
 }
 
@@ -377,4 +376,13 @@ export async function getFallbackStats() {
      GROUP BY user_text ORDER BY cnt DESC LIMIT 20`
   )
   return rows.map(r => ({ text: r.user_text, count: r.cnt }))
+}
+
+/**
+ * 删除某问题文本对应的全部对话记录（未匹配/低置信度列表的「删除」）
+ * @returns {number} 删除的行数
+ */
+export async function deleteByText(text) {
+  const [result] = await pool.execute('DELETE FROM chat_log WHERE user_text = ?', [String(text || '').trim()])
+  return result.affectedRows
 }
