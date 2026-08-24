@@ -636,22 +636,28 @@
       tabbar.parentNode.appendChild(panel);
       var area = document.getElementById('suggest-issues-area');
 
-      // 3) 页签切换：原生页签 → 原生面板；我们的页签 → 表达挖掘
+      // 3) 页签切换：原生页签 → 原生面板（由 Vue 自己管理，我们不动）；
+      //    我们的页签 → 隐藏全部兄弟面板、显示表达挖掘
+      //    注意：兄弟节点里含 Vue 的 el-overlay 全屏弹窗层，绝不能碰它们
+      //    （早期版本切回原生页签时把所有兄弟 display:'' 导致遮罩全屏显示、页面卡死）
       tabbar.addEventListener('click', function(e) {
         var t = e.target && e.target.closest ? e.target.closest('.sub-tab') : null;
         if (!t) return;
         var isMine = (t === myTab);
-        var children = Array.prototype.slice.call(tabbar.parentNode.children);
-        var start = children.indexOf(tabbar);
-        for (var i = start + 1; i < children.length; i++) {
-          children[i].style.display = (children[i] === panel) ? (isMine ? '' : 'none') : (isMine ? 'none' : '');
-        }
         if (isMine) {
+          // 只在自己页签激活时操作兄弟面板：全部隐藏，只显示自己的
+          var children = Array.prototype.slice.call(tabbar.parentNode.children);
+          var start = children.indexOf(tabbar);
+          for (var i = start + 1; i < children.length; i++) {
+            children[i].style.display = (children[i] === panel) ? '' : 'none';
+          }
           tabbar.querySelectorAll('.sub-tab').forEach(function(x){ x.classList.remove('active'); });
           myTab.classList.add('active');
           tabbar.classList.add('issues-suggest-mode'); // 压平原生 active 高亮
           loadSuggestions(area);
         } else {
+          // 切回原生页签：只隐藏自己的面板，原生面板/弹窗的显示交给 Vue 管理
+          panel.style.display = 'none';
           myTab.classList.remove('active');
           tabbar.classList.remove('issues-suggest-mode');
         }
