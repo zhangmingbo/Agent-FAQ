@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Version,
     
-    [string]$Registry = "你的IP:5000",  # 替换为你的 Registry 地址
+    [string]$Registry = "47.102.129.76:5001",  # 阿里云服务器
     [string]$ImageName = "faq-bot"
 )
 
