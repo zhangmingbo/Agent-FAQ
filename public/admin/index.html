@@ -1988,18 +1988,18 @@
   injectLogoutBtn();
 
 
-  // ===== 头部调整：删除右上角「刷新」按钮 + LOGO 区改名「智能体平台」 =====
+  // ===== 头部调整：删除右上角「刷新」按钮 + 左上角 LOGO 改名「智能体平台」 =====
   function adjustHeader() {
     // ① 删除右上角"刷新"按钮（保留登出按钮）
     document.querySelectorAll('.el-header.topbar button').forEach(function(b) {
       if (b.getAttribute('data-logout-btn')) return;
       if (b.textContent.trim() === '刷新') b.remove();
     });
-    // ② 侧边栏 LOGO/首菜单「FAQ 管理」→「智能体平台」
-    document.querySelectorAll('.el-menu .el-menu-item span').forEach(function(s) {
-      if (s.textContent.trim() === 'FAQ 管理' && !s.getAttribute('data-brand-renamed')) {
-        s.textContent = '智能体平台';
-        s.setAttribute('data-brand-renamed', '1');
+    // ② 左上角 LOGO「📋 FAQ 管理」→「📋 智能体平台」（侧边栏顶部 .logo 元素）
+    document.querySelectorAll('.el-aside .logo, .sidebar .logo, .logo').forEach(function(l) {
+      if (l.textContent.includes('FAQ 管理') && !l.getAttribute('data-brand-renamed')) {
+        l.textContent = l.textContent.replace('FAQ 管理', '智能体平台');
+        l.setAttribute('data-brand-renamed', '1');
       }
     });
   }
