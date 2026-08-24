@@ -88,6 +88,14 @@
     .task-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
     .task-header h4{margin:0;font-size:15px;color:#333}
     .task-table-wrap{max-height:500px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fafbfc}
+    /* 表达挖掘：对齐"未匹配问题"页签样式（toolbar + Element 风格表格） */
+    .suggest-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+    .suggest-table{width:100%;border-collapse:collapse;font-size:13px}
+    .suggest-table thead th{background:#f5f7fa;color:#606266;font-weight:600;text-align:left;padding:10px 12px;border-bottom:1px solid #ebeef5;white-space:nowrap}
+    .suggest-table tbody td{padding:8px 12px;border-bottom:1px solid #ebeef5;color:#606266}
+    .suggest-table tbody tr:nth-child(even){background:#fafafa}
+    .suggest-table tbody tr:hover{background:#f5f7fa}
+    .suggest-table .cell-actions{white-space:nowrap}
     .task-empty{text-align:center;padding:60px 20px;color:#999}
     .task-empty .icon{font-size:48px;margin-bottom:12px}
     /* 任务编辑弹窗 */
@@ -618,9 +626,11 @@
       panel.id = 'suggest-issues-panel';
       panel.style.cssText = 'padding:16px 0';
       panel.innerHTML =
-        '<div class="task-header" style="text-align:left"><h4 style="text-align:left">表达挖掘（未触发任务的高频话术）</h4>' +
-          '<button class="btn-sm" id="suggest-issues-refresh">⟳ 重新挖掘</button></div>' +
-        '<div style="color:#999;font-size:12px;margin:4px 0 8px">从真实对话日志中找出表达了办理意图但没触发任务的话术，匹配到任务后可一键采纳为意图例句。机器只推荐，由运营确认。</div>' +
+        '<div class="suggest-toolbar">' +
+          '<div style="flex:1"></div>' +
+          '<span id="suggest-issues-count" style="font-size:12px;color:#888"></span>' +
+          '<button class="btn-sm" id="suggest-issues-refresh">⟳ 重新挖掘</button>' +
+        '</div>' +
         '<div id="suggest-issues-area"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>';
       panel.style.display = 'none';
       tabbar.parentNode.appendChild(panel);
@@ -1554,11 +1564,13 @@
         return;
       }
       var items = (res.data && res.data.items) || [];
+      var countEl = document.getElementById('suggest-issues-count');
+      if (countEl) countEl.textContent = '共 ' + ((res.data && res.data.total) || items.length) + ' 条待挖掘表达';
       if (!items.length) {
         area.innerHTML = '<div class="task-empty"><div class="icon">✅</div><div>暂无待挖掘表达（暂无匹配到任务的未命中话术）</div></div>';
         return;
       }
-      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%"><thead style="text-align:left"><tr>' +
+      var html = '<div class="task-table-wrap"><table class="suggest-table"><thead><tr>' +
         '<th style="width:40%">话术</th><th style="width:70px">次数</th><th style="width:170px">匹配任务</th><th style="width:80px">相似度</th><th style="width:70px">信号</th><th style="width:150px">操作</th>' +
         '</tr></thead><tbody>';
       items.forEach(function(s) {
@@ -1570,12 +1582,12 @@
         html += '<td>' + esc(s.matchedName || s.matchedTask || '-') + '</td>';
         html += '<td>' + score + '</td>';
         html += '<td>' + signal + '</td>';
-        html += '<td><button class="btn-sm" onclick="adoptSuggestion(\'' + esc(s.matchedTask) + '\',\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">采纳</button> ' +
+        html += '<td class="cell-actions"><button class="btn-sm" onclick="adoptSuggestion(\'' + esc(s.matchedTask) + '\',\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">采纳</button> ' +
           '<button class="btn-sm btn-danger" onclick="ignoreSuggestion(\'' + esc(s.text.replace(/'/g, "\\'")) + '\')">删除</button></td>';
         html += '</tr>';
       });
       html += '</tbody></table></div>';
-      html += '<div style="color:#999;font-size:12px;margin-top:8px">采纳后该话术加入匹配任务的意图例句，下次同款表达可直接触发任务。</div>';
+      html += '<div style="color:#999;font-size:12px;margin-top:8px">从真实对话日志中找出表达了办理意图但没触发任务的话术，匹配到任务后可一键采纳为意图例句。机器只推荐，由运营确认。</div>';
       area.innerHTML = html;
     });
   }
