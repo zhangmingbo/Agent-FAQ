@@ -535,18 +535,18 @@
   }, 300);
 
   function injectTaskTabs(panel) {
-    // 创建标签导航（对话规则 | 任务流程 | LLM 智能层）
+    // 创建标签导航（任务流程 | 对话规则 | LLM 智能层）
     var tabs = document.createElement('div');
     tabs.id = 'rules-tabs';
-    tabs.innerHTML = '<button class="tab-btn active" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="llm">LLM 智能层</button>';
+    tabs.innerHTML = '<button class="tab-btn active" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="llm">LLM 智能层</button>';
     // 把原有内容包进 tab panel
     var rulesPanel = document.createElement('div');
-    rulesPanel.className = 'tab-panel active';
+    rulesPanel.className = 'tab-panel';
     rulesPanel.id = 'tab-rules';
     while (panel.firstChild) rulesPanel.appendChild(panel.firstChild);
-    // 创建任务面板
+    // 创建任务面板（默认激活）
     var tasksPanel = document.createElement('div');
-    tasksPanel.className = 'tab-panel';
+    tasksPanel.className = 'tab-panel active';
     tasksPanel.id = 'tab-tasks';
     tasksPanel.innerHTML = buildTaskPanelHTML();
     // 创建 LLM 智能层面板
@@ -556,11 +556,13 @@
     llmPanel.innerHTML = buildLLMPanelHTML();
     // 组装
     panel.appendChild(tabs);
-    panel.appendChild(rulesPanel);
     panel.appendChild(tasksPanel);
+    panel.appendChild(rulesPanel);
     panel.appendChild(llmPanel);
     // 对话规则 tab 底部追加"匹配容错"配置区
     injectMatchTolerance(rulesPanel);
+    // 默认激活"任务流程"页签 → 加载任务列表
+    loadTasks();
     // 标签切换
     tabs.addEventListener('click', function(e) {
       var btn = e.target.closest('.tab-btn');
