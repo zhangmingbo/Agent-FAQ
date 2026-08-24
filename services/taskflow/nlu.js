@@ -432,8 +432,8 @@ class TaskNLU {
     // 提示词：任务级覆盖优先，其次运营配置注册表
     const sysTpl = task?.llm?.prompts?.dialogueSystem
     const system = sysTpl
-      ? llmClient._fill(sysTpl, { brand: '沁园', taskName: task.name, slotDesc })
-      : getPrompt('dialogue.system', { brand: '沁园', taskName: task.name, slotDesc })
+      ? llmClient._fill(sysTpl, { taskName: task.name, slotDesc })
+      : getPrompt('dialogue.system', { taskName: task.name, slotDesc })
     const userTpl = task?.llm?.prompts?.dialogueUser
     const user = userTpl
       ? llmClient._fill(userTpl, { taskName: task.name, slotDesc, filledDesc, history, text })
