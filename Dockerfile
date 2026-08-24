@@ -17,7 +17,7 @@ COPY routes/ ./routes/
 COPY rules/ ./rules/
 COPY scripts/ ./scripts/
 COPY public/ ./public/
-COPY db.js faq-library.js faq-engine.js server.js intent-recognizer.js intents-library.js .env.example ./
+COPY db.js faq-engine.js server.js .env.example ./
 
 # 替换为 Linux 版原生模块（sharp、mysql2）
 RUN npm install --os=linux --cpu=x64 sharp mysql2
