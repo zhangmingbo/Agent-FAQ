@@ -1982,6 +1982,109 @@
   injectLogoutBtn();
 
 
+  // ===== 问题追踪（未匹配/低置信度）批量处理：多选 + 批量处理 / 批量加入相似问 =====
+  var issueFaqOptionsLoaded = false;
+  function collectIssueTexts() {
+    var out = [];
+    document.querySelectorAll('.el-table__body-wrapper tbody tr').forEach(function(row) {
+      var cb = row.querySelector('[data-issue-check]');
+      if (cb && cb.checked) {
+        var textEl = row.querySelector('td:nth-child(2) .cell .expand-cell span') || row.querySelector('td:nth-child(2)');
+        if (textEl && textEl.textContent.trim()) out.push(textEl.textContent.trim());
+      }
+    });
+    return out;
+  }
+  function updateIssueCount() {
+    var n = collectIssueTexts().length;
+    var el = document.querySelector('[data-batch-count]');
+    if (el) el.textContent = '已选 ' + n + ' 项';
+    var all = document.querySelector('[data-batch-all]');
+    if (all) {
+      var cbs = document.querySelectorAll('.el-table__body-wrapper tbody tr [data-issue-check]');
+      all.checked = cbs.length > 0 && [...cbs].every(c => c.checked);
+    }
+  }
+  function injectIssueBatch() {
+    if (!document.querySelector('.sub-tab-bar')) return;
+    // ① 每行首列注入复选框（不新增列，避免破坏对齐）
+    document.querySelectorAll('.el-table__body-wrapper tbody tr').forEach(function(row) {
+      if (row.querySelector('[data-issue-check]')) return;
+      var firstCell = row.querySelector('td .cell');
+      if (!firstCell) return;
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.setAttribute('data-issue-check', '1');
+      cb.style.cssText = 'margin-right:6px;vertical-align:middle;cursor:pointer';
+      cb.onchange = updateIssueCount;
+      firstCell.insertBefore(cb, firstCell.firstChild);
+    });
+    // ② 表格上方注入批量工具栏
+    var table = document.querySelector('.el-table');
+    if (!table || table.parentNode.querySelector('[data-batch-toolbar]')) return;
+    var bar = document.createElement('div');
+    bar.setAttribute('data-batch-toolbar', '1');
+    bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:#606266;flex-wrap:wrap';
+    bar.innerHTML =
+      '<label style="cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" data-batch-all> 全选</label>' +
+      '<span data-batch-count style="color:#888">已选 0 项</span>' +
+      '<span style="flex:1"></span>' +
+      '<select data-batch-faq style="padding:5px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;max-width:260px"><option value="">选择要加入的 FAQ…</option></select>' +
+      '<button class="btn-sm" data-batch-addq>批量加入相似问</button>' +
+      '<button class="btn-sm btn-danger" data-batch-ignore>批量处理</button>';
+    table.parentNode.insertBefore(bar, table);
+
+    var allCb = bar.querySelector('[data-batch-all]');
+    allCb.onchange = function() {
+      document.querySelectorAll('.el-table__body-wrapper tbody tr [data-issue-check]').forEach(function(c) { c.checked = allCb.checked; });
+      updateIssueCount();
+    };
+    // FAQ 下拉选项
+    if (!issueFaqOptionsLoaded) {
+      issueFaqOptionsLoaded = true;
+      api('GET', '/api/faq', null, function(res) {
+        var list = (res && Array.isArray(res)) ? res : ((res && res.data) || []);
+        var sel = document.querySelector('[data-batch-faq]');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">选择要加入的 FAQ…</option>' + list.map(function(f) {
+          return '<option value="' + esc(f.code) + '">' + esc(f.code + (f.name ? ' · ' + f.name : '')) + '</option>';
+        }).join('');
+      });
+    }
+    // 批量处理
+    bar.querySelector('[data-batch-ignore]').onclick = function() {
+      var texts = collectIssueTexts();
+      if (!texts.length) { alert('请先勾选要处理的问题'); return; }
+      if (!confirm('将选中的 ' + texts.length + ' 个问题标记为已处理？\n处理后不再展示（原始对话记录保留）。')) return;
+      var done = 0;
+      texts.forEach(function(t) {
+        api('POST', '/api/chat-log/ignore', { text: t }, function() {
+          done++;
+          if (done === texts.length) { alert('已处理 ' + done + ' 个问题'); location.reload(); }
+        });
+      });
+    };
+    // 批量加入相似问
+    bar.querySelector('[data-batch-addq]').onclick = function() {
+      var texts = collectIssueTexts();
+      var faq = bar.querySelector('[data-batch-faq]').value;
+      if (!texts.length) { alert('请先勾选要加入的问题'); return; }
+      if (!faq) { alert('请先选择要加入的 FAQ'); return; }
+      if (!confirm('将选中的 ' + texts.length + ' 个问题加入「' + faq + '」的相似问？')) return;
+      var done = 0, ok = 0;
+      texts.forEach(function(t) {
+        api('POST', '/api/analysis/add-question', { faqCode: faq, question: t }, function(res) {
+          done++; if (res && res.success) ok++;
+          if (done === texts.length) {
+            alert('完成：成功 ' + ok + ' 个，失败/已存在 ' + (done - ok) + ' 个');
+            location.reload();
+          }
+        });
+      });
+    };
+    updateIssueCount();
+  }
+
   // ===== 问题追踪（未匹配/低置信度）操作列注入「处理」按钮 =====
   // 语义：标记为已处理（忽略），不再展示；原始 chat_log 对话记录保留
   function injectIssueDeleteBtns() {
@@ -2013,10 +2116,14 @@
     });
   }
   var issueObserver = new MutationObserver(function() {
-    if (document.querySelector('.sub-tab-bar')) injectIssueDeleteBtns();
+    if (document.querySelector('.sub-tab-bar')) {
+      injectIssueDeleteBtns();
+      injectIssueBatch();
+    }
   });
   issueObserver.observe(document.body, { childList: true, subtree: true });
   injectIssueDeleteBtns();
+  injectIssueBatch();
 
 
   // ===== 编辑/新建任务弹窗 =====
