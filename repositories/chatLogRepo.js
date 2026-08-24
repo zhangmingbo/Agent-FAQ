@@ -18,7 +18,7 @@ export async function log({ sessionId, userId, userText, intentCode, confidence,
 /**
  * 未匹配问题列表（分页/日期/搜索/排序）
  */
-export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder = 'desc', page = 1, pageSize = 20 }) {
+export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder = 'desc', page = 1, pageSize = 20, ignored = [] }) {
   let where = "WHERE intent_code IS NULL AND source IN ('fallback', 'clarify') AND meaningful = 1"
   const params = []
 
@@ -29,6 +29,10 @@ export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder 
   if (keyword) {
     where += ' AND user_text LIKE ?'
     params.push(`%${keyword}%`)
+  }
+  if (ignored && ignored.length) {
+    where += ` AND user_text NOT IN (${ignored.map(() => '?').join(',')})`
+    params.push(...ignored)
   }
 
   // 总数
@@ -74,7 +78,7 @@ export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder 
 /**
  * 低置信度列表（分页/日期/搜索/排序）
  */
-export async function getLowConfidence({ date, keyword, sortBy = 'confidence', sortOrder = 'asc', page = 1, pageSize = 20, maxConfidence = 0.7 }) {
+export async function getLowConfidence({ date, keyword, sortBy = 'confidence', sortOrder = 'asc', page = 1, pageSize = 20, maxConfidence = 0.7, ignored = [] }) {
   let where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1`
   const params = []
 
@@ -85,6 +89,10 @@ export async function getLowConfidence({ date, keyword, sortBy = 'confidence', s
   if (keyword) {
     where += ' AND user_text LIKE ?'
     params.push(`%${keyword}%`)
+  }
+  if (ignored && ignored.length) {
+    where += ` AND user_text NOT IN (${ignored.map(() => '?').join(',')})`
+    params.push(...ignored)
   }
 
   const [countRows] = await pool.execute(
@@ -376,13 +384,4 @@ export async function getFallbackStats() {
      GROUP BY user_text ORDER BY cnt DESC LIMIT 20`
   )
   return rows.map(r => ({ text: r.user_text, count: r.cnt }))
-}
-
-/**
- * 删除某问题文本对应的全部对话记录（未匹配/低置信度列表的「删除」）
- * @returns {number} 删除的行数
- */
-export async function deleteByText(text) {
-  const [result] = await pool.execute('DELETE FROM chat_log WHERE user_text = ?', [String(text || '').trim()])
-  return result.affectedRows
 }

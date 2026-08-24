@@ -6,20 +6,51 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import * as chatLogRepo from '../repositories/chatLogRepo.js'
+import * as configRepo from '../repositories/configRepo.js'
+
+/** 已处理（忽略）的问题文本列表：sys_config.issue_ignored，JSON 数组 */
+async function getIgnored() {
+  try {
+    const raw = await configRepo.get('issue_ignored')
+    if (raw) {
+      const list = JSON.parse(raw)
+      if (Array.isArray(list)) return list
+    }
+  } catch (e) {
+    console.warn('[ChatLog] 读取忽略列表失败:', e.message)
+  }
+  return []
+}
 
 export function createRouter(engine) {
   const router = Router()
 
-  // 未匹配问题列表
+  // 未匹配问题列表（已处理的不再展示，原始记录保留）
   router.get('/chat-log/unmatched', asyncHandler(async (req, res) => {
-    const result = await chatLogRepo.getUnmatched(req.query)
+    const ignored = await getIgnored()
+    const result = await chatLogRepo.getUnmatched({ ...req.query, ignored })
     res.json(result)
   }))
 
-  // 低置信度列表
+  // 低置信度列表（已处理的不再展示，原始记录保留）
   router.get('/chat-log/low-confidence', asyncHandler(async (req, res) => {
-    const result = await chatLogRepo.getLowConfidence({ ...req.query, maxConfidence: engine.analysisMaxConfidence ?? 0.7 })
+    const ignored = await getIgnored()
+    const result = await chatLogRepo.getLowConfidence({ ...req.query, maxConfidence: engine.analysisMaxConfidence ?? 0.7, ignored })
     res.json(result)
+  }))
+
+  // 标记某问题为已处理（忽略）：不再出现在未匹配/低置信度列表，原始 chat_log 保留
+  router.post('/chat-log/ignore', asyncHandler(async (req, res) => {
+    const { text } = req.body || {}
+    if (!text) {
+      res.status(400).json({ success: false, message: '缺少问题文本' })
+      return
+    }
+    const list = await getIgnored()
+    const t = String(text).trim()
+    if (!list.includes(t)) list.push(t)
+    await configRepo.set('issue_ignored', JSON.stringify(list))
+    res.json({ success: true, message: '已标记为处理，不再展示（原始记录保留）' })
   }))
 
   // 可用日期列表
@@ -44,17 +75,6 @@ export function createRouter(engine) {
   router.get('/chat-log/live', asyncHandler(async (req, res) => {
     const logs = await chatLogRepo.getLive(req.query)
     res.json({ success: true, count: logs.length, logs })
-  }))
-
-  // 删除某问题文本对应的对话记录（未匹配/低置信度列表的「删除」按钮）
-  router.post('/chat-log/delete', asyncHandler(async (req, res) => {
-    const { text } = req.body || {}
-    if (!text) {
-      res.status(400).json({ success: false, message: '缺少问题文本' })
-      return
-    }
-    const count = await chatLogRepo.deleteByText(text)
-    res.json({ success: true, message: '已删除 ' + count + ' 条对话记录' })
   }))
 
   return router

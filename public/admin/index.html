@@ -1982,8 +1982,8 @@
   injectLogoutBtn();
 
 
-  // ===== 问题追踪（未匹配/低置信度）操作列注入「删除」按钮 =====
-  // 数据源为 chat_log 聚合，删除 = 删除该问题文本的全部对话记录
+  // ===== 问题追踪（未匹配/低置信度）操作列注入「处理」按钮 =====
+  // 语义：标记为已处理（忽略），不再展示；原始 chat_log 对话记录保留
   function injectIssueDeleteBtns() {
     if (!document.querySelector('.sub-tab-bar')) return;
     document.querySelectorAll('.el-table__body-wrapper tbody tr').forEach(function(row) {
@@ -2001,11 +2001,11 @@
       btn.type = 'button';
       btn.className = 'el-button el-button--danger el-button--small';
       btn.style.marginLeft = '6px';
-      btn.innerHTML = '<span>删除</span>';
+      btn.innerHTML = '<span>处理</span>';
       btn.onclick = function() {
-        if (!confirm('删除问题「' + text + '」的全部对话记录？\n删除后该问题不再出现在未匹配/低置信度列表，也会从表达挖掘数据源中移除。')) return;
-        api('POST', '/api/chat-log/delete', { text: text }, function(res) {
-          alert(res.message || (res.success ? '已删除' : '删除失败'));
+        if (!confirm('将问题「' + text + '」标记为已处理？\n处理后不再出现在本列表（原始对话记录保留）。')) return;
+        api('POST', '/api/chat-log/ignore', { text: text }, function(res) {
+          alert(res.message || (res.success ? '已处理' : '操作失败'));
           if (res.success) location.reload();
         });
       };
