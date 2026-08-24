@@ -11,6 +11,7 @@ import { resolveTemplate, normalizeConfig, extractResult, executeHttpCall } from
 import { runAction, listActions, ensureActionLogTable } from '../services/taskflow/actionRegistry.js'
 import { runFlow } from '../services/taskflow/flow.js'
 import { TaskState, canTransition } from '../services/taskflow/stateMachine.js'
+import DialogManager from '../services/taskflow/dialogManager.js'
 
 const BASE = 'http://localhost:3001'
 let pass = 0, fail = 0
@@ -224,6 +225,76 @@ t('端到端 编排任务完成', flowDone)
 const [flg2] = await pool.execute("SELECT COUNT(*) AS c FROM action_log WHERE session_id = ? AND action='flow' AND status='ok'", [sidF])
 t('端到端 编排步骤日志落库（≥2 步）', flg2[0].c >= 2)
 await fetch(BASE + '/api/tasks/test_flow', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
+
+// ================= ⑩ 任务流程分支（branch 步骤） =================
+await section('⑩ 任务流程分支（branch 步骤）')
+const dm = new DialogManager(null, null)
+const bstep = (cases, defaultNext) => ({ type: 'branch', cases, default_next: defaultNext })
+t('branch eq 命中', await dm._evalBranch(bstep([{ when: { source: 'slot', ref: 'type', op: 'eq', value: '漏水' }, next: 'leak' }], 'normal'), { slots: { type: { value: '漏水' } }, vars: {} }) === 'leak')
+t('branch eq 不命中 → default', await dm._evalBranch(bstep([{ when: { source: 'slot', ref: 'type', op: 'eq', value: '漏水' }, next: 'leak' }], 'normal'), { slots: { type: { value: '安装' } }, vars: {} }) === 'normal')
+t('branch contains', await dm._evalBranch(bstep([{ when: { source: 'slot', ref: 'reason', op: 'contains', value: '漏水' }, next: 'leak' }]), { slots: { reason: { value: '厨房漏水严重' } }, vars: {} }) === 'leak')
+t('branch regex', await dm._evalBranch(bstep([{ when: { source: 'slot', ref: 'reason', op: 'regex', value: '^报修' }, next: 'repair' }]), { slots: { reason: { value: '报修服务' } }, vars: {} }) === 'repair')
+t('branch gt 数值', await dm._evalBranch(bstep([{ when: { source: 'slot', ref: 'amount', op: 'gt', value: 100 }, next: 'big' }], 'small'), { slots: { amount: { value: '200' } }, vars: {} }) === 'big')
+t('branch 多 case 顺序匹配', await dm._evalBranch(bstep([
+  { when: { source: 'slot', ref: 'reason', op: 'contains', value: '漏水' }, next: 'leak' },
+  { when: { source: 'slot', ref: 'reason', op: 'regex', value: '^报修' }, next: 'repair' },
+], 'normal'), { slots: { reason: { value: '报修一下' } }, vars: {} }) === 'repair')
+t('branch and 组合', await dm._evalBranch(bstep([{ when: { and: [{ source: 'slot', ref: 'type', op: 'eq', value: '安装' }, { source: 'slot', ref: 'urgent', op: 'eq', value: '是' }] }, next: 'fast' }], 'normal'), { slots: { type: { value: '安装' }, urgent: { value: '是' } }, vars: {} }) === 'fast')
+t('branch or 组合', await dm._evalBranch(bstep([{ when: { or: [{ source: 'slot', ref: 'type', op: 'eq', value: '漏水' }, { source: 'slot', ref: 'type', op: 'eq', value: '爆管' }] }, next: 'emergency' }], 'normal'), { slots: { type: { value: '爆管' } }, vars: {} }) === 'emergency')
+t('branch var 判断源', await dm._evalBranch(bstep([{ when: { source: 'var', ref: 'orderStatus', op: 'eq', value: '已受理' }, next: 'accepted' }], 'pending'), { slots: {}, vars: { orderStatus: '已受理' } }) === 'accepted')
+t('branch 旧格式 when.slot 兼容', await dm._evalBranch(bstep([{ when: { slot: 'type', op: 'eq', value: '漏水' }, next: 'leak' }]), { slots: { type: { value: '漏水' } }, vars: {} }) === 'leak')
+t('branch 无 cases → default', await dm._evalBranch(bstep([], 'done'), { slots: {}, vars: {} }) === 'done')
+
+// 端到端：规则版任务三路分支（任务级禁用 LLM）
+const branchDef = {
+  code: 'test_branch', name: '分支流程测试', status: 1, trigger_keywords: ['分支流程测试'],
+  llm: { enabled: false },
+  slots: [
+    { key: 'reason', label: '原因', prompt: '请问是什么情况？', required: true },
+    { key: 'leak_detail', label: '漏水详情', prompt: '请问漏水多严重？', required: true },
+    { key: 'repair_type', label: '报修类型', prompt: '请问需要报修什么？', required: true },
+    { key: 'normal_note', label: '备注', prompt: '请问还有其他需要补充的吗？', required: true },
+  ],
+  steps: [
+    { key: 'c_reason', type: 'collect', slot_key: 'reason', next: 'branch_step' },
+    { key: 'branch_step', type: 'branch',
+      cases: [
+        { when: { source: 'slot', ref: 'reason', op: 'contains', value: '漏水' }, next: 'leak_q' },
+        { when: { source: 'slot', ref: 'reason', op: 'regex', value: '^报修' }, next: 'repair_q' },
+      ],
+      default_next: 'normal_q' },
+    { key: 'leak_q', type: 'collect', slot_key: 'leak_detail', next: 'confirm' },
+    { key: 'repair_q', type: 'collect', slot_key: 'repair_type', next: 'confirm' },
+    { key: 'normal_q', type: 'collect', slot_key: 'normal_note', next: 'confirm' },
+    { key: 'confirm', type: 'confirm', next: 'submit' },
+    { key: 'submit', type: 'action', action: 'complete_message' },
+  ],
+}
+const branchSave = await fetch(BASE + '/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(branchDef) }).then(r => r.json())
+t('创建分支任务', branchSave.success === true)
+async function runBranchFlow(flow) {
+  const sid = 'branch-e2e-' + Date.now()
+  let out = { answer: '', branch: null }
+  for (const txt of flow) {
+    const r = await fetch(BASE + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: txt, sessionId: sid }) }).then(r => r.json())
+    out.answer = r.answer || ''
+  }
+  const g = await fetch(BASE + '/api/debug/session/' + sid, { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())
+  for (const turn of (g.data.turns || [])) {
+    for (const s of turn.steps) {
+      if (s.step === '任务对话·分支判定') out.branch = s.detail
+    }
+  }
+  return out
+}
+const br1 = await runBranchFlow(['分支流程测试', '办理', '厨房漏水了'])
+t('端到端 分支① 漏水→leak_q', (br1.answer.includes('漏水多严重') || br1.answer.includes('漏水详情')) && br1.branch && br1.branch.to === 'leak_q')
+const br2 = await runBranchFlow(['分支流程测试', '办理', '报修一下'])
+t('端到端 分支② 报修→repair_q', br2.branch && br2.branch.to === 'repair_q')
+const br3 = await runBranchFlow(['分支流程测试', '办理', '随便问问'])
+t('端到端 分支③ 默认→normal_q', br3.branch && br3.branch.to === 'normal_q')
+t('端到端 分支判定写入 trace', !!br1.branch && br1.branch.step === 'branch_step' && br1.branch.cases.length === 2)
+await fetch(BASE + '/api/tasks/test_branch', { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })
 
 // ================= 汇总 =================
 console.log('\n========================================')

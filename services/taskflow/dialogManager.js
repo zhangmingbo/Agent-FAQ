@@ -154,6 +154,11 @@ class DialogManager {
         }
         case 'branch': {
           const next = await this._evalBranch(step, state)
+          _t('任务对话·分支判定', {
+            step: step.key,
+            cases: (step.cases || []).map((c) => this.describeCase(c)),
+            to: next || '结束',
+          }, 'rule')
           state.currentStep = next
           extracted = true
           alreadyExtracted = true
@@ -836,6 +841,17 @@ class DialogManager {
       if (await evaluateCondition(c.when, ctx)) return c.next
     }
     return step.default_next
+  }
+
+  /** 分支条件描述（trace 用） */
+  describeCase(c) {
+    const w = (c && c.when) || {}
+    if (w.source === 'fn') return 'fn:' + w.ref
+    if (w.source === 'expr') return 'expr:' + w.expr
+    if (w.source === 'time') return 'time:' + w.op
+    if (w.and) return 'and(...)'
+    if (w.or) return 'or(...)'
+    return (w.source || 'slot') + '.' + (w.ref || w.slot) + ' ' + w.op + ' ' + (w.value !== undefined ? w.value : '')
   }
 
   _isCancel(text) {
