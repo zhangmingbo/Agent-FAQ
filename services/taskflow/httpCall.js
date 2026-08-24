@@ -198,10 +198,11 @@ export async function executeHttpCall(rawConfig, ctx = {}) {
     }
   } catch { /* 非 JSON，保留原文 */ }
 
-  // 话术（done_message 支持 {result.xxx} / {result} 主值 / {槽位key} 插值）
+  // 话术（done_message 支持 {result.xxx} / {result} 主值 / {槽位key} 插值；
+  // result 上下文 = 本次调用的出参 results）
   let message = ''
   if (cfg.done_message !== undefined && cfg.done_message !== null) {
-    message = resolveTemplate(cfg.done_message, tplCtx)
+    message = resolveTemplate(cfg.done_message, { ...tplCtx, result: results })
     message = message.split('{result}').join(String(result))
     for (const [k, v] of Object.entries(results)) {
       message = message.split('{' + k + '}').join(String(v))
