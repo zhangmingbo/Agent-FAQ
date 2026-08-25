@@ -23,6 +23,39 @@ export function createRouter(engine) {
     res.json({ success: true, items: rows })
   }))
 
+  // 任务漏斗：触发 → 收集 → 完成 → 动作成功（定位任务流失环节）
+  router.get('/analysis/funnel', asyncHandler(async (req, res) => {
+    const [started] = await pool.execute(
+      "SELECT SUBSTRING_INDEX(intent_code, ':', -1) AS task, COUNT(*) AS cnt FROM chat_log WHERE source = 'task_started' AND intent_code LIKE 'task:%' GROUP BY task"
+    )
+    const [progressed] = await pool.execute(
+      "SELECT SUBSTRING_INDEX(intent_code, ':', -1) AS task, COUNT(*) AS cnt FROM chat_log WHERE source = 'task_progress' AND intent_code LIKE 'task:%' GROUP BY task"
+    )
+    const [completed] = await pool.execute(
+      "SELECT SUBSTRING_INDEX(intent_code, ':', -1) AS task, COUNT(*) AS cnt FROM chat_log WHERE source = 'task_complete' AND intent_code LIKE 'task:%' GROUP BY task"
+    )
+    const [actions] = await pool.execute(
+      "SELECT task_code AS task, COUNT(*) AS cnt FROM action_log WHERE status = 'ok' GROUP BY task_code"
+    )
+    const [names] = await pool.execute('SELECT code, name FROM task')
+    const nameMap = {}
+    names.forEach(n => { nameMap[n.code] = n.name })
+    const merged = {}
+    started.forEach(r => { merged[r.task] = merged[r.task] || { task: r.task, name: nameMap[r.task] || r.task }; merged[r.task].started = r.cnt })
+    progressed.forEach(r => { merged[r.task] = merged[r.task] || { task: r.task, name: nameMap[r.task] || r.task }; merged[r.task].progressed = r.cnt })
+    completed.forEach(r => { merged[r.task] = merged[r.task] || { task: r.task, name: nameMap[r.task] || r.task }; merged[r.task].completed = r.cnt })
+    actions.forEach(r => { merged[r.task] = merged[r.task] || { task: r.task, name: nameMap[r.task] || r.task }; merged[r.task].actionOk = r.cnt })
+    const items = Object.values(merged).map(it => {
+      const started = it.started || 0
+      return {
+        ...it,
+        started, progressed: it.progressed || 0, completed: it.completed || 0, actionOk: it.actionOk || 0,
+        completeRate: started ? Math.round(((it.completed || 0) / started) * 100) : 0,
+      }
+    }).sort((a, b) => b.started - a.started)
+    res.json({ success: true, items })
+  }))
+
   // 获取智能分析报告
   router.get('/analysis', asyncHandler(async (req, res) => {
     const analysis = await engine.getAnalysis()
