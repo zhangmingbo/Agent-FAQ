@@ -5,9 +5,23 @@
 
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
+import pool from '../db/pool.js'
 
 export function createRouter(engine) {
   const router = Router()
+
+  // 答案反馈：用户否定上轮回答的高频问答对（定位"答错的高频问题"）
+  router.get('/analysis/feedback', asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100)
+    const [rows] = await pool.execute(
+      `SELECT user_text, COUNT(*) as cnt,
+              LEFT(MAX(answer), 100) as answer,
+              DATE_FORMAT(MAX(created_at), '%Y/%m/%d %H:%i') as last_time
+       FROM answer_feedback
+       GROUP BY user_text ORDER BY cnt DESC LIMIT ${limit}`
+    )
+    res.json({ success: true, items: rows })
+  }))
 
   // 获取智能分析报告
   router.get('/analysis', asyncHandler(async (req, res) => {

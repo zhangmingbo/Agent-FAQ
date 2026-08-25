@@ -13,7 +13,7 @@ import { existsSync, mkdirSync } from 'fs'
 
 import config from './config/index.js'
 import pool from './db/pool.js'
-import FAQEngine from './faq-engine.js'
+import FAQEngine, { DEFAULT_FEEDBACK_WORDS } from './faq-engine.js'
 import FaqService from './services/faqService.js'
 import { initPrompts } from './services/llmPrompts.js'
 import ruleLoader from './rules/ruleLoader.js'
@@ -176,6 +176,11 @@ async function start() {
       keywordMinScore: dbConfig.suggest_keyword_min_score,
     })
     await taskSuggestService.loadIgnored()
+    // 答案反馈信号词（运营可配，默认仅首次落库）
+    if (!dbConfig.feedback_trigger_words) {
+      await configRepo.set('feedback_trigger_words', JSON.stringify(DEFAULT_FEEDBACK_WORDS))
+    }
+    try { engine.feedbackTriggerWords = JSON.parse(dbConfig.feedback_trigger_words || '[]') } catch { engine.feedbackTriggerWords = DEFAULT_FEEDBACK_WORDS }
     // 固定话术 / 匹配词表（首次启动自动落库，之后以库为准）
     if (!dbConfig.reply_texts) {
       await configRepo.set('reply_texts', JSON.stringify(DEFAULT_REPLY_TEXTS))

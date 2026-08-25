@@ -26,6 +26,13 @@ import llmClient from './services/llmClient.js'
 import { getReply } from './services/replyTexts.js'
 import { getRouteChoiceWords } from './services/matchVocab.js'
 import traceService from './services/traceService.js'
+import pool from './db/pool.js'
+
+/** 答案反馈：不满意信号词（运营可配，sys_config.feedback_trigger_words，默认仅首次落库） */
+export const DEFAULT_FEEDBACK_WORDS = [
+  '不是这个', '不是问这个', '我问的', '我要问的是', '没听懂', '答非所问',
+  '答错', '你理解错', '理解错了', '不对', '我说的是', '你答的不对', '牛头不对马嘴',
+]
 
 class FAQEngine {
   /**
@@ -86,6 +93,22 @@ class FAQEngine {
     
     // 加载 FAQ 知识库
     await this.faqService.loadAll()
+
+    // 答案反馈表（用户否定上轮回答的问答对，用于定位"答错的高频问题"）
+    try {
+      await pool.execute(
+        `CREATE TABLE IF NOT EXISTS answer_feedback (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          session_id VARCHAR(100),
+          user_text TEXT,
+          answer TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          KEY idx_feedback_time (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      )
+    } catch (e) {
+      console.warn('[FAQEngine] answer_feedback 建表失败:', e.message)
+    }
     
     console.log('[FAQEngine] 初始化完成')
   }
@@ -95,6 +118,26 @@ class FAQEngine {
    */
   loadFAQ() {
     return this.faqService.loadAll()
+  }
+
+  /** 检测答案反馈：本轮输入命中不满意信号词 且 上轮是 assistant 回答 → 返回反馈记录 */
+  _detectAnswerFeedback(text, context) {
+    if (!this.feedbackTriggerWords || !this.feedbackTriggerWords.length) return null
+    const lower = String(text || '').toLowerCase()
+    const hit = this.feedbackTriggerWords.find(w => lower.includes(String(w).toLowerCase()))
+    if (!hit) return null
+    const hist = (context && context.history) || []
+    const prev = hist[hist.length - 1]
+    if (!prev || prev.role !== 'assistant') return null
+    return { hit, user_text: String(text).slice(0, 200), answer: String(prev.text || '').slice(0, 500) }
+  }
+
+  /** 落库答案反馈 */
+  async _logAnswerFeedback(sessionId, fb) {
+    await pool.execute(
+      'INSERT INTO answer_feedback (session_id, user_text, answer) VALUES (?, ?, ?)',
+      [sessionId, fb.user_text, fb.answer]
+    )
   }
 
   /**
@@ -163,6 +206,13 @@ class FAQEngine {
 
     // 记录用户输入到历史
     context.history.push({ role: 'user', text, timestamp: Date.now() })
+
+    // ===== 答案反馈闭环：用户否定上轮回答（运营配置信号词）→ 记录，用于定位"答错的高频问题" =====
+    const feedback = this._detectAnswerFeedback(text, context)
+    if (feedback) {
+      _t('答案反馈', { hit: feedback.hit, prev: feedback.answer.slice(0, 40) }, 'warn')
+      this._logAnswerFeedback(sessionId, feedback).catch(e => console.error('[FAQEngine] 答案反馈记录失败:', e.message))
+    }
 
     let response
 
