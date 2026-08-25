@@ -232,7 +232,9 @@ class LLMDialogManager {
         _t('任务对话·执行编排', { ok: true, steps: task.on_complete.steps.length, idempotent: !!r.idempotent, error: r.error }, 'task')
       } else {
         _t('任务对话·执行编排', { ok: false, error: (r.error || r.message || '').slice(0, 80) }, 'error')
+        // 编排失败兜底：附加转人工事件（前端展示人工入口）
         message = getReply('action_fail_llm', { message: r.message || r.error })
+        events = [this._transferEvent(state)]
         state.history.push({ role: 'assistant', text: message })
         return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state, events }
       }
@@ -253,7 +255,8 @@ class LLMDialogManager {
         _t('任务对话·执行动作', { action: actionStep.action, ok: true, message: (message || '').slice(0, 60) }, 'task')
       } else {
         _t('任务对话·执行动作', { action: actionStep.action, ok: false, message: (result.message || '').slice(0, 60) }, 'error')
-        // 动作失败：保持确认态，告知用户
+        // 动作失败兜底：附加转人工事件（前端展示人工入口）
+        if (!events.some(e => e.type === 'transfer_human')) events.push(this._transferEvent(state))
         message = getReply('action_fail_llm', { message: result.message })
         state.history.push({ role: 'assistant', text: message })
         return { reply: message, isComplete: false, extracted: true, reask: false, cancelled: false, taskState: state, events }
@@ -273,6 +276,21 @@ class LLMDialogManager {
       cancelled: false,
       taskState: state,
       events,
+    }
+  }
+
+  /** 构造转人工事件（失败兜底 / 高情绪触发时复用，前端展示人工入口） */
+  _transferEvent(state) {
+    const slots = {}
+    for (const [k, s] of Object.entries(state.slots || {})) {
+      slots[k] = (s && s.value !== undefined && s.value !== null) ? s.value : null
+    }
+    return {
+      type: 'transfer_human',
+      sessionId: state.sessionId,
+      taskCode: state.taskCode,
+      taskName: state.taskName,
+      slots,
     }
   }
 

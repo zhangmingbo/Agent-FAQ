@@ -590,6 +590,8 @@ class DialogManager {
       result = await runFlow(task.on_complete, { sessionId: state.sessionId, task, state, slots }, trace)
       _t('任务对话·执行编排', { ok: result.ok, error: result.error || undefined, idempotent: !!result.idempotent }, result.ok ? 'task' : 'error')
       if (!result.ok) {
+        // 编排失败兜底：附加转人工事件（前端展示人工入口）
+        events = [this._transferEvent(state)]
         state.status = TaskState.COLLECTING
         return {
           reply: getReply('action_fail_rule', { message: result.message || result.error }),
@@ -598,6 +600,7 @@ class DialogManager {
           reask: false,
           cancelled: false,
           taskState: state,
+          events,
         }
       }
     } else {
@@ -639,6 +642,8 @@ class DialogManager {
     if (onFail === 'retry') {
       return this._execAction(state, step, replyPrefix, trace)
     }
+    // 失败兜底：附加转人工事件（前端展示人工入口）
+    if (!events.some(e => e.type === 'transfer_human')) events.push(this._transferEvent(state))
     state.status = TaskState.COLLECTING
     return {
       reply: getReply('action_fail_rule', { message: result.message }),
@@ -647,6 +652,22 @@ class DialogManager {
       reask: false,
       cancelled: false,
       taskState: state,
+      events,
+    }
+  }
+
+  /** 构造转人工事件（失败兜底时复用，前端展示人工入口） */
+  _transferEvent(state) {
+    const slots = {}
+    for (const [k, s] of Object.entries(state.slots || {})) {
+      slots[k] = (s && s.value !== undefined && s.value !== null) ? s.value : null
+    }
+    return {
+      type: 'transfer_human',
+      sessionId: state.sessionId,
+      taskCode: state.taskCode,
+      taskName: state.taskName,
+      slots,
     }
   }
 
