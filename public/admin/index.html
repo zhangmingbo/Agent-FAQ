@@ -1962,6 +1962,97 @@
     };
     menu.appendChild(item);
   }
+
+
+  // ===== 智能分析页：注入「答案反馈」+「任务漏斗」区块 =====
+  function loadAnalysisFeedback() {
+    var box = document.getElementById('analysis-feedback-body');
+    if (!box) return;
+    api('GET', '/api/analysis/feedback?limit=10', null, function(res) {
+      var items = (res && res.items) || [];
+      if (!items.length) {
+        box.innerHTML = '<div style="color:#999;padding:6px 0">暂无反馈记录（用户对回答表示"不是这个/没听懂"等不满时记录于此）</div>';
+        return;
+      }
+      var html = '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
+        '<th style="width:30%;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">问题</th>' +
+        '<th style="width:52px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">次数</th>' +
+        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">上轮回答</th>' +
+        '<th style="width:110px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">最近时间</th>' +
+        '</tr></thead><tbody>';
+      items.forEach(function(it) {
+        html += '<tr>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all">' + esc(it.user_text) + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5"><span class="status-tag danger">' + it.cnt + '</span></td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all;color:#666">' + esc(it.answer || '') + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;color:#888">' + esc(it.last_time || '') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      box.innerHTML = html;
+    });
+  }
+  function loadAnalysisFunnel() {
+    var box = document.getElementById('analysis-funnel-body');
+    if (!box) return;
+    api('GET', '/api/analysis/funnel', null, function(res) {
+      var items = (res && res.items) || [];
+      if (!items.length) {
+        box.innerHTML = '<div style="color:#999;padding:6px 0">暂无任务数据（用户触发任务后会统计在这里）</div>';
+        return;
+      }
+      var html = '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
+        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">任务</th>' +
+        '<th style="width:60px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">触发</th>' +
+        '<th style="width:60px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">收集</th>' +
+        '<th style="width:60px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">完成</th>' +
+        '<th style="width:70px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">动作成功</th>' +
+        '<th style="width:80px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">完成率</th>' +
+        '</tr></thead><tbody>';
+      items.forEach(function(it) {
+        var rateCls = it.completeRate >= 70 ? 'on' : (it.completeRate >= 40 ? '' : 'danger');
+        html += '<tr>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + esc(it.name || it.task) + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.started + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.progressed + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.completed + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.actionOk + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5"><span class="status-tag ' + rateCls + '">' + it.completeRate + '%</span></td></tr>';
+      });
+      html += '</tbody></table>';
+      box.innerHTML = html;
+    });
+  }
+  function injectAnalysisExtra() {
+    var main = document.querySelector('.el-main, .app-main');
+    if (!main || !main.textContent || main.textContent.indexOf('基于聊天日志数据') === -1) return;
+    if (main.querySelector('[data-analysis-extra]')) return;
+    var wrap = document.createElement('div');
+    wrap.setAttribute('data-analysis-extra', '1');
+    wrap.style.cssText = 'margin-top:16px';
+    wrap.innerHTML =
+      '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<b style="font-size:13px;color:#333">答案反馈（答错的高频问题）</b>' +
+          '<button class="btn-sm" data-af-refresh>⟳ 刷新</button></div>' +
+        '<div id="analysis-feedback-body" style="font-size:12px">加载中...</div>' +
+      '</div>' +
+      '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px;margin-top:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<b style="font-size:13px;color:#333">任务漏斗</b>' +
+          '<button class="btn-sm" data-af-refresh2>⟳ 刷新</button></div>' +
+        '<div id="analysis-funnel-body" style="font-size:12px">加载中...</div>' +
+      '</div>';
+    main.appendChild(wrap);
+    var r1 = wrap.querySelector('[data-af-refresh]');
+    if (r1) r1.onclick = loadAnalysisFeedback;
+    var r2 = wrap.querySelector('[data-af-refresh2]');
+    if (r2) r2.onclick = loadAnalysisFunnel;
+    loadAnalysisFeedback();
+    loadAnalysisFunnel();
+  }
+  var analysisObserver = new MutationObserver(injectAnalysisExtra);
+  analysisObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
+  injectAnalysisExtra();
   var alMenuObserver = new MutationObserver(injectActionLogMenu);
   alMenuObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
   injectActionLogMenu();
