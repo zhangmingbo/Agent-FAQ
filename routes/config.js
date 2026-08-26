@@ -54,6 +54,8 @@ export function createRouter(engine) {
       llmModel: llmCfg.model || '',
       nluMode: config.nlu_mode || 'hybrid',
       meaninglessDetectionMode: config.meaningless_detection_mode || 'rule',
+      // 会话超时（毫秒；Vue 原生"识别参数"表单字段，存入 sys_config.session_timeout，dialogueRules 读取）
+      sessionTimeout: parseInt(config.session_timeout) || (30 * 60 * 1000),
       // 任务/FAQ 统一语义仲裁阈值（运营可配）
       arbGap: parseFloat(config.arb_gap) || 0.08,
       arbTaskMin: parseFloat(config.arb_task_min) || 0.45,
@@ -110,6 +112,16 @@ export function createRouter(engine) {
       if (mode === 'rule' || mode === 'llm') {
         await configRepo.set('meaningless_detection_mode', mode)
         engine.meaninglessDetectionMode = mode
+      }
+    }
+    // 会话超时（毫秒；Vue 原生"识别参数"表单字段 → sys_config.session_timeout，dialogueRules 读取）
+    if (req.body.sessionTimeout !== undefined) {
+      const timeout = parseInt(req.body.sessionTimeout)
+      if (timeout > 0) {
+        await configRepo.set('session_timeout', String(timeout))
+        // 热更新规则管理器（dialogueRules.updateRules 支持 sessionTimeout，立即生效）
+        const dialogueRules = (await import('../rules/dialogueRules.js')).default
+        dialogueRules.updateRules?.({ sessionTimeout: timeout })
       }
     }
 
@@ -215,10 +227,12 @@ export function createRouter(engine) {
     }
     if (req.body.llmEnabled !== undefined || req.body.llmApiUrl !== undefined || req.body.llmApiKey !== undefined || req.body.llmModel !== undefined) {
       const cfg = await configRepo.getAll()
+      // key 空时回退环境变量（与 llmClient.resolveFromDb 一致），避免"保存配置把 LLM 关掉"
+      const envKey = process.env.DEEPSEEK_API_KEY || process.env.LLM_API_KEY || ''
       const llmCfg = {
         enabled: cfg.llm_enabled === 'true',
         apiUrl: cfg.llm_api_url || '',
-        apiKey: cfg.llm_api_key || '',
+        apiKey: cfg.llm_api_key || envKey,
         model: cfg.llm_model || 'deepseek-chat',
       }
       // 同步共享 LLM 模块（配置即激活；taskEngine.setLlmConfig 配置的就是同一实例）
