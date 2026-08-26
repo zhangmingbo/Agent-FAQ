@@ -135,6 +135,18 @@ export function get(key, vars = {}) {
   return _fill((cache[key] ?? PROMPT_DEFS[key]?.default) || '', vars)
 }
 
+/**
+ * 提示词来源（调试用：LLM 调用日志标注当前生效的是哪份提示词）
+ * @param {string} key - 如 'dialogue.system'
+ * @returns {'default'|'custom'} default=内置默认模板；custom=运营在管理后台自定义（sys_config.llm_prompt.*）
+ */
+export function getPromptSource(key) {
+  if (!cache) return 'default'
+  const def = PROMPT_DEFS[key]
+  if (!def) return 'default'
+  return (cache[key] !== undefined && cache[key] !== def.default) ? 'custom' : 'default'
+}
+
 /** 返回全部调用点（供管理后台展示与编辑） */
 export async function getAll() {
   await initPrompts()
@@ -176,4 +188,4 @@ function _fill(template, vars) {
   return t
 }
 
-export default { initPrompts, get, getAll, updatePrompts }
+export default { initPrompts, get, getAll, updatePrompts, getPromptSource }

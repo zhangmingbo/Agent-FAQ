@@ -11,7 +11,7 @@
  * 兼容任意 OpenAI 格式服务：DeepSeek / 通义千问 / 智谱 GLM / Ollama 等
  */
 
-import { get as getPrompt } from './llmPrompts.js'
+import { get as getPrompt, getPromptSource } from './llmPrompts.js'
 import llmCallLogger from './llmCallLogger.js'
 
 /** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖，默认全开=现行为）
@@ -177,6 +177,7 @@ class LLMClient {
           response: content,
           status: 'ok',
           durationMs,
+          promptSource: opts.promptSource || null,
         })
       } catch (e) { /* 埋点失败不影响主流程 */ }
       return content.trim()
@@ -193,6 +194,7 @@ class LLMClient {
           status: 'error',
           error: e.message,
           durationMs,
+          promptSource: opts.promptSource || null,
         })
       } catch (e2) { /* ignore */ }
       throw e
@@ -214,7 +216,12 @@ class LLMClient {
     const sid = opts.sessionId || llmCallLogger.getCurrentSession?.() || '-'
     const model = opts.model || (this.config && this.config.model) || 'deepseek-chat'
     const status = error ? '失败' : '成功'
-    console.log(`\n[LLM-CALL] 节点: ${node} | 会话: ${sid} | 模型: ${model} | 状态: ${status} | 耗时: ${durationMs}ms`)
+    // 提示词来源（调试：默认 / 全局自定义 / 任务自定义）
+    const ps = opts.promptSource || {}
+    const srcDesc = ps.system || ps.user
+      ? ` | 提示词: sys=${ps.system || '?'} user=${ps.user || '?'}`
+      : ''
+    console.log(`\n[LLM-CALL] 节点: ${node} | 会话: ${sid} | 模型: ${model} | 状态: ${status} | 耗时: ${durationMs}ms${srcDesc}`)
     for (const m of messages || []) {
       const role = m.role === 'system' ? 'IN(system)' : 'IN(user)'
       const content = String(m.content || '').replace(/\n/g, '⏎').slice(0, 600)
@@ -234,9 +241,10 @@ class LLMClient {
    * @param {string} system - 系统提示词（已填充；任务级覆盖时由调用方传入覆盖模板）
    * @param {string} user - 用户消息（已填充）
    * @param {Object} [cfg] - 生效节点配置（任务级解析结果；缺省用全局节点）
+   * @param {Object} [promptSource] - 提示词来源标注 { system: 'task'|'global'|'default', user: ... }（调试用）
    * @returns {Promise<Object>} { slots, reply, ask_confirm, question }
    */
-  async dialogueTurn(system, user, cfg = null) {
+  async dialogueTurn(system, user, cfg = null, promptSource = null) {
     const eff = cfg || this.resolveEffective('dialogue')
     if (!eff.enabled) {
       return { slots: {}, reply: '', ask_confirm: false, question: null }
@@ -244,7 +252,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'dialogue' })
+    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'dialogue', promptSource })
 
     const obj = this._parseJson(raw)
     if (!obj || typeof obj !== 'object') return { slots: {}, reply: '', ask_confirm: false, question: null }
@@ -279,8 +287,12 @@ class LLMClient {
 
     // 提示词：任务级覆盖优先，其次运营配置注册表（管理后台可编辑），默认值兜底
     const sysTpl = task?.llm?.prompts?.extractSystem
-    const system = sysTpl ? this._fill(sysTpl, {}) : getPrompt('extract_slots.system')
     const userTpl = task?.llm?.prompts?.extractUser
+    const promptSource = {
+      system: sysTpl ? 'task' : (getPromptSource('extract_slots.system') === 'custom' ? 'global' : 'default'),
+      user: userTpl ? 'task' : (getPromptSource('extract_slots.user') === 'custom' ? 'global' : 'default'),
+    }
+    const system = sysTpl ? this._fill(sysTpl, {}) : getPrompt('extract_slots.system')
     const user = userTpl
       ? this._fill(userTpl, { taskName: task.name, examples, slotDesc, filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '', text })
       : getPrompt('extract_slots.user', {
@@ -294,7 +306,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'extract' })
+    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'extract', promptSource })
 
     return this._parseJson(raw)
   }
@@ -335,7 +347,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'trigger' })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'trigger', promptSource: this._globalPromptSource(['judge_trigger.system', 'judge_trigger.user']) })
 
     const trimmed = raw.replace(/["'`\s]/g, '')
     if (!trimmed || trimmed === 'null' || trimmed === '无' || trimmed === '没有') return null
@@ -356,13 +368,26 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'route' })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'route', promptSource: this._globalPromptSource(['router.system', 'router.user']) })
 
     const trimmed = raw.trim().toLowerCase()
     if (trimmed.startsWith('continue')) return 'continue'
     if (trimmed.startsWith('new_task')) return 'new_task'
     if (trimmed.startsWith('faq')) return 'faq'
     return null
+  }
+
+  /**
+   * 全局模板来源标注（非任务级节点用：trigger/route/meaningless/rerank）
+   * @param {string[]} keys - 提示词注册表 key 列表，如 ['router.system','router.user']
+   * @returns {{system:string, user:string}}
+   */
+  _globalPromptSource(keys) {
+    const src = (k) => getPromptSource(k) === 'custom' ? 'global' : 'default'
+    return {
+      system: keys[0] ? src(keys[0]) : 'default',
+      user: keys[1] ? src(keys[1]) : 'default',
+    }
   }
 
   /**
@@ -376,7 +401,7 @@ class LLMClient {
       const raw = await this.chat([
         { role: 'system', content: getPrompt('meaningless.system') },
         { role: 'user', content: text },
-      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'meaningless' })
+      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'meaningless', promptSource: this._globalPromptSource(['meaningless.system']) })
       // 大模型返回 false 表示无意义
       return raw.trim().toLowerCase() === 'false'
     } catch (e) {
@@ -399,7 +424,7 @@ class LLMClient {
       const raw = await this.chat([
         { role: 'system', content: getPrompt('llm_rerank.system') },
         { role: 'user', content: getPrompt('llm_rerank.user', { list, text }) },
-      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'rerank' })
+      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'rerank', promptSource: this._globalPromptSource(['llm_rerank.system', 'llm_rerank.user']) })
       const idx = parseInt(raw.trim(), 10) - 1
       const hit = candidates[idx]
       return hit ? (hit.intentCode || hit.intent_code) : null

@@ -43,6 +43,7 @@ export function log(r = {}) {
     status: r.status || 'ok', // ok | error
     error: r.error || '',
     durationMs: r.durationMs || 0,
+    promptSource: r.promptSource || null, // { system, user }: task/global/default（调试：提示词来源）
     time: Date.now(),
   }
   store.unshift(record)

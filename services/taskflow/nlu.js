@@ -19,7 +19,7 @@ import extractor from './extractor.js'
 import { validateSlot } from './validator.js'
 import llmClient from '../llmClient.js'
 import { cosineSimilarity } from '../../src/similarity.js'
-import { get as getPrompt } from '../llmPrompts.js'
+import { get as getPrompt, getPromptSource } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import traceService from '../traceService.js'
 
@@ -429,16 +429,18 @@ class TaskNLU {
   async dialogue({ task, slotDesc, filledDesc, history, text }) {
     const eff = llmClient.resolveEffective('dialogue', task?.llm || null)
     if (!eff.enabled) throw new Error('LLM 对话未启用（任务级配置关闭或节点关闭）')
-    // 提示词：任务级覆盖优先，其次运营配置注册表
+    // 提示词：任务级覆盖优先，其次运营配置注册表；来源标注供调试（LLM 调用日志）
     const sysTpl = task?.llm?.prompts?.dialogueSystem
+    const userTpl = task?.llm?.prompts?.dialogueUser
+    const sysSrc = sysTpl ? 'task' : (getPromptSource('dialogue.system') === 'custom' ? 'global' : 'default')
+    const userSrc = userTpl ? 'task' : (getPromptSource('dialogue.user') === 'custom' ? 'global' : 'default')
     const system = sysTpl
       ? llmClient._fill(sysTpl, { taskName: task.name, slotDesc })
       : getPrompt('dialogue.system', { taskName: task.name, slotDesc })
-    const userTpl = task?.llm?.prompts?.dialogueUser
     const user = userTpl
       ? llmClient._fill(userTpl, { taskName: task.name, slotDesc, filledDesc, history, text })
       : getPrompt('dialogue.user', { taskName: task.name, slotDesc, filledDesc, history, text })
-    return llmClient.dialogueTurn(system, user, eff)
+    return llmClient.dialogueTurn(system, user, eff, { system: sysSrc, user: userSrc })
   }
 
   // ========== 意图路由（任务通道 vs FAQ 通道） ==========
