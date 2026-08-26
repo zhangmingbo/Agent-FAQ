@@ -76,10 +76,22 @@
 
 <script>
 const chat = document.getElementById('chat')
-let sid = 's' + Date.now()
 const uid = new URLSearchParams(window.location.search).get('userId') || null
 const isDebug = new URLSearchParams(window.location.search).get('debug') === '1'
 let firstMsg = true
+// 会话恢复：sessionId 持久化到 localStorage（刷新/重开页面沿用同一会话，
+// 服务端任务进度/上下文不丢；按 userId 隔离，避免多用户共用浏览器串会话）
+function getSessionId() {
+  const key = 'faq_sid_' + (uid || 'guest')
+  try {
+    const saved = localStorage.getItem(key)
+    if (saved) return saved
+  } catch (e) { /* ignore */ }
+  const fresh = 's' + Date.now() + Math.floor(Math.random() * 1000)
+  try { localStorage.setItem(key, fresh) } catch (e) { /* ignore */ }
+  return fresh
+}
+let sid = getSessionId()
 
 if (isDebug) {
   document.querySelector('.header .info p').innerHTML = '在线 <span class="debug-badge">调试模式</span>'

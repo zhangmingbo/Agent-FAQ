@@ -102,15 +102,97 @@ class RedisStore {
   sweep() { /* Redis TTL 自动过期 */ }
 }
 
+// ========== MySQL 实现（无 Redis 时持久化到 RDS，重启不丢） ==========
+
+class MySqlStore {
+  /**
+   * @param {import('mysql2/promise').Pool} pool
+   */
+  constructor(pool) {
+    this.pool = pool
+  }
+
+  async get(key) {
+    try {
+      const [rows] = await this.pool.execute(
+        'SELECT value, expire_at FROM taskflow_kv WHERE k = ?',
+        [key]
+      )
+      if (!rows.length) return null
+      const row = rows[0]
+      if (row.expire_at && Date.now() > Number(row.expire_at)) {
+        await this.del(key)
+        return null
+      }
+      try { return JSON.parse(row.value) } catch { return null }
+    } catch (e) {
+      console.error('[TaskFlow] MySQL store get 失败:', e.message)
+      return null
+    }
+  }
+
+  async set(key, value, ttlMs = 0) {
+    const raw = JSON.stringify(value)
+    const expireAt = ttlMs ? Date.now() + ttlMs : 0
+    try {
+      await this.pool.execute(
+        `INSERT INTO taskflow_kv (k, value, expire_at, updated_at)
+         VALUES (?, ?, ?, NOW())
+         ON DUPLICATE KEY UPDATE value = VALUES(value), expire_at = VALUES(expire_at), updated_at = NOW()`,
+        [key, raw, expireAt]
+      )
+      return true
+    } catch (e) {
+      console.error('[TaskFlow] MySQL store set 失败:', e.message)
+      return false
+    }
+  }
+
+  async del(key) {
+    try {
+      await this.pool.execute('DELETE FROM taskflow_kv WHERE k = ?', [key])
+      return true
+    } catch (e) {
+      console.error('[TaskFlow] MySQL store del 失败:', e.message)
+      return false
+    }
+  }
+
+  /** 列出匹配前缀的 key */
+  async keys(pattern = '*') {
+    const prefix = pattern.replace(/\*/g, '')
+    try {
+      const [rows] = await this.pool.execute(
+        "SELECT k FROM taskflow_kv WHERE k LIKE ?",
+        [prefix + '%']
+      )
+      return rows.map(r => r.k)
+    } catch (e) {
+      console.error('[TaskFlow] MySQL store keys 失败:', e.message)
+      return []
+    }
+  }
+
+  /** 清理过期条目（由引擎定时调用） */
+  async sweep() {
+    try {
+      await this.pool.execute('DELETE FROM taskflow_kv WHERE expire_at > 0 AND expire_at < ?', [Date.now()])
+    } catch (e) {
+      console.error('[TaskFlow] MySQL store sweep 失败:', e.message)
+    }
+  }
+}
+
 // ========== 工厂 ==========
 
 let cachedStore = null
 let redisClient = null
+let mysqlPool = null
 
 /**
  * 获取持久化 store 实例（单例）
  * @param {Object} config
- * @param {string} config.driver - 'redis' | 'memory' | 'auto'
+ * @param {string} config.driver - 'redis' | 'mysql' | 'memory' | 'auto'
  * @param {string} config.url - REDIS_URL
  * @param {number} config.ttl - 会话默认 TTL（毫秒）
  */
@@ -133,7 +215,29 @@ export async function getStore(config = {}) {
       console.log('[TaskFlow] 任务状态存储: Redis (' + config.url + ')')
       return cachedStore
     } catch (e) {
-      console.error('[TaskFlow] Redis 不可用，降级为内存存储:', e.message)
+      console.error('[TaskFlow] Redis 不可用，降级为 MySQL 存储:', e.message)
+    }
+  }
+
+  // 默认/降级：MySQL（RDS 持久化，重启不丢任务状态）；显式 memory 才退回内存
+  if (driver !== 'memory') {
+    try {
+      const pool = (await import('../../db/pool.js')).default
+      // 建表（幂等）
+      await pool.execute(
+        `CREATE TABLE IF NOT EXISTS taskflow_kv (
+          k VARCHAR(200) PRIMARY KEY,
+          value TEXT,
+          expire_at BIGINT DEFAULT 0,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      )
+      mysqlPool = pool
+      cachedStore = new MySqlStore(pool)
+      console.log('[TaskFlow] 任务状态存储: MySQL (RDS 持久化)')
+      return cachedStore
+    } catch (e) {
+      console.error('[TaskFlow] MySQL 存储不可用，降级为内存存储:', e.message)
     }
   }
 
@@ -142,7 +246,7 @@ export async function getStore(config = {}) {
   return cachedStore
 }
 
-/** 关闭 Redis 连接（服务退出时调用） */
+/** 关闭存储连接（服务退出时调用） */
 export async function closeStore() {
   if (redisClient) {
     try { await redisClient.quit() } catch { /* ignore */ }
@@ -151,4 +255,4 @@ export async function closeStore() {
   cachedStore = null
 }
 
-export { MemoryStore, RedisStore }
+export { MemoryStore, RedisStore, MySqlStore }
