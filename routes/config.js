@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware/errorHandler.js'
 import * as configRepo from '../repositories/configRepo.js'
 import llmPrompts from '../services/llmPrompts.js'
 import taskSuggestService from '../services/taskSuggestService.js'
+import autoExpandService from '../services/autoExpandService.js'
 import { getAllReplyTexts, setReplyTexts } from '../services/replyTexts.js'
 import { getAllMatchVocab, setMatchVocab } from '../services/matchVocab.js'
 import llmClient from '../services/llmClient.js'
@@ -74,6 +75,10 @@ export function createRouter(engine) {
       suggestMinLen: parseInt(config.suggest_min_len) || 4,
       suggestSimThreshold: parseFloat(config.suggest_sim_threshold) || 0.55,
       suggestKeywordMinScore: parseFloat(config.suggest_keyword_min_score) || 0.75,
+      // 相似问自动扩写（第二批 C）
+      expandEnabled: config.expand_enabled !== 'false',
+      expandSimThreshold: parseFloat(config.expand_sim_threshold) || 0.75,
+      expandMinCount: parseInt(config.expand_min_count) || 2,
       // 固定话术 / 匹配词表（运营可配，sys_config 存储）
       replyTexts: getAllReplyTexts(),
       matchVocab: getAllMatchVocab(),
@@ -161,6 +166,19 @@ export function createRouter(engine) {
         minLen: req.body.suggestMinLen,
         simThreshold: req.body.suggestSimThreshold,
         keywordMinScore: req.body.suggestKeywordMinScore,
+      })
+    }
+
+    // 相似问自动扩写参数（保存即生效）
+    if (req.body.expandEnabled !== undefined) { await configRepo.set('expand_enabled', req.body.expandEnabled ? 'true' : 'false') }
+    if (req.body.expandSimThreshold !== undefined) { await configRepo.set('expand_sim_threshold', req.body.expandSimThreshold) }
+    if (req.body.expandMinCount !== undefined) { await configRepo.set('expand_min_count', req.body.expandMinCount) }
+    if (req.body.expandEnabled !== undefined || req.body.expandSimThreshold !== undefined || req.body.expandMinCount !== undefined) {
+      const cfg = await configRepo.getAll()
+      autoExpandService.configure({
+        simThreshold: cfg.expand_sim_threshold,
+        minCount: cfg.expand_min_count,
+        enabled: cfg.expand_enabled !== 'false',
       })
     }
 

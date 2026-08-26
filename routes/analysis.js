@@ -6,9 +6,35 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import pool from '../db/pool.js'
+import autoExpandService from '../services/autoExpandService.js'
 
 export function createRouter(engine) {
   const router = Router()
+
+  // ===== 相似问自动扩写（第二批 C） =====
+
+  // 扫描高频未匹配并自动扩写（数据 → 相似问；审计可回滚）
+  router.post('/analysis/expand/run', asyncHandler(async (req, res) => {
+    const result = await autoExpandService.run()
+    res.json({ success: true, ...result })
+  }))
+
+  // 扩写审计列表
+  router.get('/analysis/expand/audit', asyncHandler(async (req, res) => {
+    const items = await autoExpandService.list()
+    res.json({ success: true, items })
+  }))
+
+  // 回滚一条自动扩写（删除相似问 + 标记 reverted）
+  router.post('/analysis/expand/revert', asyncHandler(async (req, res) => {
+    const { id } = req.body
+    if (!id) {
+      res.status(400).json({ success: false, message: '缺少 id' })
+      return
+    }
+    const result = await autoExpandService.revert(parseInt(id, 10))
+    res.json({ success: result.ok, message: result.message })
+  }))
 
   // 答案反馈：用户否定上轮回答的高频问答对（定位"答错的高频问题"）
   router.get('/analysis/feedback', asyncHandler(async (req, res) => {

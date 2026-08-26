@@ -841,7 +841,8 @@
                 'short-text-len': 'shortTextLen', 'short-regex-hit': 'shortRegexHit', 'short-contains-hit': 'shortContainsHit',
                 'task-vec-min-len': 'taskVecMinLen',
                 'analysis-recommend-threshold': 'analysisRecommendThreshold', 'analysis-max-confidence': 'analysisMaxConfidence',
-                'suggest-min-len': 'suggestMinLen', 'suggest-sim-threshold': 'suggestSimThreshold', 'suggest-keyword-min-score': 'suggestKeywordMinScore'
+                'suggest-min-len': 'suggestMinLen', 'suggest-sim-threshold': 'suggestSimThreshold', 'suggest-keyword-min-score': 'suggestKeywordMinScore',
+                'expand-sim-threshold': 'expandSimThreshold', 'expand-min-count': 'expandMinCount'
               };
               var any = false;
               for (var id in ids) {
@@ -852,6 +853,8 @@
                 payload[ids[id]] = v;
                 any = true;
               }
+              var expandSw = document.getElementById('expand-enabled');
+              if (expandSw) { payload.expandEnabled = expandSw.checked; any = true; }
               // 固定话术 + 匹配词表（配置驱动，不允许硬编码）
               var tp = collectTextsPayload();
               if (tp === null) return; // 含 emoji 等不支持字符，中止保存
@@ -991,6 +994,17 @@
           row('触发词最低分', 'suggest-keyword-min-score', cfg.suggestKeywordMinScore,
             '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。',
             '命中触发词但综合分仍低 → 不算候选') +
+          row('扩写相似度线', 'expand-sim-threshold', cfg.expandSimThreshold,
+            '作用：高频未匹配表达与某 FAQ 例句的语义相似度 ≥ 此值 → 自动扩写为该 FAQ 的相似问（写入即生效，分析页可回滚）。<br>调大：更保守，扩写更少更准；调小：扩写更多但可能误扩。<br>典型值：0.70~0.85，建议 0.75。',
+            '高频未匹配且相似度达线 → 自动扩写为相似问') +
+          row('扩写最低次数', 'expand-min-count', cfg.expandMinCount,
+            '作用：同一表达出现 ≥ 此次数才考虑扩写（单次提问可能是偶发，不值得扩）。<br>典型值：2~5，建议 2。',
+            '同一表达出现 ≥ 此次数才扩写',
+            { min: 1, max: 10, step: 1 }) +
+          '<div class="cfg-item">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:6px">自动扩写开关</div>' +
+            '<label style="font-size:13px;display:flex;align-items:center;gap:8px"><input id="expand-enabled" type="checkbox" ' + (cfg.expandEnabled ? 'checked' : '') + '> 开启（分析页"扫描扩写"按钮可用）</label>' +
+          '</div>' +
           '</div>';
       });
     }
@@ -1964,7 +1978,7 @@
   }
 
 
-  // ===== 智能分析页：注入「答案反馈」+「任务漏斗」区块 =====
+  // ===== 智能分析页：注入「答案反馈」+「任务漏斗」+「相似问自动扩写」区块 =====
   function loadAnalysisFeedback() {
     var box = document.getElementById('analysis-feedback-body');
     if (!box) return;
@@ -2022,6 +2036,71 @@
       box.innerHTML = html;
     });
   }
+  // 相似问自动扩写：扫描高频未匹配 → 自动扩写为 FAQ 相似问（审计可回滚）
+  function loadAnalysisExpand() {
+    var box = document.getElementById('analysis-expand-body');
+    if (!box) return;
+    box.innerHTML = '加载中...';
+    api('GET', '/api/analysis/expand/audit', null, function(res) {
+      var items = (res && res.items) || [];
+      if (!items.length) {
+        box.innerHTML = '<div style="color:#999;padding:6px 0">暂无自动扩写记录（点击上方"扫描扩写"处理高频未匹配问题）</div>';
+        return;
+      }
+      var html = '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
+        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">用户原话</th>' +
+        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">扩写到 FAQ</th>' +
+        '<th style="width:70px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">相似度</th>' +
+        '<th style="width:100px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">时间</th>' +
+        '<th style="width:90px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">状态</th>' +
+        '<th style="width:80px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">操作</th>' +
+        '</tr></thead><tbody>';
+      items.forEach(function(it) {
+        var st = it.status === 'applied'
+          ? '<span class="status-tag on">已扩写</span>'
+          : '<span class="status-tag">已回滚</span>';
+        var op = it.status === 'applied'
+          ? '<button class="btn-sm" data-expand-revert="' + it.id + '">回滚</button>'
+          : '';
+        html += '<tr>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all">' + esc(it.user_text) + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all">' + esc(it.faq_name || it.faq_code) + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + (it.similarity ? Math.round(it.similarity * 100) + '%' : '-') + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;color:#888">' + esc(it.created_time || '') + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + st + '</td>' +
+          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + op + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      box.innerHTML = html;
+      box.querySelectorAll('[data-expand-revert]').forEach(function(btn) {
+        btn.onclick = function() {
+          var id = btn.getAttribute('data-expand-revert');
+          if (!confirm('确认回滚这条自动扩写？将删除对应相似问。')) return;
+          api('POST', '/api/analysis/expand/revert', { id: parseInt(id, 10) }, function(res2) {
+            alert(res2.message || '已回滚');
+            loadAnalysisExpand();
+          });
+        };
+      });
+    });
+  }
+  function runAnalysisExpand() {
+    var box = document.getElementById('analysis-expand-body');
+    if (box) box.innerHTML = '扫描中...';
+    api('POST', '/api/analysis/expand/run', {}, function(res) {
+      var added = (res && res.added) || [];
+      if (box) {
+        if (added.length) {
+          box.innerHTML = '<div style="color:#67c23a;padding:6px 0">本次自动扩写 ' + added.length + ' 条：' + added.map(function(a) { return esc(a.text); }).join('、') + '</div>';
+        } else {
+          box.innerHTML = '<div style="color:#999;padding:6px 0">本次无符合条件的自动扩写（高频未匹配中未发现与 FAQ 相似度 ≥ 阈值的新表达）</div>';
+        }
+      }
+      loadAnalysisExpand();
+    }, function() {
+      if (box) box.innerHTML = '<div style="color:#f56c6c;padding:6px 0">扫描失败</div>';
+    });
+  }
   function injectAnalysisExtra() {
     var main = document.querySelector('.el-main, .app-main');
     if (!main || !main.textContent || main.textContent.indexOf('基于聊天日志数据') === -1) return;
@@ -2041,14 +2120,27 @@
           '<b style="font-size:13px;color:#333">任务漏斗</b>' +
           '<button class="btn-sm" data-af-refresh2>⟳ 刷新</button></div>' +
         '<div id="analysis-funnel-body" style="font-size:12px">加载中...</div>' +
+      '</div>' +
+      '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px;margin-top:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+          '<b style="font-size:13px;color:#333">相似问自动扩写（高频未匹配 → FAQ 相似问）</b>' +
+          '<div style="display:flex;gap:6px">' +
+            '<button class="btn-sm" data-expand-run>⚡ 扫描扩写</button>' +
+            '<button class="btn-sm" data-af-refresh3>⟳ 刷新</button></div></div>' +
+        '<div id="analysis-expand-body" style="font-size:12px">加载中...</div>' +
       '</div>';
     main.appendChild(wrap);
     var r1 = wrap.querySelector('[data-af-refresh]');
     if (r1) r1.onclick = loadAnalysisFeedback;
     var r2 = wrap.querySelector('[data-af-refresh2]');
     if (r2) r2.onclick = loadAnalysisFunnel;
+    var r3 = wrap.querySelector('[data-af-refresh3]');
+    if (r3) r3.onclick = loadAnalysisExpand;
+    var runBtn = wrap.querySelector('[data-expand-run]');
+    if (runBtn) runBtn.onclick = runAnalysisExpand;
     loadAnalysisFeedback();
     loadAnalysisFunnel();
+    loadAnalysisExpand();
   }
   var analysisObserver = new MutationObserver(injectAnalysisExtra);
   analysisObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
