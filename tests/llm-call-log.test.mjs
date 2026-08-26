@@ -10,10 +10,9 @@ let pass = 0, fail = 0
 function t(name, cond, extra) { if (cond) { pass++; console.log('  ✓', name) } else { fail++; console.log('  ✗', name, extra !== undefined ? JSON.stringify(extra) : '') } }
 
 console.log('===== LLM 调用日志 =====')
-// 触发任务对话（LLM 模式），产生 dialogue 调用
+// 触发 trigger 节点（任务/FAQ 仲裁拿不准时 LLM 判定，稳定产生 LLM 调用）
 const sid = 'llmlog-' + Date.now()
-await chat('怎么预约上门服务', sid)
-await chat('13800138000', sid)
+await chat('燃气表怎么换', sid)
 
 // 查询该会话的 LLM 调用日志
 const r = await fetch(BASE + '/api/debug/llm-calls?sessionId=' + encodeURIComponent(sid), { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())

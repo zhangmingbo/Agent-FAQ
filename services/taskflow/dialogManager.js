@@ -89,7 +89,7 @@ class DialogManager {
       }
       const step = this._findStepBySlot(state, nextUnfilled[0])
       state.currentStep = step?.key
-      const prompt = step ? this._slotDef(state, step)?.prompt || step.prompt : `请提供${nextUnfilled[1].label}`
+      const prompt = step ? this._slotDef(state, step)?.prompt || step.prompt : getReply('slot_prompt_fallback', { label: nextUnfilled[1].label })
       return {
         reply: prefix + (prompt || ''),
         isComplete: false,
@@ -170,7 +170,7 @@ class DialogManager {
           if (unfilled) {
             const s = this._findStepBySlot(state, unfilled[0])
             state.currentStep = s?.key
-            const p = s ? (this._slotDef(state, s)?.prompt || s.prompt) : `请提供${unfilled[1].label}`
+            const p = s ? (this._slotDef(state, s)?.prompt || s.prompt) : getReply('slot_prompt_fallback', { label: unfilled[1].label })
             return this._withQuestion(text, state, {
               reply: (reply || '') + p,
               isComplete: false,
@@ -271,7 +271,7 @@ class DialogManager {
     }
     // 防御：步骤循环过深
     return {
-      reply: reply || '请继续提供所需信息。',
+      reply: reply || getReply('slot_continue_hint'),
       isComplete: false,
       extracted: true,
       reask: false,
@@ -303,7 +303,7 @@ class DialogManager {
     if (/^(确认|提交|是的|就是)$/.test(text.trim())) {
       const missing = Object.entries(state.slots).filter(([_, s]) => s.required && !s.filled)
       if (missing.length > 0) {
-        return { extracted: false, reask: `还差：${missing.map(([_, s]) => s.label).join('、')}，请继续提供。` }
+        return { extracted: false, reask: getReply('slot_missing_hint', { labels: missing.map(([_, s]) => s.label).join('、') }) }
       }
     }
 
@@ -354,7 +354,7 @@ class DialogManager {
       // 结构化槽位（regex/number/enum）：输入非空且不像闲聊 → 视为格式错误，直接重问
       // 探测模式下不重问（避免"地址X，电话Y"场景下地址被问成电话）
       if (!probing && method !== 'text' && text.trim().length > 0 && !extractor.isQuestion(text)) {
-        return { extracted: false, reask: slotDef.validate?.reask || `请提供有效的${slotDef.label || ''}` }
+        return { extracted: false, reask: slotDef.validate?.reask || getReply('slot_reask_invalid', { label: slotDef.label || '' }) }
       }
       return { extracted: false, reask: '' }
     }
@@ -373,7 +373,7 @@ class DialogManager {
     }
     console.log(`[TaskFlow] 已填槽位 ${slotDef.key} = "${finalValue}"`)
     _t('任务对话·填入槽位', { slot: slotDef.key, value: finalValue }, 'rule')
-    return { extracted: true, note: `已记录：${slotDef.label || slotDef.key}。\n` }
+    return { extracted: true, note: getReply('slot_recorded', { label: slotDef.label || slotDef.key }) }
   }
 
   // ========== 智能辅助 ==========
@@ -700,7 +700,7 @@ class DialogManager {
     console.log(`[TaskFlow] 进入子任务: ${childDef.code}`)
     traceService.traceStep(trace, '任务对话·进入子任务', { child: childDef.code, parent: state.stack[state.stack.length - 1]?.taskCode }, 'task')
     return {
-      reply: replyPrefix + `好的，开始「${childDef.name}」。\n` + (childDef.steps[0]?.prompt || '请提供信息'),
+      reply: replyPrefix + getReply('subtask_start', { name: childDef.name }) + (childDef.steps[0]?.prompt || getReply('subtask_first_prompt')),
       isComplete: false,
       extracted: true,
       reask: false,
@@ -725,8 +725,8 @@ class DialogManager {
     // 返回后提示父任务下一个需要的信息
     const step = this._currentStep(state)
     const prompt = step?.type === 'collect'
-      ? (this._slotDef(state, step)?.prompt || step.prompt || '请继续提供信息')
-      : '请继续。'
+      ? (this._slotDef(state, step)?.prompt || step.prompt || getReply('slot_continue_hint'))
+      : getReply('slot_continue_short')
     return {
       reply: (childDoneMsg ? childDoneMsg + '\n' : '') + prompt,
       isComplete: false,
@@ -785,7 +785,7 @@ class DialogManager {
     }
 
     // 提问话术：枚举槽位自动追加可选值，让用户知道怎么回答（话术已含选项则跳过）
-    let prompt = step.prompt || def.prompt || `请提供${def.label || step.slot_key}`
+    let prompt = step.prompt || def.prompt || getReply('slot_prompt_fallback', { label: def.label || step.slot_key })
     if (extract.method === 'enum') {
       const options = Array.isArray(extract.enum)
         ? extract.enum
@@ -1007,7 +1007,7 @@ class DialogManager {
         label: s.label || s.key,
         aliases: s.aliases || [],
         required: s.required !== false,
-        prompt: s.prompt || `请提供${s.label || s.key}`,
+        prompt: s.prompt || getReply('slot_prompt_fallback', { label: s.label || s.key }),
       }
     }
     return slots

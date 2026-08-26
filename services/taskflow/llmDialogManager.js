@@ -152,7 +152,7 @@ class LLMDialogManager {
     // 4.3) 确定性分支判定（LLM 版执行 branch 步骤：条件判断复用 condition.js）
     await this._runBranchSteps(state, trace)
 
-    let reply = result.reply || (applied ? '好的，已记录。' : '请继续。')
+    let reply = result.reply || (applied ? getReply('llm_recorded') : getReply('slot_continue_short'))
 
     // 4.5) 中间"调用接口"步骤（确定性触发，不依赖 LLM 信号）：前置槽位填好 + 所在分支匹配时执行
     const apiReplies = await this._runPendingApiSteps(state, trace)

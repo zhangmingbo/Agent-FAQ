@@ -70,6 +70,16 @@ export const DEFAULT_REPLY_TEXTS = {
   validate_phone: '请输入正确的11位手机号',
   validate_enum: '请输入：{options}',
   validate_format: '输入格式不正确',
+
+  // ===== 规则版对话兜底话术（任务未配置 prompt/reask 时的默认值，运营可改） =====
+  slot_reask_invalid: '请提供有效的{label}',         // 兜底：结构化槽位格式错误重问
+  slot_continue_hint: '请继续提供所需信息。',         // 兜底：无进展时提示继续
+  slot_continue_short: '请继续。',                   // 兜底：返回父任务后简短提示
+  subtask_start: '好的，开始「{name}」。\n',          // 兜底：进入子任务提示
+  subtask_first_prompt: '请提供信息',                // 兜底：子任务第一步无 prompt
+  slot_missing_hint: '还差：{labels}，请继续提供。',   // 兜底：控制词但还有必填未填
+  slot_recorded: '已记录：{label}。\n',               // 兜底：提取成功提示
+  llm_recorded: '好的，已记录。',                     // 兜底：LLM 版提取成功无 reply
 }
 
 /** 当前生效的话术（内存态，启动时从 sys_config 合并加载，保存即热更新） */

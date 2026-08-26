@@ -23,6 +23,7 @@
 
 import pool from '../../db/pool.js'
 import { getTriggerSynonyms } from '../matchVocab.js'
+import { getReply } from '../replyTexts.js'
 
 class TaskDefs {
   constructor() {
@@ -207,7 +208,7 @@ class TaskDefs {
         slot_key: s.key,
         label: s.label || s.key,
         required: s.required !== false,
-        prompt: s.prompt || `请提供${s.label || s.key}`,
+        prompt: s.prompt || getReply('slot_prompt_fallback', { label: s.label || s.key }),
         extract: { method: s.extract_type || 'text', rule: s.extract_rule || '' },
         next,
       })
