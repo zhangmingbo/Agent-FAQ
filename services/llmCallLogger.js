@@ -22,6 +22,11 @@ export function setCurrentSession(sessionId) {
   currentSession = sessionId || null
 }
 
+/** 读取当前会话（控制台打印 LLM 调用时关联用） */
+export function getCurrentSession() {
+  return currentSession
+}
+
 /**
  * 记录一次 LLM 调用（llmClient.chat 埋点调用）
  * @param {Object} r - { node, model, messages, response, status, error, durationMs, sessionId? }
@@ -78,4 +83,4 @@ function _truncate(s, n = 400) {
   return t.length > n ? t.slice(0, n) + '…' : t
 }
 
-export default { log, query, stats, clear, setCurrentSession }
+export default { log, query, stats, clear, setCurrentSession, getCurrentSession }

@@ -165,8 +165,10 @@ class LLMClient {
       const data = await res.json()
       const content = data.choices?.[0]?.message?.content
       if (!content) throw new Error('LLM 返回为空')
-      // 埋点：记录本次调用（LLM 调用日志，会话调试查看）
+      // 埋点：控制台打印每次调用的入参与返回（排查 LLM 行为），并记录到内存日志
+      const durationMs = Date.now() - startedAt
       try {
+        this._printLlmCall(opts, messages, content, durationMs, null)
         llmCallLogger.log({
           sessionId: opts.sessionId,
           node: opts.node,
@@ -174,13 +176,15 @@ class LLMClient {
           messages,
           response: content,
           status: 'ok',
-          durationMs: Date.now() - startedAt,
+          durationMs,
         })
       } catch (e) { /* 埋点失败不影响主流程 */ }
       return content.trim()
     } catch (e) {
-      // 埋点：记录失败调用
+      // 埋点：控制台打印失败调用 + 记录到内存日志
+      const durationMs = Date.now() - startedAt
       try {
+        this._printLlmCall(opts, messages, '', durationMs, e.message)
         llmCallLogger.log({
           sessionId: opts.sessionId,
           node: opts.node,
@@ -188,12 +192,38 @@ class LLMClient {
           messages,
           status: 'error',
           error: e.message,
-          durationMs: Date.now() - startedAt,
+          durationMs,
         })
       } catch (e2) { /* ignore */ }
       throw e
     } finally {
       clearTimeout(timer)
+    }
+  }
+
+  /**
+   * 打印每次 LLM 调用的入参与返回（服务端控制台，排查用）
+   * 输出格式：
+   *   [LLM-CALL] 节点: dialogue | 会话: xxx | 模型: deepseek-chat | 耗时: 800ms
+   *   [LLM-IN ] system: ... / user: ...
+   *   [LLM-OUT] ...
+   */
+  _printLlmCall(opts, messages, response, durationMs, error) {
+    const node = opts.node || 'unknown'
+    // 会话：优先显式传入，其次用当前会话上下文（faq-engine 每轮设置）
+    const sid = opts.sessionId || llmCallLogger.getCurrentSession?.() || '-'
+    const model = opts.model || (this.config && this.config.model) || 'deepseek-chat'
+    const status = error ? '失败' : '成功'
+    console.log(`\n[LLM-CALL] 节点: ${node} | 会话: ${sid} | 模型: ${model} | 状态: ${status} | 耗时: ${durationMs}ms`)
+    for (const m of messages || []) {
+      const role = m.role === 'system' ? 'IN(system)' : 'IN(user)'
+      const content = String(m.content || '').replace(/\n/g, '⏎').slice(0, 600)
+      console.log(`[LLM-${role}] ${content}`)
+    }
+    if (error) {
+      console.log(`[LLM-ERROR] ${error}`)
+    } else {
+      console.log(`[LLM-OUT] ${String(response || '').replace(/\n/g, '⏎').slice(0, 600)}`)
     }
   }
 
