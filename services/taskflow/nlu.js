@@ -481,7 +481,7 @@ class TaskNLU {
     //    如"报修一下"——与 matchTask 的 vecMinLen 门槛一致，避免槽位回答被误判为新任务）
     if (!byRule && t.length < (this.arbConfig.vecMinLen ?? 5)) {
       _t('跳过统一仲裁', { reason: '短文本且无触发词', len: t.length })
-      return null
+      return { code: null, channel: null, shortText: true }
     }
 
     // 3) 统一语义仲裁（触发词命中按配置抬升任务侧，但不免检——允许 FAQ 高置信反超）
@@ -496,9 +496,10 @@ class TaskNLU {
 
     // 4) 只尊重仲裁判定：明确 task_new 且不是当前任务 → 切换；其余（faq/clarify/域外）一律不切
     if (arb.channel === 'task_new' && arb.taskCode && arb.taskCode !== ctx.currentCode) {
-      return arb.taskCode
+      return { code: arb.taskCode, channel: arb.channel, taskScore: arb.taskScore, faqScore: arb.faqScore }
     }
-    return null
+    // 附带仲裁详情（channel 供调用方判断域外输入——任务活跃时 out_of_scope 说明与所有业务都弱相关）
+    return { code: null, channel: arb.channel, taskScore: arb.taskScore, faqScore: arb.faqScore }
   }
 
   /**

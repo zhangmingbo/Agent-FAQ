@@ -467,16 +467,24 @@ class FAQEngine {
         //    用户明确要办另一件事（如"我想预约安装净水器"）→ 先切换任务。
         //    必须放在 LLM 提取之前——否则 LLM 会把新任务意图当"任务内对话"消化掉，
         //    永远触发不了 task_new（历史 bug：换表任务中"我想预约安装净水器"被 LLM 反问）。
-        const newTaskCode = await this.taskEngine.nlu.detectNewTask(text, {
+        const detect = await this.taskEngine.nlu.detectNewTask(text, {
           tasks: [...this.taskEngine.taskDefs.values()],
           currentCode: taskState.taskCode,
           trace: traceSteps,
         })
+        const newTaskCode = detect && detect.code
         if (newTaskCode) {
           console.log(`[TASK] 检测到新任务意图（确定性判定）: ${newTaskCode}，当前任务暂存`)
           _t('新任务意图（确定性判定）', { from: taskState.taskCode, to: newTaskCode }, 'task')
           await this.taskEngine.stash(sessionId, traceSteps)
           response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+        } else if (detect && detect.channel === 'out_of_scope' && !this._looksLikeSlotAnswer(text, taskState)) {
+          // 域外输入快检：任务活跃时用户说与所有业务都无关的话（如"我电脑坏了"），
+          // 不进任务对话——否则 LLM 会把域外话题硬套成任务话术（历史 bug）。
+          // 例外：裸槽位回答（纯数字电话/短句/含槽位标签）仍交给任务对话提取。
+          console.log('[TASK] 域外输入（任务活跃），不进入任务对话，走业务引导')
+          _t('域外输入快检（任务活跃）', { taskCode: taskState.taskCode, channel: detect.channel }, 'warn')
+          response = await this._handleFallback(text, context, { confidence: 0 })
         } else {
         // 任务进行中：先让任务对话（LLM 提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
         // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
@@ -1138,6 +1146,42 @@ class FAQEngine {
         similarity: r.similarity,
       })) || [],
     }
+  }
+
+  /**
+   * 判断输入是否像"正在回答当前任务的槽位问题"：
+   * 结合当前未填的第一个必填槽位类型判断——
+   * - 电话/手机/号码类：输入须含数字（"13800138000""电话是138"）
+   * - 地址类：长度 ≥ 4 或含地址词
+   * - 姓名类：短句或含"姓/叫"
+   * - 其他自由文本槽（原因/描述/备注/服务类型）：一律放行（可能是回答）
+   * 放行 → 继续交给任务对话提取；拦截 → 域外/无关话术
+   */
+  _looksLikeSlotAnswer(text, taskState) {
+    const t = String(text || '').trim()
+    if (!t) return false
+    // 找到当前未填的第一个必填槽位
+    const slots = (taskState && taskState.slots) || {}
+    let target = null
+    for (const [key, s] of Object.entries(slots)) {
+      if (s && s.required && !s.filled) { target = { key, ...s }; break }
+    }
+    const label = (target && (target.label || target.key)) || ''
+    const isPhone = /(电话|手机|号码|联系|电话是|手机号)/.test(label)
+    const isAddress = /(地址|住址|小区|门牌|位置)/.test(label)
+    const isName = /(姓名|名字|称呼)/.test(label)
+    if (isPhone) {
+      // 电话槽：纯数字或含数字的输入 → 放行；"我电脑坏了"（无数字）→ 拦截
+      return /\d/.test(t)
+    }
+    if (isAddress) {
+      return t.length >= 4 || /(小区|栋|单元|路|街|号|村|镇)/.test(t)
+    }
+    if (isName) {
+      return t.length <= 4 || /(姓|叫|是)/.test(t)
+    }
+    // 自由文本槽（原因/描述/服务类型等）→ 无法从格式判断，一律放行交给任务对话
+    return true
   }
 
   /**
