@@ -18,16 +18,30 @@ export function createRouter() {
   }))
 
   // 表达挖掘：未触发任务的高频表达 + 任务匹配建议（运营工具，机器推荐人决定）
+  // 推理在后台定时预计算（suggest_cache 表），此处只读缓存，打开页面零推理
   router.get('/tasks/suggestions', asyncHandler(async (req, res) => {
-    const limit = parseInt(req.query.limit) || 50
-    // 注入共享 NLP 引擎（与 taskEngine 同一个，避免二次加载模型）
+    let data = await taskSuggestService.getCached()
+    if (!data) {
+      // 后台任务尚未跑出结果（如首次启动瞬间）：即时算一次并落库
+      taskSuggestService.setNlpEngine(taskEngine.nlu.nlpEngine)
+      await taskSuggestService.refreshCache({
+        taskDefs: taskEngine.taskDefs,
+        vectors: taskEngine.nlu._vectors,
+      })
+      data = await taskSuggestService.getCached()
+    }
+    res.json({ success: true, data: data || { items: [], total: 0, computedAtLabel: '' } })
+  }))
+
+  // 手动触发后台预计算（管理后台「重新挖掘」按钮）
+  router.post('/tasks/suggestions/refresh', asyncHandler(async (req, res) => {
     taskSuggestService.setNlpEngine(taskEngine.nlu.nlpEngine)
-    const result = await taskSuggestService.suggest({
-      limit,
+    await taskSuggestService.refreshCache({
       taskDefs: taskEngine.taskDefs,
       vectors: taskEngine.nlu._vectors,
     })
-    res.json({ success: true, data: result })
+    const data = await taskSuggestService.getCached()
+    res.json({ success: true, data, message: '已重新计算' })
   }))
 
   // 删除（忽略）一条候选话术：加入忽略列表（sys_config.suggest_ignored），下次挖掘不再出现
@@ -38,6 +52,9 @@ export function createRouter() {
       return
     }
     await taskSuggestService.ignore(text)
+    // 忽略即数据变更 → 后台重算一次（不阻塞响应）
+    taskSuggestService.setNlpEngine(taskEngine.nlu.nlpEngine)
+    taskSuggestService.refreshCache({ taskDefs: taskEngine.taskDefs, vectors: taskEngine.nlu._vectors }).catch(() => {})
     res.json({ success: true, message: '已删除该话术，下次挖掘不再出现' })
   }))
 
@@ -71,7 +88,9 @@ export function createRouter() {
       on_complete: def.on_complete,
       status: def.status,
     })
-    taskSuggestService.invalidateCache() // 例句变更 → 表达挖掘结果失效，下次重挖
+    // 例句变更 → 后台重算一次（不阻塞响应）
+    taskSuggestService.setNlpEngine(taskEngine.nlu.nlpEngine)
+    taskSuggestService.refreshCache({ taskDefs: taskEngine.taskDefs, vectors: taskEngine.nlu._vectors }).catch(() => {})
     res.json({ success: true, message: `已采纳，例句已加入「${def.name}」` })
   }))
 

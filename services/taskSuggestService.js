@@ -16,6 +16,7 @@
 import * as chatLogRepo from '../repositories/chatLogRepo.js'
 import { cosineSimilarity } from '../src/similarity.js'
 import * as configRepo from '../repositories/configRepo.js'
+import pool from '../db/pool.js'
 
 /** 闲聊/无意义噪声过滤（避免"我的妈/啊啊啊"污染候选池） */
 const NOISE_RE = /^(嗯|哦|啊|哈|呵|呃|哦哦|嗯嗯|好的|好|ok|okay|谢谢|感谢|再见|拜拜|88|哈哈|呵呵|呵呵呵|我的妈|天哪|啊啊|哇|咦|唉|哎|嗯嗯嗯|.。！!?？~\s]{1,})$|^(.)\1{2,}$|^[.。…！!?？~～\-—_]{2,}$|^\d+$|^[\u4e00-\u9fa5]{1,2}$/
@@ -99,11 +100,6 @@ class TaskSuggestService {
     const vectors = opts.vectors || new Map() // code -> [vec]
     const logRepo = opts.logRepo || this.logRepo
 
-    // 缓存命中（同一 limit 且未过期 → 直接返回，避免每次 500ms+ 批量编码）
-    if (!opts.noCache && this._cache && this._cache.limit === limit && Date.now() - this._cache.time < this._cacheTtl) {
-      return this._cache.result
-    }
-
     // 1) 未触发任务的高频表达（复用仓库层聚合）
     let candidates = []
     try {
@@ -156,9 +152,65 @@ class TaskSuggestService {
       })
     }
 
-    const result = { items, total: items.length }
-    this._cache = { time: Date.now(), limit, result }
+    return { items, total: items.length }
+  }
+
+  /**
+   * 后台预计算：完整跑一次挖掘（含模型推理），结果落库到 suggest_cache 表。
+   * 定时任务 / 启动时 / 运营变更后调用——前端打开页面只读缓存，不触发推理。
+   * @param {Object} opts - { taskDefs, vectors }（缺省时由调用方注入后传入）
+   */
+  async refreshCache(opts = {}) {
+    const taskDefs = opts.taskDefs || new Map()
+    const vectors = opts.vectors || new Map()
+    const t0 = Date.now()
+    let result
+    try {
+      result = await this.suggest({ limit: 50, taskDefs, vectors, noCache: true })
+    } catch (e) {
+      console.error('[Suggest] 后台预计算失败:', e.message)
+      return null
+    }
+    const payload = { items: result.items, total: result.total, computedAt: new Date().toISOString(), durationMs: Date.now() - t0 }
+    try {
+      await pool.execute(
+        `CREATE TABLE IF NOT EXISTS suggest_cache (
+          id INT PRIMARY KEY,
+          data_json LONGTEXT,
+          computed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_id (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      )
+      await pool.execute(
+        `INSERT INTO suggest_cache (id, data_json, computed_at)
+         VALUES (1, ?, NOW())
+         ON DUPLICATE KEY UPDATE data_json = VALUES(data_json), computed_at = NOW()`,
+        [JSON.stringify(payload)]
+      )
+      this._cache = { time: Date.now(), limit: 50, result }
+      console.log(`[Suggest] 后台预计算完成: ${result.items.length} 条（耗时 ${Date.now() - t0}ms）`)
+    } catch (e) {
+      console.error('[Suggest] 预计算结果落库失败:', e.message)
+    }
     return result
+  }
+
+  /** 读取后台预计算结果（接口用，零推理）；无缓存时返回 null */
+  async getCached() {
+    try {
+      const [rows] = await pool.execute(
+        'SELECT data_json, computed_at FROM suggest_cache WHERE id = 1'
+      )
+      if (!rows.length) return null
+      const data = JSON.parse(rows[0].data_json)
+      return {
+        ...data,
+        computedAtLabel: rows[0].computed_at ? String(rows[0].computed_at).replace('T', ' ').slice(0, 19) : '',
+      }
+    } catch (e) {
+      console.error('[Suggest] 读取预计算缓存失败:', e.message)
+      return null
+    }
   }
 
   /**

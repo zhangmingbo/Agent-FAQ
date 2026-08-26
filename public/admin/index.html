@@ -664,8 +664,19 @@
         }
       });
 
-      // 4) 重新挖掘按钮
-      document.getElementById('suggest-issues-refresh').onclick = function(){ loadSuggestions(area); };
+      // 4) 重新挖掘按钮：触发后台预计算（推理在服务端，完成后自动刷新展示）
+      document.getElementById('suggest-issues-refresh').onclick = function(){
+        var btn = document.getElementById('suggest-issues-refresh');
+        var oldTxt = btn.textContent;
+        btn.textContent = '计算中...';
+        btn.disabled = true;
+        api('POST', '/api/tasks/suggestions/refresh', {}, function(res) {
+          btn.textContent = oldTxt;
+          btn.disabled = false;
+          if (res && res.success) { loadSuggestions(area); }
+          else { alert((res && res.message) || '计算失败'); }
+        }, function(){ btn.textContent = oldTxt; btn.disabled = false; alert('计算失败'); });
+      };
     }
   })();
 
@@ -1592,7 +1603,7 @@
       }
       var items = (res.data && res.data.items) || [];
       var countEl = document.getElementById('suggest-issues-count');
-      if (countEl) countEl.textContent = '共 ' + ((res.data && res.data.total) || items.length) + ' 条待挖掘表达';
+      if (countEl) countEl.textContent = '共 ' + ((res.data && res.data.total) || items.length) + ' 条待挖掘表达' + (res.data && res.data.computedAtLabel ? '｜数据时间 ' + res.data.computedAtLabel : '');
       if (!items.length) {
         area.innerHTML = '<div class="task-empty"><div class="icon">✅</div><div>暂无待挖掘表达（暂无匹配到任务的未命中话术）</div></div>';
         return;

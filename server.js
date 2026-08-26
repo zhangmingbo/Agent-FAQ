@@ -252,6 +252,18 @@ async function start() {
     taskEngine.cleanupStale().catch(e => console.error('[TaskFlow] 清理失败:', e.message))
   }, config.session.cleanupInterval)
 
+  // 表达挖掘后台预计算：推理完全在后台做，前端打开页面只读结果（不阻塞启动）
+  const suggestRefresh = () => {
+    taskSuggestService.setNlpEngine(engine.recognizer.nlpEngine)
+    taskSuggestService.refreshCache({
+      taskDefs: taskEngine.taskDefs,
+      vectors: taskEngine.nlu._vectors,
+    }).catch(e => console.error('[Suggest] 后台预计算异常:', e.message))
+  }
+  const SUGGEST_REFRESH_MS = 10 * 60 * 1000 // 每 10 分钟后台重算一次（日志有新数据才变化）
+  const suggestTimer = setInterval(suggestRefresh, SUGGEST_REFRESH_MS)
+  suggestRefresh() // 启动后立即预计算一次
+
   // ========== 优雅关闭 ==========
   async function shutdown(signal) {
     console.log(`\n[${signal}] 正在关闭服务...`)
@@ -263,6 +275,7 @@ async function start() {
 
     // 清理定时器
     clearInterval(cleanupTimer)
+    clearInterval(suggestTimer)
 
     // 关闭任务引擎存储（Redis 连接）
     try {
