@@ -71,6 +71,7 @@ export function createRouter() {
       on_complete: def.on_complete,
       status: def.status,
     })
+    taskSuggestService.invalidateCache() // 例句变更 → 表达挖掘结果失效，下次重挖
     res.json({ success: true, message: `已采纳，例句已加入「${def.name}」` })
   }))
 

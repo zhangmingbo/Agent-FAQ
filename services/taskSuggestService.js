@@ -41,6 +41,14 @@ class TaskSuggestService {
     this.keywordMinScore = 0.75
     /** 运营手动删除（忽略）的候选话术，持久化在 sys_config.suggest_ignored */
     this.ignored = []
+    /** 挖掘结果缓存：表达挖掘数据短期不变，重复打开/切页签应秒开（TTL 60s，忽略/采纳后失效） */
+    this._cache = null
+    this._cacheTtl = 60 * 1000
+  }
+
+  /** 使缓存失效（运营做了忽略/采纳等数据变更后调用） */
+  invalidateCache() {
+    this._cache = null
   }
 
   /** 启动/配置时加载已忽略话术列表（sys_config.suggest_ignored，JSON 数组） */
@@ -63,6 +71,7 @@ class TaskSuggestService {
     if (!t) return false
     if (!this.ignored.includes(t)) this.ignored.push(t)
     await configRepo.set('suggest_ignored', JSON.stringify(this.ignored))
+    this.invalidateCache()
     return true
   }
 
@@ -90,6 +99,11 @@ class TaskSuggestService {
     const vectors = opts.vectors || new Map() // code -> [vec]
     const logRepo = opts.logRepo || this.logRepo
 
+    // 缓存命中（同一 limit 且未过期 → 直接返回，避免每次 500ms+ 批量编码）
+    if (!opts.noCache && this._cache && this._cache.limit === limit && Date.now() - this._cache.time < this._cacheTtl) {
+      return this._cache.result
+    }
+
     // 1) 未触发任务的高频表达（复用仓库层聚合）
     let candidates = []
     try {
@@ -98,8 +112,8 @@ class TaskSuggestService {
       console.error('[Suggest] 读取未匹配日志失败:', e.message)
     }
 
-    // 2) 过滤噪声 + 匹配任务（已忽略的话术直接跳过）
-    const items = []
+    // 2) 过滤噪声，收集候选池（已忽略的话术直接跳过）
+    const pool = []
     for (const c of candidates) {
       const text = (c.text || '').trim()
       if (text.length < this.minLen) continue
@@ -108,32 +122,62 @@ class TaskSuggestService {
       if (NEGATION_RE.test(text)) continue
       if (CANCEL_RE.test(text)) continue
       if (PRAISE_RE.test(text)) continue
+      pool.push({ text, count: c.count || 1, lastTime: c.lastTime || null })
+      if (pool.length >= limit) break
+    }
 
-      const match = await this._matchTask(text, taskDefs, vectors)
+    // 3) 批量编码所有候选（一次模型调用，避免每条候选各推理一次——原实现
+    //    每条 encodeQuery 一次 CPU 推理，50 条候选 ≈ 50 次模型调用，加载很慢）
+    let qvs = null
+    if (this.nlpEngine && pool.length > 0) {
+      try {
+        qvs = await this.nlpEngine.encodeTexts(pool.map(p => p.text))
+      } catch (e) {
+        console.error('[Suggest] 批量编码失败，降级逐条:', e.message)
+      }
+    }
+
+    // 4) 逐条匹配任务
+    const items = []
+    for (let i = 0; i < pool.length; i++) {
+      const c = pool[i]
+      const qv = (qvs && qvs[i]) || null
+      const match = await this._matchTask(c.text, taskDefs, vectors, qv)
       if (!match) continue // 匹配不到任何任务 → 不算候选（避免纯闲聊入池）
 
       items.push({
-        text,
-        count: c.count || 1,
-        lastTime: c.lastTime || null,
+        text: c.text,
+        count: c.count,
+        lastTime: c.lastTime,
         matchedTask: match.taskCode,
         matchedName: match.taskName,
         score: match.score,
         reason: match.reason, // 'vector' | 'keyword'
       })
-      if (items.length >= limit) break
     }
 
-    return { items, total: items.length }
+    const result = { items, total: items.length }
+    this._cache = { time: Date.now(), limit, result }
+    return result
   }
 
   /**
    * 单条表达 → 最像哪个任务
    * 双信号：意图例句向量相似度（主要） + 触发词命中（辅助）
+   * @param {number[]|null} precomputedQv - 外部已批量编码的查询向量（复用，避免重复推理）
    * @returns {Promise<{taskCode, taskName, score, reason}|null>}
    */
-  async _matchTask(text, taskDefs, vectors) {
+  async _matchTask(text, taskDefs, vectors, precomputedQv = null) {
     let best = null
+
+    // 查询向量只编码一次，供所有任务复用（原实现放在任务循环内，
+    // 一条文本被编码 N 次，50 条候选 × 多任务 = 数百次 CPU 模型推理，加载很慢）
+    let qv = precomputedQv
+    if (!qv) {
+      try {
+        qv = await this._encodeQuery(text)
+      } catch { /* 编码失败跳过语义信号 */ }
+    }
 
     for (const [code, def] of taskDefs) {
       if (def.status !== 1) continue
@@ -145,18 +189,13 @@ class TaskSuggestService {
       // 信号 B：意图例句向量相似度（语义）
       let vecScore = 0
       const taskVectors = vectors.get(code)
-      if (taskVectors && taskVectors.length > 0) {
-        try {
-          const qv = await this._encodeQuery(text)
-          if (qv) {
-            let maxSim = 0
-            for (const v of taskVectors) {
-              const sim = cosineSimilarity(qv, v)
-              if (sim > maxSim) maxSim = sim
-            }
-            vecScore = maxSim
-          }
-        } catch { /* 编码失败跳过语义信号 */ }
+      if (qv && taskVectors && taskVectors.length > 0) {
+        let maxSim = 0
+        for (const v of taskVectors) {
+          const sim = cosineSimilarity(qv, v)
+          if (sim > maxSim) maxSim = sim
+        }
+        vecScore = maxSim
       }
 
       // 综合：触发词命中 → 高置信；否则看语义

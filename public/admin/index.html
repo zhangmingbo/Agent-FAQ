@@ -592,22 +592,20 @@
   // ===== 问题追踪页：注入「表达挖掘」子页签 =====
   // （原在规则引擎→任务流程 tab，已移至问题追踪页）
   (function(){
-    var issuesInjected = false;
+    // 幂等由 DOM 存在性保证（不依赖布尔标志：Vue 路由切页后 .sub-tab-bar 可能被复用，
+    // 旧的 tab/panel 仍留在 DOM，仅靠 issuesInjected 标志会导致重复注入两个"表达挖掘"）
     var observer = new MutationObserver(function(){
-      if (issuesInjected) return;
       var tabbar = document.querySelector('.sub-tab-bar');
       if (!tabbar) return;
       if (tabbar.textContent.indexOf('未匹配') === -1) return;
-      issuesInjected = true;
+      if (document.getElementById('suggest-issues-tab')) return; // 已注入，跳过
       injectSuggestTab(tabbar);
     });
     observer.observe(document.getElementById('app'), { childList: true, subtree: true });
-    var lastHref3 = location.href;
-    setInterval(function(){
-      if (location.href !== lastHref3) { lastHref3 = location.href; issuesInjected = false; }
-    }, 300);
 
     function injectSuggestTab(tabbar) {
+      // 双重保险：注入前再查一次 DOM，防 MutationObserver 并发重复
+      if (document.getElementById('suggest-issues-tab') || document.getElementById('suggest-issues-panel')) return;
       // 样式（原生 .sub-tab 带 scoped 属性，注入元素不命中，需补）
       var st = document.createElement('style');
       st.textContent =
