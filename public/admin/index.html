@@ -71,9 +71,8 @@
     .analysis-tab.active{color:#fff;background:#4361ee;border-color:#4361ee}
     .cfg-tab-panel h3{font-size:15px !important;color:#333 !important;margin:0 0 6px !important}
     .cfg-tab-panel .cfg-panel-desc{font-size:12px;color:#999;margin-bottom:16px}
-    /* 识别参数：原生表单放开宽度并排双栏（隐藏底部保存按钮的空白表单项） */
+    /* 识别参数：原生表单放开宽度并排双栏 */
     .cfg-tab-panel .el-form{max-width:none !important;display:grid !important;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));column-gap:44px;row-gap:4px}
-    .config-panel .el-form-item:last-child{display:none !important}
     /* 阈值区：自适应列数（宽屏多列，窄屏自动收） */
     .cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 44px}
     .cfg-item{margin-bottom:16px}
@@ -1308,7 +1307,9 @@
       return { replyTexts, matchVocab };
     }
 
-    // 全局一次注入 tooltip 样式 + 隐藏原生底部保存按钮（CSS 规则跨 Vue 重渲染存活）
+    // 全局一次注入 tooltip 样式（CSS 规则跨 Vue 重渲染存活）
+    // 注意：不再隐藏原生保存按钮——右上角"保存配置"与面板内原生按钮并存，
+    //       隐藏原生按钮会导致"刷新按钮删除后保存入口消失"的问题
     function ensureArbTipStyle() {
       if (document.getElementById('arb-tip-style')) return;
       var st = document.createElement('style');
@@ -1317,8 +1318,7 @@
         '.arb-tip{position:relative;display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#4361ee;color:#fff;font-size:11px;font-weight:bold;cursor:help;margin-left:6px;vertical-align:middle}' +
         '.arb-tip .arb-tip-box{visibility:hidden;opacity:0;position:absolute;left:24px;top:-8px;width:300px;background:#2b2f3a;color:#e8eaed;font-size:12px;line-height:1.7;font-weight:normal;padding:12px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9999;transition:opacity .15s,visibility .15s;white-space:normal;text-align:left}' +
         '.arb-tip:hover .arb-tip-box{visibility:visible;opacity:1}' +
-        '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}' +
-        '.config-panel button.el-button--primary{display:none !important}';
+        '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}';
       document.head.appendChild(st);
     }
 
@@ -1359,30 +1359,43 @@
       }
     }
 
-    // 右上角"刷新"按钮的位置换成"保存配置"（点击时触发原生保存逻辑）
+    // 右上角放"保存配置"按钮（点击触发原生保存逻辑）
+    // 说明：早期靠找"刷新"按钮定位，但刷新按钮已移除 → 改为直接插到头部登出按钮旁；
+    //       点击时触发配置面板内原生保存按钮（el-form 的 type=primary 保存按钮）
     function placeTopRightSave() {
       ensureArbTipStyle();
       if (document.getElementById('config-save-top-btn')) return;
-      var refreshBtn = null;
-      var btns = document.querySelectorAll('button.el-button--small');
-      for (var i = 0; i < btns.length; i++) {
-        var b = btns[i];
-        if (b.closest('.config-panel')) continue;
-        if (b.textContent.trim() === '刷新') { refreshBtn = b; break; }
-      }
-      if (!refreshBtn) return;
       var btn = document.createElement('button');
       btn.id = 'config-save-top-btn';
       btn.className = 'el-button el-button--small el-button--primary';
       btn.textContent = '保存配置';
       btn.style.marginLeft = '8px';
       btn.onclick = function() {
-        var native = document.querySelector('.config-panel button.el-button--primary');
+        // 触发面板内原生保存按钮（.config-panel 下 el-button--primary 且文字为"保存配置"）
+        var native = null;
+        var panel = document.querySelector('.config-panel');
+        if (panel) {
+          var btns = panel.querySelectorAll('button');
+          for (var i = 0; i < btns.length; i++) {
+            if (btns[i].textContent.trim() === '保存配置') { native = btns[i]; break; }
+          }
+        }
         if (native && native.click) native.click();
         else alert('未找到原生保存按钮');
       };
-      refreshBtn.parentNode.insertBefore(btn, refreshBtn);
-      refreshBtn.remove();
+      // 插入到头部右侧（登出按钮旁）；找不到头部则插到配置面板内
+      var header = document.querySelector('.el-header.topbar') || document.querySelector('.el-header');
+      if (header) {
+        var logout = header.querySelector('[data-logout-btn]');
+        if (logout && logout.parentNode) {
+          logout.parentNode.insertBefore(btn, logout.nextSibling);
+          return;
+        }
+        header.appendChild(btn);
+        return;
+      }
+      var panel = document.querySelector('.config-panel');
+      if (panel) panel.appendChild(btn);
     }
 
     // 路由变化时重置（进入/离开 /config 页面）
@@ -1734,12 +1747,19 @@
       var time = t.getHours() + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
       var stCls = c.status === 'ok' ? 'on' : 'danger';
       var stTxt = c.status === 'ok' ? '成功' : '失败';
+      // 提示词来源（调试辅助）：默认 / 全局自定义 / 任务自定义
+      var SRC_LABEL = { default: '默认提示词', global: '全局自定义', task: '任务自定义' };
+      var srcTags = '';
+      var ps = c.promptSource || {};
+      if (ps.system) srcTags += '<span class="status-tag" style="border-color:#7048e8;color:#7048e8">sys:' + esc(SRC_LABEL[ps.system] || ps.system) + '</span>';
+      if (ps.user) srcTags += '<span class="status-tag" style="border-color:#7048e8;color:#7048e8">user:' + esc(SRC_LABEL[ps.user] || ps.user) + '</span>';
       html += '<div style="border:1px solid #e9ecef;border-radius:8px;margin-bottom:8px;padding:10px 12px;background:#fff">' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">' +
           '<span class="status-tag" style="background:#eef2ff;color:#4361ee">' + esc(NODE_LABEL[c.node] || c.node) + '</span>' +
           '<span class="status-tag ' + stCls + '">' + stTxt + '</span>' +
           '<span style="color:#868e96">' + time + '</span>' +
           '<span style="color:#868e96">' + c.durationMs + 'ms</span>' +
+          srcTags +
           (c.error ? '<span style="color:#e03131">' + esc(String(c.error).slice(0, 80)) + '</span>' : '') +
         '</div>' +
         (c.user ? '<div style="font-size:12px;color:#555;margin-top:6px;word-break:break-all"><b>请求:</b> ' + esc(c.user) + '</div>' : '') +
