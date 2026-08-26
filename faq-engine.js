@@ -204,15 +204,16 @@ class FAQEngine {
     // 获取或创建会话上下文
     const context = this._getSession(sessionId)
 
-    // 记录用户输入到历史
-    context.history.push({ role: 'user', text, timestamp: Date.now() })
-
     // ===== 答案反馈闭环：用户否定上轮回答（运营配置信号词）→ 记录，用于定位"答错的高频问题" =====
+    // 检测必须在 push 本轮 user 之前：此时 history 末条是上轮 assistant 回答
     const feedback = this._detectAnswerFeedback(text, context)
     if (feedback) {
       _t('答案反馈', { hit: feedback.hit, prev: feedback.answer.slice(0, 40) }, 'warn')
       this._logAnswerFeedback(sessionId, feedback).catch(e => console.error('[FAQEngine] 答案反馈记录失败:', e.message))
     }
+
+    // 记录用户输入到历史
+    context.history.push({ role: 'user', text, timestamp: Date.now() })
 
     let response
 

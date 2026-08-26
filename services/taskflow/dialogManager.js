@@ -534,7 +534,7 @@ class DialogManager {
   }
 
   _denyConfirm(state, trace = null) {
-    _t('任务对话·否认确认，回到收集态', {}, 'rule')
+    traceService.traceStep(trace, '任务对话·否认确认，回到收集态', {}, 'rule')
     state.confirmAsked = false
     state.status = TaskState.COLLECTING
     const firstUnfilled = Object.entries(state.slots).find(([_, s]) => s.required && !s.filled)

@@ -477,7 +477,14 @@ class TaskNLU {
     }
     _t('规则快检', { byRule: byRule ? byRule.code : null, negated, boosted: !!taskBoost })
 
-    // 2) 统一语义仲裁（触发词命中按配置抬升任务侧，但不免检——允许 FAQ 高置信反超）
+    // 2) 短文本保护：规则未命中时，短文本不做向量仲裁（可能是任务内槽位答案，
+    //    如"报修一下"——与 matchTask 的 vecMinLen 门槛一致，避免槽位回答被误判为新任务）
+    if (!byRule && t.length < (this.arbConfig.vecMinLen ?? 5)) {
+      _t('跳过统一仲裁', { reason: '短文本且无触发词', len: t.length })
+      return null
+    }
+
+    // 3) 统一语义仲裁（触发词命中按配置抬升任务侧，但不免检——允许 FAQ 高置信反超）
     const arb = await this.arbitrateTaskFaq(t, { tasks, taskBoost })
     _t('统一仲裁', {
       channel: arb.channel,
@@ -487,7 +494,7 @@ class TaskNLU {
       faqScore: arb.faqScore ? arb.faqScore.toFixed(3) : null,
     }, arb.channel === 'task_new' ? 'task' : 'info')
 
-    // 3) 只尊重仲裁判定：明确 task_new 且不是当前任务 → 切换；其余（faq/clarify/域外）一律不切
+    // 4) 只尊重仲裁判定：明确 task_new 且不是当前任务 → 切换；其余（faq/clarify/域外）一律不切
     if (arb.channel === 'task_new' && arb.taskCode && arb.taskCode !== ctx.currentCode) {
       return arb.taskCode
     }
