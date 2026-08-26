@@ -25,7 +25,7 @@ import { ensureActionLogTable } from './actionRegistry.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
 import * as configRepo from '../../repositories/configRepo.js'
 
-const SESSION_TTL = 30 * 60 * 1000 // 30 分钟
+const SESSION_TTL = 30 * 60 * 1000 // 30 分钟（默认；运营可通过 sys_config.task_session_ttl_minutes 覆盖）
 
 class TaskFlowEngine {
   constructor() {
@@ -48,6 +48,18 @@ class TaskFlowEngine {
 
     // LLM 智能层
     this.llm = llmClient
+  }
+
+  /**
+   * 设置任务会话超时（分钟；运营配置 sys_config.task_session_ttl_minutes，保存即生效）
+   * 影响：任务状态持久化 TTL + 过期清理（cleanupStale）
+   */
+  setSessionTtl(minutes) {
+    const n = parseInt(minutes, 10)
+    if (!isNaN(n) && n > 0) {
+      this.sessionTtl = n * 60 * 1000
+      console.log(`[TaskFlow] 任务会话超时: ${n} 分钟`)
+    }
   }
 
   /**

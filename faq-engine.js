@@ -412,8 +412,8 @@ class FAQEngine {
               askedAt: Date.now(),
             }
             response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
-          } else {
-            // 继续 FAQ 通道（任务保持挂起）
+          } else if (route === 'faq') {
+            // 挂起中用户咨询知识 → 正常回答 FAQ（任务保持挂起）
             response = await this._handleRecognize(text, context)
             if (response.source === 'direct' || response.source === 'confirmed') {
               response = {
@@ -421,6 +421,25 @@ class FAQEngine {
                 answer: response.answer + this._suspendedHint(taskState),
                 source: 'task_suspended_faq',
               }
+            } else {
+              // FAQ 也没匹配上 → 给挂起提醒（不直接继续任务话术）
+              response = {
+                intent_code: `task:${taskState.taskCode}`,
+                confidence: 0,
+                source: 'task_suspended_remind',
+                answer: getReply('suspended_remind', { taskName: taskState.taskName }),
+              }
+            }
+          } else {
+            // 其余（task_continue / 拿不准）→ 先给挂起提醒，而不是默默把用户的话
+            // 当作任务槽位继续收集（如"我手表坏了"被 LLM 消化成预约内容）
+            console.log('[TASK] 挂起中非恢复词，先给挂起提醒')
+            _t('挂起提醒（不直接继续任务）', { taskCode: taskState.taskCode }, 'warn')
+            response = {
+              intent_code: `task:${taskState.taskCode}`,
+              confidence: 0,
+              source: 'task_suspended_remind',
+              answer: getReply('suspended_remind', { taskName: taskState.taskName }),
             }
           }
         }
@@ -432,6 +451,18 @@ class FAQEngine {
         const taskState = this.taskEngine.getActiveTask(sessionId)
         _t('有任务上下文', { taskCode: taskState.taskCode, status: taskState.status })
 
+        // 0.5) 任务超时检查：用户中断很久后回来，任务应已失效（不再续接），
+        //      而不是把无关内容（如"我手表坏了"）继续当任务话术消化。
+        //      与 cleanupStale 的 TTL 一致（task_session_ttl_minutes 可配）；这里做请求级兜底。
+        const taskTtl = this.taskEngine.sessionTtl || (30 * 60 * 1000)
+        if (taskState.lastActive && (Date.now() - taskState.lastActive) > taskTtl) {
+          console.log(`[TASK] 任务已超时（${Math.round((Date.now() - taskState.lastActive) / 60000)} 分钟 > TTL），会话中的任务失效，按新会话处理`)
+          _t('任务超时失效', { taskCode: taskState.taskCode, idleMinutes: Math.round((Date.now() - taskState.lastActive) / 60000) }, 'warn')
+          await this.taskEngine._remove(sessionId)
+          this.taskEngine.activeTasks.delete(sessionId)
+          // 落回无任务路由（场景 C）：触发词可重新发起，否则 FAQ
+          response = await this._handleNoActiveTask(text, context, traceSteps)
+        } else {
         // 0) 新任务意图确定性判定（触发词+仲裁，零 LLM 成本）：
         //    用户明确要办另一件事（如"我想预约安装净水器"）→ 先切换任务。
         //    必须放在 LLM 提取之前——否则 LLM 会把新任务意图当"任务内对话"消化掉，
@@ -556,42 +587,14 @@ class FAQEngine {
                 }
               : null
           }
-        }
-        } // 场景 B：新任务预检 else 闭合
+        } // 提取失败 else 闭合
+        } // 新任务预检 else 闭合
+        } // 超时检查 else 闭合
       }
 
       // ---------- 场景 C：无活跃任务 → 路由判定后决定触发任务或 FAQ ----------
       else {
-        // 无任务上下文时 route 判定：命中触发词且无咨询疑云 → task_new；
-        // 咨询疑云（"上门换滤芯收费吗"）→ faq；两者混杂拿不准 → clarify 追问
-        const route = await this.taskEngine.nlu.route(text, {
-          taskState: null,
-          tasks: [...this.taskEngine.taskDefs.values()],
-          filledDesc: '',
-          trace: traceSteps,
-        })
-        _t('路由判定', { route, hasActiveTask: false }, route === 'clarify' ? 'warn' : 'task')
-        if (route === 'task_new') {
-          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ false, traceSteps)
-        } else if (route === 'clarify') {
-          // 无法区分任务还是咨询（触发词+咨询疑云混杂）→ 追问二选一
-          console.log('[ROUTE] 无法区分任务/咨询，追问用户')
-          _t('路由拿不准，追问用户二选一', {}, 'warn')
-          const candTask = await this.taskEngine.matchTask(text, null, traceSteps)
-          context.pendingRoute = {
-            taskCode: candTask ? candTask.code : null,
-            taskName: candTask ? candTask.name : '',
-            triggerText: text,
-            askedAt: Date.now(),
-          }
-          response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
-        } else if (route === 'out_of_scope') {
-          // 任务/FAQ 均未达强命中线（"我家门坏了"）→ 业务域外引导（不用 LLM 兜底）
-          console.log('[ROUTE] 域外输入，业务引导')
-          _t('域外输入 → 业务引导', {}, 'warn')
-          response = await this._handleFallback(text, context, { confidence: 0 })
-        }
-        // route === 'faq' → 走下方常规 FAQ 流程（response 保持 null）
+        response = await this._handleNoActiveTask(text, context, traceSteps)
       }
     }
 
@@ -1138,12 +1141,51 @@ class FAQEngine {
   }
 
   /**
+   * 无活跃任务时的路由判定（场景 C 专用，也是任务超时失效后的回退路径）
+   * 命中触发词且无咨询疑云 → task_new；咨询疑云 → faq；混杂 → clarify 追问；域外 → 引导
+   */
+  async _handleNoActiveTask(text, context, traceSteps) {
+    const _t = (step, detail = {}, level = 'info') => traceService.traceStep(traceSteps, step, detail, level)
+    const sessionId = context.sessionId
+    // 无任务上下文时 route 判定：命中触发词且无咨询疑云 → task_new；
+    // 咨询疑云（"上门换滤芯收费吗"）→ faq；两者混杂拿不准 → clarify 追问
+    const route = await this.taskEngine.nlu.route(text, {
+      taskState: null,
+      tasks: [...this.taskEngine.taskDefs.values()],
+      filledDesc: '',
+      trace: traceSteps,
+    })
+    _t('路由判定', { route, hasActiveTask: false }, route === 'clarify' ? 'warn' : 'task')
+    if (route === 'task_new') {
+      return this._tryStartTask(sessionId, text, context, /* fromStash */ false, traceSteps)
+    } else if (route === 'clarify') {
+      // 无法区分任务还是咨询（触发词+咨询疑云混杂）→ 追问二选一
+      console.log('[ROUTE] 无法区分任务/咨询，追问用户')
+      _t('路由拿不准，追问用户二选一', {}, 'warn')
+      const candTask = await this.taskEngine.matchTask(text, null, traceSteps)
+      context.pendingRoute = {
+        taskCode: candTask ? candTask.code : null,
+        taskName: candTask ? candTask.name : '',
+        triggerText: text,
+        askedAt: Date.now(),
+      }
+      return this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
+    } else if (route === 'out_of_scope') {
+      // 任务/FAQ 均未达强命中线（"我家门坏了"）→ 业务域外引导（不用 LLM 兜底）
+      console.log('[ROUTE] 域外输入，业务引导')
+      _t('域外输入 → 业务引导', {}, 'warn')
+      return this._handleFallback(text, context, { confidence: 0 })
+    }
+    // route === 'faq' → 返回 null，走常规 FAQ 流程
+    return null
+  }
+
+  /**
    * 处理未匹配情况（方案 A：不用 LLM 兜底，识别为业务域外）
    * 任务和 FAQ 都没匹配上 → 大概率与客服业务无关（"习近平是谁"/天气/闲聊），
    * 不浪费 LLM 资源去答域外问题，直接给业务边界引导。
    */
-  async _handleFallback(text, context, result) {
-    // ===== [STEP 4.3.1] 业务域外识别 =====
+  async _handleFallback(text, context, result) {    // ===== [STEP 4.3.1] 业务域外识别 =====
     console.log('[STEP 4.3.1] 任务/FAQ 均未匹配，判定为业务域外')
     const fallbackResponse = {
       matched: false,

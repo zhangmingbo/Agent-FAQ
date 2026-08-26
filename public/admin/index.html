@@ -854,7 +854,8 @@
                 'task-vec-min-len': 'taskVecMinLen',
                 'analysis-recommend-threshold': 'analysisRecommendThreshold', 'analysis-max-confidence': 'analysisMaxConfidence',
                 'suggest-min-len': 'suggestMinLen', 'suggest-sim-threshold': 'suggestSimThreshold', 'suggest-keyword-min-score': 'suggestKeywordMinScore',
-                'expand-sim-threshold': 'expandSimThreshold', 'expand-min-count': 'expandMinCount'
+                'expand-sim-threshold': 'expandSimThreshold', 'expand-min-count': 'expandMinCount',
+                'task-session-ttl': 'taskSessionTtlMinutes'
               };
               var any = false;
               for (var id in ids) {
@@ -1016,6 +1017,11 @@
           '<div class="cfg-item">' +
             '<div style="font-size:13px;color:#555;margin-bottom:6px">自动扩写开关</div>' +
             '<label style="font-size:13px;display:flex;align-items:center;gap:8px"><input id="expand-enabled" type="checkbox" ' + (cfg.expandEnabled ? 'checked' : '') + '> 开启（分析页"扫描扩写"按钮可用）</label>' +
+          '</div>' +
+          '<div class="cfg-item" style="margin-top:10px">' +
+            '<div style="font-size:13px;color:#555;margin-bottom:6px">任务会话超时（分钟） <span style="color:#999;font-weight:normal">（当前 ' + cfg.taskSessionTtlMinutes + '）</span></div>' +
+            '<input id="task-session-ttl" type="number" min="1" max="1440" step="1" value="' + cfg.taskSessionTtlMinutes + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
+            '<div class="cfg-comment">任务被挂起/中断后，超过此时间（分钟）即失效，用户回来不再续接旧任务。典型值：10~120，默认 30。</div>' +
           '</div>' +
           '</div>';
       });

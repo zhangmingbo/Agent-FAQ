@@ -79,6 +79,8 @@ export function createRouter(engine) {
       expandEnabled: config.expand_enabled !== 'false',
       expandSimThreshold: parseFloat(config.expand_sim_threshold) || 0.75,
       expandMinCount: parseInt(config.expand_min_count) || 2,
+      // 任务会话超时（分钟；任务挂起/中断后超过此时间失效）
+      taskSessionTtlMinutes: parseInt(config.task_session_ttl_minutes) || 30,
       // 固定话术 / 匹配词表（运营可配，sys_config 存储）
       replyTexts: getAllReplyTexts(),
       matchVocab: getAllMatchVocab(),
@@ -180,6 +182,12 @@ export function createRouter(engine) {
         minCount: cfg.expand_min_count,
         enabled: cfg.expand_enabled !== 'false',
       })
+    }
+
+    // 任务会话超时（分钟；保存即生效）
+    if (req.body.taskSessionTtlMinutes !== undefined) {
+      await configRepo.set('task_session_ttl_minutes', req.body.taskSessionTtlMinutes)
+      engine.taskEngine?.setSessionTtl?.(req.body.taskSessionTtlMinutes)
     }
 
     // 固定话术 / 匹配词表（保存即生效）

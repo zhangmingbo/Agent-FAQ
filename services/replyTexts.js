@@ -23,6 +23,8 @@ export const DEFAULT_REPLY_TEXTS = {
   ask_business: '好的，请问您需要办理什么业务呢？',
   stashed_hint: '（您之前正在进行「{taskName}」，回复"继续"可接着办理）\n\n',
   suspended_hint: '\n\n———\n● 您正在进行「{taskName}」，回复"继续"可接着办理。',
+  // 挂起任务提醒（用户中断任务后再次来消息，先给提醒而不是直接继续任务话术）
+  suspended_remind: '您好，您之前正在进行「{taskName}」，还没有办完～\n\n回复"继续"可接着办理；如果是其他问题，也可以直接告诉我。',
   task_faq_progress: '\n\n———\n● 您正在进行「{taskName}」，还需要：{labels}',
   clarify_options: '您的问题可能属于以下几种，请回复序号（1/2/3）选择：\n{options}',
   clarify_yes_no: '您是想咨询"{intentName}"吗？请回复"是"或"不是"',
