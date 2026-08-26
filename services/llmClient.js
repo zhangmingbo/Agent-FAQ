@@ -12,6 +12,7 @@
  */
 
 import { get as getPrompt } from './llmPrompts.js'
+import llmCallLogger from './llmCallLogger.js'
 
 /** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖，默认全开=现行为）
  *  注意：模型不在这里配——全系统统一在「连接配置」的全局模型（llm_model）里控制 */
@@ -133,11 +134,14 @@ class LLMClient {
   /**
    * 底层统一 chat 调用
    * @param {Array<{role:string, content:string}>} messages
-   * @param {Object} opts - { model?, maxTokens, temperature }
+   * @param {Object} opts - { model?, maxTokens, temperature, node?, sessionId? }
+   *   node: 调用节点名（trigger/extract/dialogue/route/meaningless/rerank），埋点日志用
+   *   sessionId: 关联的会话（会话调试按会话查看 LLM 调用）
    * @returns {Promise<string>}
    */
   async chat(messages, opts = {}) {
     if (!this.enabled) throw new Error('LLM 未配置')
+    const startedAt = Date.now()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     try {
@@ -161,7 +165,33 @@ class LLMClient {
       const data = await res.json()
       const content = data.choices?.[0]?.message?.content
       if (!content) throw new Error('LLM 返回为空')
+      // 埋点：记录本次调用（LLM 调用日志，会话调试查看）
+      try {
+        llmCallLogger.log({
+          sessionId: opts.sessionId,
+          node: opts.node,
+          model: opts.model || this.config.model,
+          messages,
+          response: content,
+          status: 'ok',
+          durationMs: Date.now() - startedAt,
+        })
+      } catch (e) { /* 埋点失败不影响主流程 */ }
       return content.trim()
+    } catch (e) {
+      // 埋点：记录失败调用
+      try {
+        llmCallLogger.log({
+          sessionId: opts.sessionId,
+          node: opts.node,
+          model: opts.model || this.config.model,
+          messages,
+          status: 'error',
+          error: e.message,
+          durationMs: Date.now() - startedAt,
+        })
+      } catch (e2) { /* ignore */ }
+      throw e
     } finally {
       clearTimeout(timer)
     }
@@ -184,7 +214,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature })
+    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'dialogue' })
 
     const obj = this._parseJson(raw)
     if (!obj || typeof obj !== 'object') return { slots: {}, reply: '', ask_confirm: false, question: null }
@@ -234,7 +264,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature })
+    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'extract' })
 
     return this._parseJson(raw)
   }
@@ -275,7 +305,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'trigger' })
 
     const trimmed = raw.replace(/["'`\s]/g, '')
     if (!trimmed || trimmed === 'null' || trimmed === '无' || trimmed === '没有') return null
@@ -296,7 +326,7 @@ class LLMClient {
     const raw = await this.chat([
       { role: 'system', content: system },
       { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'route' })
 
     const trimmed = raw.trim().toLowerCase()
     if (trimmed.startsWith('continue')) return 'continue'
@@ -316,7 +346,7 @@ class LLMClient {
       const raw = await this.chat([
         { role: 'system', content: getPrompt('meaningless.system') },
         { role: 'user', content: text },
-      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'meaningless' })
       // 大模型返回 false 表示无意义
       return raw.trim().toLowerCase() === 'false'
     } catch (e) {
@@ -339,7 +369,7 @@ class LLMClient {
       const raw = await this.chat([
         { role: 'system', content: getPrompt('llm_rerank.system') },
         { role: 'user', content: getPrompt('llm_rerank.user', { list, text }) },
-      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature })
+      ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'rerank' })
       const idx = parseInt(raw.trim(), 10) - 1
       const hit = candidates[idx]
       return hit ? (hit.intentCode || hit.intent_code) : null

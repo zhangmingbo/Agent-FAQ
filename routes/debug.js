@@ -8,6 +8,7 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import traceService from '../services/traceService.js'
+import llmCallLogger from '../services/llmCallLogger.js'
 
 export function createRouter() {
   const router = Router()
@@ -24,10 +25,24 @@ export function createRouter() {
     res.json({ success: true, data: trace })
   }))
 
+  // 某个会话的 LLM 调用日志（会话调试页查看每次调用 LLM 的请求/响应/耗时）
+  router.get('/debug/llm-calls', asyncHandler(async (req, res) => {
+    const sessionId = req.query.sessionId || null
+    const limit = parseInt(req.query.limit) || 50
+    const items = llmCallLogger.query({ sessionId, limit })
+    res.json({ success: true, data: { items, total: items.length } })
+  }))
+
   // 清空轨迹
   router.post('/debug/clear', asyncHandler(async (req, res) => {
     traceService.clearAll()
     res.json({ success: true, message: '轨迹已清空' })
+  }))
+
+  // 清空 LLM 调用日志
+  router.post('/debug/llm-calls/clear', asyncHandler(async (req, res) => {
+    llmCallLogger.clear()
+    res.json({ success: true, message: 'LLM 调用日志已清空' })
   }))
 
   return router

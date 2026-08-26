@@ -1714,7 +1714,40 @@
       if (!res.success || !res.data) return;
       renderDebugTrace(sessionId, res.data.turns || []);
     });
+    // 同时加载该会话的 LLM 调用日志（显示在轨迹下方）
+    api('GET', '/api/debug/llm-calls?sessionId=' + encodeURIComponent(sessionId) + '&limit=50', null, function(res) {
+      renderLlmCalls(sessionId, (res && res.data && res.data.items) || []);
+    });
   };
+
+  // 渲染该会话的 LLM 调用日志（节点/耗时/请求/响应）
+  function renderLlmCalls(sessionId, items) {
+    var view = debugEl('trace-view');
+    if (!view) return;
+    if (!items.length) return;
+    var NODE_LABEL = { trigger: '任务触发', extract: '槽位提取', dialogue: '任务对话', route: '意图路由', meaningless: '无意义检测', rerank: 'FAQ重排' };
+    var html = '<div class="debug-header" style="margin:20px 0 8px;padding-top:14px;border-top:2px solid #eee">' +
+      '<h4 style="margin:0">🤖 本会话 LLM 调用（' + items.length + ' 次）</h4>' +
+      '<div style="font-size:12px;color:#999;margin-top:4px">每次调用 LLM 的节点、耗时、请求与响应（内存日志，重启清空）</div></div>';
+    items.forEach(function(c) {
+      var t = new Date(c.time);
+      var time = t.getHours() + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
+      var stCls = c.status === 'ok' ? 'on' : 'danger';
+      var stTxt = c.status === 'ok' ? '成功' : '失败';
+      html += '<div style="border:1px solid #e9ecef;border-radius:8px;margin-bottom:8px;padding:10px 12px;background:#fff">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">' +
+          '<span class="status-tag" style="background:#eef2ff;color:#4361ee">' + esc(NODE_LABEL[c.node] || c.node) + '</span>' +
+          '<span class="status-tag ' + stCls + '">' + stTxt + '</span>' +
+          '<span style="color:#868e96">' + time + '</span>' +
+          '<span style="color:#868e96">' + c.durationMs + 'ms</span>' +
+          (c.error ? '<span style="color:#e03131">' + esc(String(c.error).slice(0, 80)) + '</span>' : '') +
+        '</div>' +
+        (c.user ? '<div style="font-size:12px;color:#555;margin-top:6px;word-break:break-all"><b>请求:</b> ' + esc(c.user) + '</div>' : '') +
+        (c.response ? '<div style="font-size:12px;color:#2b8a3e;margin-top:4px;word-break:break-all"><b>响应:</b> ' + esc(c.response) + '</div>' : '') +
+      '</div>';
+    });
+    view.insertAdjacentHTML('beforeend', html);
+  }
 
   // 渲染交互图：时间线式，每轮 = 用户输入 → 处理步骤 → 机器人回复
   function renderDebugTrace(sessionId, turns) {

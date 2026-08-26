@@ -26,6 +26,7 @@ import llmClient from './services/llmClient.js'
 import { getReply } from './services/replyTexts.js'
 import { getRouteChoiceWords } from './services/matchVocab.js'
 import traceService from './services/traceService.js'
+import llmCallLogger from './services/llmCallLogger.js'
 import pool from './db/pool.js'
 
 /** 答案反馈：不满意信号词（运营可配，sys_config.feedback_trigger_words，默认仅首次落库） */
@@ -187,6 +188,9 @@ class FAQEngine {
     // ===== [STEP 0] 轨迹追踪：本轮对话的处理步骤链（可视化调试用） =====
     const traceSteps = traceService.startTurn(sessionId)
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(traceSteps, step, detail, level)
+
+    // 关联 LLM 调用日志到当前会话（会话调试按会话查看每次 LLM 调用）
+    llmCallLogger.setCurrentSession(sessionId)
     
     // ===== [STEP 1] 收到请求 =====
     console.log(`\n${'='.repeat(80)}`)
