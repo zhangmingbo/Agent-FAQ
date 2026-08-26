@@ -66,6 +66,9 @@
     #config-tabs .cfg-tab-btn.active{color:#4361ee;border-bottom-color:#4361ee}
     .cfg-tab-panel{display:none;background:#fff;border:1px solid #eef0f4;border-radius:10px;padding:24px 28px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
     .cfg-tab-panel.active{display:block}
+    .analysis-tab{padding:7px 18px;cursor:pointer;font-size:13px;color:#666;border:1px solid #ddd;border-radius:6px;background:#fff;transition:all .2s}
+    .analysis-tab:hover{color:#4361ee;border-color:#4361ee}
+    .analysis-tab.active{color:#fff;background:#4361ee;border-color:#4361ee}
     .cfg-tab-panel h3{font-size:15px !important;color:#333 !important;margin:0 0 6px !important}
     .cfg-tab-panel .cfg-panel-desc{font-size:12px;color:#999;margin-bottom:16px}
     /* 识别参数：原生表单放开宽度并排双栏（隐藏底部保存按钮的空白表单项） */
@@ -2101,50 +2104,105 @@
       if (box) box.innerHTML = '<div style="color:#f56c6c;padding:6px 0">扫描失败</div>';
     });
   }
-  function injectAnalysisExtra() {
-    var main = document.querySelector('.el-main, .app-main');
-    if (!main || !main.textContent || main.textContent.indexOf('基于聊天日志数据') === -1) return;
-    if (main.querySelector('[data-analysis-extra]')) return;
-    var wrap = document.createElement('div');
-    wrap.setAttribute('data-analysis-extra', '1');
-    wrap.style.cssText = 'margin-top:16px';
-    wrap.innerHTML =
-      '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-          '<b style="font-size:13px;color:#333">答案反馈（答错的高频问题）</b>' +
-          '<button class="btn-sm" data-af-refresh>⟳ 刷新</button></div>' +
-        '<div id="analysis-feedback-body" style="font-size:12px">加载中...</div>' +
-      '</div>' +
-      '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px;margin-top:12px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-          '<b style="font-size:13px;color:#333">任务漏斗</b>' +
-          '<button class="btn-sm" data-af-refresh2>⟳ 刷新</button></div>' +
-        '<div id="analysis-funnel-body" style="font-size:12px">加载中...</div>' +
-      '</div>' +
-      '<div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px 16px;margin-top:12px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-          '<b style="font-size:13px;color:#333">相似问自动扩写（高频未匹配 → FAQ 相似问）</b>' +
-          '<div style="display:flex;gap:6px">' +
-            '<button class="btn-sm" data-expand-run>⚡ 扫描扩写</button>' +
-            '<button class="btn-sm" data-af-refresh3>⟳ 刷新</button></div></div>' +
-        '<div id="analysis-expand-body" style="font-size:12px">加载中...</div>' +
+  // ===== 数据分析：独立 overlay（答案反馈 / 任务漏斗 / 相似问自动扩写），不占原页面布局 =====
+  window.openAnalysisOverlay = function() {
+    var old = document.getElementById('analysis-overlay');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'analysis-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999999;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML =
+      '<div style="background:#fff;border-radius:12px;width:92vw;max-width:1200px;height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+        '<div style="padding:16px 24px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">' +
+          '<h3 style="margin:0;font-size:16px">📊 数据分析</h3>' +
+          '<button class="btn-sm" id="analysis-close">&times; 关闭</button>' +
+        '</div>' +
+        '<div style="padding:8px 24px;font-size:12px;color:#999">基于对话数据的运营分析：答案反馈定位答错高频问题、任务漏斗定位流失环节、自动扩写把高频未匹配补进 FAQ 相似问。</div>' +
+        '<div style="padding:8px 24px;border-bottom:1px solid #eee;display:flex;gap:8px">' +
+          '<button class="btn-sm analysis-tab active" data-tab="feedback">答案反馈</button>' +
+          '<button class="btn-sm analysis-tab" data-tab="funnel">任务漏斗</button>' +
+          '<button class="btn-sm analysis-tab" data-tab="expand">相似问自动扩写</button>' +
+        '</div>' +
+        '<div style="flex:1;overflow-y:auto;padding:16px 24px">' +
+          '<div class="analysis-panel" data-panel="feedback">' +
+            '<div style="background:#fff;border:1px solid #ebeef5;border-radius:8px;padding:14px 16px">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+                '<b style="font-size:13px;color:#333">答案反馈（答错的高频问题）</b>' +
+                '<button class="btn-sm" data-af-refresh>⟳ 刷新</button></div>' +
+              '<div id="analysis-feedback-body" style="font-size:12px">加载中...</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="analysis-panel" data-panel="funnel" style="display:none">' +
+            '<div style="background:#fff;border:1px solid #ebeef5;border-radius:8px;padding:14px 16px">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+                '<b style="font-size:13px;color:#333">任务漏斗</b>' +
+                '<button class="btn-sm" data-af-refresh2>⟳ 刷新</button></div>' +
+              '<div id="analysis-funnel-body" style="font-size:12px">加载中...</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="analysis-panel" data-panel="expand" style="display:none">' +
+            '<div style="background:#fff;border:1px solid #ebeef5;border-radius:8px;padding:14px 16px">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+                '<b style="font-size:13px;color:#333">相似问自动扩写（高频未匹配 → FAQ 相似问）</b>' +
+                '<div style="display:flex;gap:6px">' +
+                  '<button class="btn-sm" data-expand-run>⚡ 扫描扩写</button>' +
+                  '<button class="btn-sm" data-af-refresh3>⟳ 刷新</button></div></div>' +
+              '<div id="analysis-expand-body" style="font-size:12px">加载中...</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
       '</div>';
-    main.appendChild(wrap);
-    var r1 = wrap.querySelector('[data-af-refresh]');
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#analysis-close').onclick = function() { overlay.remove(); };
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    // tab 切换：仅首次进入该 tab 时加载数据，避免重复请求
+    var loaded = { feedback: false, funnel: false, expand: false };
+    overlay.querySelectorAll('.analysis-tab').forEach(function(btn) {
+      btn.onclick = function() {
+        overlay.querySelectorAll('.analysis-tab').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        var tab = btn.getAttribute('data-tab');
+        overlay.querySelectorAll('.analysis-panel').forEach(function(p) {
+          p.style.display = p.getAttribute('data-panel') === tab ? '' : 'none';
+        });
+        if (tab === 'feedback' && !loaded.feedback) { loaded.feedback = true; loadAnalysisFeedback(); }
+        if (tab === 'funnel' && !loaded.funnel) { loaded.funnel = true; loadAnalysisFunnel(); }
+        if (tab === 'expand' && !loaded.expand) { loaded.expand = true; loadAnalysisExpand(); }
+      };
+    });
+    var r1 = overlay.querySelector('[data-af-refresh]');
     if (r1) r1.onclick = loadAnalysisFeedback;
-    var r2 = wrap.querySelector('[data-af-refresh2]');
+    var r2 = overlay.querySelector('[data-af-refresh2]');
     if (r2) r2.onclick = loadAnalysisFunnel;
-    var r3 = wrap.querySelector('[data-af-refresh3]');
+    var r3 = overlay.querySelector('[data-af-refresh3]');
     if (r3) r3.onclick = loadAnalysisExpand;
-    var runBtn = wrap.querySelector('[data-expand-run]');
+    var runBtn = overlay.querySelector('[data-expand-run]');
     if (runBtn) runBtn.onclick = runAnalysisExpand;
     loadAnalysisFeedback();
-    loadAnalysisFunnel();
-    loadAnalysisExpand();
+    loaded.feedback = true;
+  };
+
+  // 侧边栏「数据分析」菜单注入（与原页面布局完全隔离，独立 overlay）
+  function injectAnalysisMenu() {
+    var menu = document.querySelector('.el-menu');
+    if (!menu || menu.querySelector('.el-menu-item[data-analysis-menu]')) return;
+    var item = document.createElement('li');
+    item.className = 'el-menu-item';
+    item.setAttribute('data-analysis-menu', '1');
+    item.setAttribute('style', 'cursor:pointer');
+    item.innerHTML = '<i class="el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M888 792H200V168c0-22-18-40-40-40s-40 18-40 40v664c0 22 18 40 40 40h728c22 0 40-18 40-40s-18-40-40-40zM320 640h56c22 0 40-18 40-40V448c0-22-18-40-40-40h-56c-22 0-40 18-40 40v152c0 22 18 40 40 40zm216 0h56c22 0 40-18 40-40V288c0-22-18-40-40-40h-56c-22 0-40 18-40 40v312c0 22 18 40 40 40zm216 0h56c22 0 40-18 40-40V440c0-22-18-40-40-40h-56c-22 0-40 18-40 40v160c0 22 18 40 40 40z"/></svg></i><span>数据分析</span>';
+    item.onclick = function() {
+      menu.querySelectorAll('.el-menu-item').forEach(function(m) { m.classList.remove('is-active'); });
+      item.classList.add('is-active');
+      window.openAnalysisOverlay();
+    };
+    menu.appendChild(item);
   }
-  var analysisObserver = new MutationObserver(injectAnalysisExtra);
-  analysisObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
-  injectAnalysisExtra();
+  var analysisMenuObserver = new MutationObserver(function() { injectAnalysisMenu(); });
+  analysisMenuObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
+  injectAnalysisMenu();
   var alMenuObserver = new MutationObserver(injectActionLogMenu);
   alMenuObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
   injectActionLogMenu();
