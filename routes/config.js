@@ -93,166 +93,150 @@ export function createRouter(engine) {
 
   // 更新配置
   router.post('/config', asyncHandler(async (req, res) => {
-    const { minConfidence, clarifyThreshold, topK } = req.body
+    const body = req.body
+    const save = async (key, val) => configRepo.set(key, String(val))
 
-    if (minConfidence !== undefined) {
-      await configRepo.set('min_confidence', minConfidence)
-      engine.recognizer.minConfidence = minConfidence
+    // ===== 识别参数 =====
+    if (body.minConfidence !== undefined) {
+      await save('min_confidence', body.minConfidence)
+      engine.recognizer.minConfidence = parseFloat(body.minConfidence)
     }
-    if (clarifyThreshold !== undefined) {
-      await configRepo.set('clarify_threshold', clarifyThreshold)
-      engine.clarifyThreshold = clarifyThreshold
+    if (body.clarifyThreshold !== undefined) {
+      await save('clarify_threshold', body.clarifyThreshold)
+      engine.clarifyThreshold = parseFloat(body.clarifyThreshold)
     }
-    if (topK !== undefined) {
-      await configRepo.set('top_k', topK)
-      engine.recognizer.topK = topK
+    if (body.topK !== undefined) {
+      await save('top_k', body.topK)
+      engine.recognizer.topK = parseInt(body.topK)
     }
-    if (req.body.meaninglessDetectionMode !== undefined) {
-      const mode = req.body.meaninglessDetectionMode
+    if (body.meaninglessDetectionMode !== undefined) {
+      const mode = body.meaninglessDetectionMode
       if (mode === 'rule' || mode === 'llm') {
-        await configRepo.set('meaningless_detection_mode', mode)
+        await save('meaningless_detection_mode', mode)
         engine.meaninglessDetectionMode = mode
       }
     }
-    // 会话超时（毫秒；Vue 原生"识别参数"表单字段 → sys_config.session_timeout，dialogueRules 读取）
-    if (req.body.sessionTimeout !== undefined) {
-      const timeout = parseInt(req.body.sessionTimeout)
+    if (body.sessionTimeout !== undefined) {
+      const timeout = parseInt(body.sessionTimeout)
       if (timeout > 0) {
-        await configRepo.set('session_timeout', String(timeout))
-        // 热更新规则管理器（dialogueRules.updateRules 支持 sessionTimeout，立即生效）
+        await save('session_timeout', timeout)
         const dialogueRules = (await import('../rules/dialogueRules.js')).default
         dialogueRules.updateRules?.({ sessionTimeout: timeout })
       }
     }
 
-    // 理解层模式（rule 纯规则 / hybrid 规则+LLM 补漏 / llm LLM 优先）
-    if (req.body.nluMode !== undefined) {
-      const mode = req.body.nluMode
-      if (['rule', 'hybrid', 'llm'].includes(mode)) {
-        await configRepo.set('nlu_mode', mode)
-        engine.taskEngine?.setNluMode?.(mode)
-      }
+    // ===== 理解层模式 =====
+    if (body.nluMode !== undefined && ['rule', 'hybrid', 'llm'].includes(body.nluMode)) {
+      await save('nlu_mode', body.nluMode)
+      engine.taskEngine?.setNluMode?.(body.nluMode)
     }
 
-    // 任务/FAQ 统一语义仲裁阈值（保存即生效）
-    let arbUpdated = false
-    if (req.body.arbGap !== undefined || req.body.arbTaskMin !== undefined || req.body.arbFaqMin !== undefined || req.body.arbStrongHit !== undefined || req.body.arbVectorThreshold !== undefined || req.body.arbTaskBoost !== undefined) {
-      arbUpdated = true
-      if (req.body.arbGap !== undefined) await configRepo.set('arb_gap', req.body.arbGap)
-      if (req.body.arbTaskMin !== undefined) await configRepo.set('arb_task_min', req.body.arbTaskMin)
-      if (req.body.arbFaqMin !== undefined) await configRepo.set('arb_faq_min', req.body.arbFaqMin)
-      if (req.body.arbStrongHit !== undefined) await configRepo.set('arb_strong_hit', req.body.arbStrongHit)
-      if (req.body.arbVectorThreshold !== undefined) await configRepo.set('arb_vector_threshold', req.body.arbVectorThreshold)
-      if (req.body.arbTaskBoost !== undefined) await configRepo.set('arb_task_boost', req.body.arbTaskBoost)
-    }
-
-    // 高级判定阈值（FAQ 候选竞争 / LLM 重排 / 短句防护，保存即生效）
-    if (req.body.faqCompeteCeiling !== undefined) { await configRepo.set('faq_compete_ceiling', req.body.faqCompeteCeiling); engine.faqCompeteCeiling = parseFloat(req.body.faqCompeteCeiling) }
-    if (req.body.faqCompeteGap !== undefined) { await configRepo.set('faq_compete_gap', req.body.faqCompeteGap); engine.faqCompeteGap = parseFloat(req.body.faqCompeteGap) }
-    if (req.body.llmRerankCeiling !== undefined) { await configRepo.set('llm_rerank_ceiling', req.body.llmRerankCeiling); engine.llmRerankCeiling = parseFloat(req.body.llmRerankCeiling) }
-    if (req.body.shortTextLen !== undefined) { await configRepo.set('short_text_len', req.body.shortTextLen); engine.recognizer.shortTextLen = parseInt(req.body.shortTextLen) || 4 }
-    if (req.body.shortRegexHit !== undefined) { await configRepo.set('short_regex_hit', req.body.shortRegexHit); engine.recognizer.shortRegexHit = parseFloat(req.body.shortRegexHit) }
-    if (req.body.shortContainsHit !== undefined) { await configRepo.set('short_contains_hit', req.body.shortContainsHit); engine.recognizer.shortContainsHit = parseFloat(req.body.shortContainsHit) }
-    if (req.body.taskVecMinLen !== undefined) { await configRepo.set('task_vec_min_len', req.body.taskVecMinLen); arbUpdated = true }
-
-    // 仲裁/任务向量参数统一刷新 NLU（含 vecMinLen）
+    // ===== 仲裁阈值（统一刷新 NLU）=====
+    const arbKeys = ['arbGap', 'arbTaskMin', 'arbFaqMin', 'arbStrongHit', 'arbVectorThreshold', 'arbTaskBoost', 'taskVecMinLen']
+    const arbUpdated = arbKeys.some(k => body[k] !== undefined)
     if (arbUpdated) {
-      const cfg = await configRepo.getAll()
+      if (body.arbGap !== undefined) await save('arb_gap', body.arbGap)
+      if (body.arbTaskMin !== undefined) await save('arb_task_min', body.arbTaskMin)
+      if (body.arbFaqMin !== undefined) await save('arb_faq_min', body.arbFaqMin)
+      if (body.arbStrongHit !== undefined) await save('arb_strong_hit', body.arbStrongHit)
+      if (body.arbVectorThreshold !== undefined) await save('arb_vector_threshold', body.arbVectorThreshold)
+      if (body.arbTaskBoost !== undefined) await save('arb_task_boost', body.arbTaskBoost)
+      if (body.taskVecMinLen !== undefined) await save('task_vec_min_len', body.taskVecMinLen)
+      // 直接用 body 值刷新 NLU（无需重新读 DB）
       engine.taskEngine?.nlu?.setArbConfig?.({
-        gap: cfg.arb_gap,
-        taskMin: cfg.arb_task_min,
-        faqMin: cfg.arb_faq_min,
-        strongHit: cfg.arb_strong_hit,
-        vectorThreshold: cfg.arb_vector_threshold,
-        taskBoost: cfg.arb_task_boost,
-        vecMinLen: cfg.task_vec_min_len,
+        gap: body.arbGap,
+        taskMin: body.arbTaskMin,
+        faqMin: body.arbFaqMin,
+        strongHit: body.arbStrongHit,
+        vectorThreshold: body.arbVectorThreshold,
+        taskBoost: body.arbTaskBoost,
+        vecMinLen: body.taskVecMinLen,
       })
     }
 
-    // 分析/建议阈值（保存即生效）
-    if (req.body.analysisRecommendThreshold !== undefined) { await configRepo.set('analysis_recommend_threshold', req.body.analysisRecommendThreshold); engine.analysisRecommendThreshold = parseFloat(req.body.analysisRecommendThreshold) }
-    if (req.body.analysisMaxConfidence !== undefined) { await configRepo.set('analysis_max_confidence', req.body.analysisMaxConfidence); engine.analysisMaxConfidence = parseFloat(req.body.analysisMaxConfidence) }
-    if (req.body.suggestMinLen !== undefined) { await configRepo.set('suggest_min_len', req.body.suggestMinLen) }
-    if (req.body.suggestSimThreshold !== undefined) { await configRepo.set('suggest_sim_threshold', req.body.suggestSimThreshold) }
-    if (req.body.suggestKeywordMinScore !== undefined) { await configRepo.set('suggest_keyword_min_score', req.body.suggestKeywordMinScore) }
-    if (req.body.suggestMinLen !== undefined || req.body.suggestSimThreshold !== undefined || req.body.suggestKeywordMinScore !== undefined) {
+    // ===== 高级判定阈值 =====
+    if (body.faqCompeteCeiling !== undefined) { await save('faq_compete_ceiling', body.faqCompeteCeiling); engine.faqCompeteCeiling = parseFloat(body.faqCompeteCeiling) }
+    if (body.faqCompeteGap !== undefined) { await save('faq_compete_gap', body.faqCompeteGap); engine.faqCompeteGap = parseFloat(body.faqCompeteGap) }
+    if (body.llmRerankCeiling !== undefined) { await save('llm_rerank_ceiling', body.llmRerankCeiling); engine.llmRerankCeiling = parseFloat(body.llmRerankCeiling) }
+    if (body.shortTextLen !== undefined) { await save('short_text_len', body.shortTextLen); engine.recognizer.shortTextLen = parseInt(body.shortTextLen) || 4 }
+    if (body.shortRegexHit !== undefined) { await save('short_regex_hit', body.shortRegexHit); engine.recognizer.shortRegexHit = parseFloat(body.shortRegexHit) }
+    if (body.shortContainsHit !== undefined) { await save('short_contains_hit', body.shortContainsHit); engine.recognizer.shortContainsHit = parseFloat(body.shortContainsHit) }
+
+    // ===== 分析/建议阈值 =====
+    if (body.analysisRecommendThreshold !== undefined) { await save('analysis_recommend_threshold', body.analysisRecommendThreshold); engine.analysisRecommendThreshold = parseFloat(body.analysisRecommendThreshold) }
+    if (body.analysisMaxConfidence !== undefined) { await save('analysis_max_confidence', body.analysisMaxConfidence); engine.analysisMaxConfidence = parseFloat(body.analysisMaxConfidence) }
+    // 相似问建议（直接用 body 值，无需重新读 DB）
+    if (body.suggestMinLen !== undefined || body.suggestSimThreshold !== undefined || body.suggestKeywordMinScore !== undefined) {
+      if (body.suggestMinLen !== undefined) await save('suggest_min_len', body.suggestMinLen)
+      if (body.suggestSimThreshold !== undefined) await save('suggest_sim_threshold', body.suggestSimThreshold)
+      if (body.suggestKeywordMinScore !== undefined) await save('suggest_keyword_min_score', body.suggestKeywordMinScore)
       taskSuggestService.configure({
-        minLen: req.body.suggestMinLen,
-        simThreshold: req.body.suggestSimThreshold,
-        keywordMinScore: req.body.suggestKeywordMinScore,
+        minLen: body.suggestMinLen,
+        simThreshold: body.suggestSimThreshold,
+        keywordMinScore: body.suggestKeywordMinScore,
       })
     }
 
-    // 相似问自动扩写参数（保存即生效）
-    if (req.body.expandEnabled !== undefined) { await configRepo.set('expand_enabled', req.body.expandEnabled ? 'true' : 'false') }
-    if (req.body.expandSimThreshold !== undefined) { await configRepo.set('expand_sim_threshold', req.body.expandSimThreshold) }
-    if (req.body.expandMinCount !== undefined) { await configRepo.set('expand_min_count', req.body.expandMinCount) }
-    if (req.body.expandEnabled !== undefined || req.body.expandSimThreshold !== undefined || req.body.expandMinCount !== undefined) {
-      const cfg = await configRepo.getAll()
+    // ===== 相似问自动扩写（直接用 body 值，无需重新读 DB）=====
+    if (body.expandEnabled !== undefined || body.expandSimThreshold !== undefined || body.expandMinCount !== undefined) {
+      if (body.expandEnabled !== undefined) await save('expand_enabled', body.expandEnabled)
+      if (body.expandSimThreshold !== undefined) await save('expand_sim_threshold', body.expandSimThreshold)
+      if (body.expandMinCount !== undefined) await save('expand_min_count', body.expandMinCount)
       autoExpandService.configure({
-        simThreshold: cfg.expand_sim_threshold,
-        minCount: cfg.expand_min_count,
-        enabled: cfg.expand_enabled !== 'false',
+        simThreshold: body.expandSimThreshold,
+        minCount: body.expandMinCount,
+        enabled: body.expandEnabled,
       })
     }
 
-    // 任务会话超时（分钟；保存即生效）
-    if (req.body.taskSessionTtlMinutes !== undefined) {
-      await configRepo.set('task_session_ttl_minutes', req.body.taskSessionTtlMinutes)
-      engine.taskEngine?.setSessionTtl?.(req.body.taskSessionTtlMinutes)
+    // ===== 任务会话超时 =====
+    if (body.taskSessionTtlMinutes !== undefined) {
+      await save('task_session_ttl_minutes', body.taskSessionTtlMinutes)
+      engine.taskEngine?.setSessionTtl?.(parseInt(body.taskSessionTtlMinutes))
     }
 
-    // 固定话术 / 匹配词表（保存即生效）
-    if (req.body.replyTexts !== undefined) {
-      await configRepo.set('reply_texts', JSON.stringify(req.body.replyTexts))
-      setReplyTexts(req.body.replyTexts)
+    // ===== 固定话术 / 匹配词表 =====
+    if (body.replyTexts !== undefined) {
+      await save('reply_texts', JSON.stringify(body.replyTexts))
+      setReplyTexts(body.replyTexts)
     }
-    if (req.body.matchVocab !== undefined) {
-      await configRepo.set('match_vocab', JSON.stringify(req.body.matchVocab))
-      setMatchVocab(req.body.matchVocab)
+    if (body.matchVocab !== undefined) {
+      await save('match_vocab', JSON.stringify(body.matchVocab))
+      setMatchVocab(body.matchVocab)
     }
 
-    // LLM 配置（任务智能层 + FAQ 兜底共用，保存即生效）
-    if (req.body.llmEnabled !== undefined) {
-      await configRepo.set('llm_enabled', req.body.llmEnabled ? 'true' : 'false')
-    }
-    if (req.body.llmApiUrl !== undefined) {
-      await configRepo.set('llm_api_url', req.body.llmApiUrl)
-    }
-    if (req.body.llmApiKey !== undefined && req.body.llmApiKey) {
-      await configRepo.set('llm_api_key', req.body.llmApiKey)
-    }
-    if (req.body.llmModel !== undefined) {
-      await configRepo.set('llm_model', req.body.llmModel)
-    }
-    if (req.body.llmEnabled !== undefined || req.body.llmApiUrl !== undefined || req.body.llmApiKey !== undefined || req.body.llmModel !== undefined) {
-      const cfg = await configRepo.getAll()
-      // key 空时回退环境变量（与 llmClient.resolveFromDb 一致），避免"保存配置把 LLM 关掉"
+    // ===== LLM 配置（直接用 body 值构建，无需重新读 DB）=====
+    if (body.llmEnabled !== undefined || body.llmApiUrl !== undefined || body.llmApiKey !== undefined || body.llmModel !== undefined) {
+      if (body.llmEnabled !== undefined) await save('llm_enabled', body.llmEnabled)
+      if (body.llmApiUrl !== undefined) await save('llm_api_url', body.llmApiUrl)
+      if (body.llmApiKey !== undefined && body.llmApiKey) await save('llm_api_key', body.llmApiKey)
+      if (body.llmModel !== undefined) await save('llm_model', body.llmModel)
+      // 直接用 body 值构建配置（未传的字段保持现状）
       const envKey = process.env.DEEPSEEK_API_KEY || process.env.LLM_API_KEY || ''
       const llmCfg = {
-        enabled: cfg.llm_enabled === 'true',
-        apiUrl: cfg.llm_api_url || '',
-        apiKey: cfg.llm_api_key || envKey,
-        model: cfg.llm_model || 'deepseek-chat',
+        enabled: body.llmEnabled !== undefined ? body.llmEnabled : llmClient.enabled,
+        apiUrl: body.llmApiUrl !== undefined ? body.llmApiUrl : llmClient.config?.apiUrl || '',
+        apiKey: body.llmApiKey || envKey,
+        model: body.llmModel !== undefined ? body.llmModel : llmClient.config?.model || 'deepseek-chat',
       }
-      // 同步共享 LLM 模块（配置即激活；taskEngine.setLlmConfig 配置的就是同一实例）
-      if (engine.taskEngine?.setLlmConfig) {
-        engine.taskEngine.setLlmConfig(llmCfg)
-      }
+      engine.taskEngine?.setLlmConfig?.(llmCfg)
     }
 
-    // LLM 调用节点配置（可视化编辑，保存即生效）
-    if (req.body.llmNodes !== undefined) {
-      await configRepo.set('llm_nodes', JSON.stringify(req.body.llmNodes))
-      llmClient.setNodes(req.body.llmNodes)
+    // ===== LLM 调用节点 =====
+    if (body.llmNodes !== undefined) {
+      await save('llm_nodes', JSON.stringify(body.llmNodes))
+      llmClient.setNodes(body.llmNodes)
     }
 
+    // 返回完整配置状态
     res.json({
       success: true,
       minConfidence: engine.recognizer.minConfidence,
       clarifyThreshold: engine.clarifyThreshold,
       topK: engine.recognizer.topK,
       meaninglessDetectionMode: engine.meaninglessDetectionMode,
+      nluMode: body.nluMode || engine.taskEngine?.nlu?.mode,
+      llmEnabled: llmClient.enabled,
     })
   }))
 
