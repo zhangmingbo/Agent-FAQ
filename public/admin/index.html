@@ -2307,6 +2307,7 @@
       '<label style="cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" data-batch-all> 全选</label>' +
       '<span data-batch-count style="color:#888">已选 0 项</span>' +
       '<span style="flex:1"></span>' +
+      '<button class="btn-sm" data-batch-addq>批量加入相似问</button>' +
       '<button class="btn-sm btn-danger" data-batch-ignore>批量处理</button>';
     table.parentNode.insertBefore(bar, table);
 
@@ -2315,7 +2316,7 @@
       document.querySelectorAll('.el-table__body-wrapper tbody tr [data-issue-check]').forEach(function(c) { c.checked = allCb.checked; });
       updateIssueCount();
     };
-    // 批量处理
+    // 批量处理（标记忽略）
     bar.querySelector('[data-batch-ignore]').onclick = function() {
       var texts = collectIssueTexts();
       if (!texts.length) { alert('请先勾选要处理的问题'); return; }
@@ -2327,6 +2328,27 @@
           if (done === texts.length) { alert('已处理 ' + done + ' 个问题'); location.reload(); }
         });
       });
+    };
+    // 批量加入相似问：自动识别每条问题最像哪个 FAQ，匹配到高置信则加入（无需手动选 FAQ）
+    bar.querySelector('[data-batch-addq]').onclick = function() {
+      var texts = collectIssueTexts();
+      if (!texts.length) { alert('请先勾选要加入的问题'); return; }
+      if (!confirm('将选中的 ' + texts.length + ' 个问题自动识别 FAQ 并加入相似问？\n（匹配不到或相似度不足的会跳过并在结果中列出）')) return;
+      var btn = bar.querySelector('[data-batch-addq]');
+      var oldTxt = btn.textContent;
+      btn.textContent = '识别中...';
+      btn.disabled = true;
+      api('POST', '/api/analysis/add-questions-batch', { texts: texts }, function(res) {
+        btn.textContent = oldTxt;
+        btn.disabled = false;
+        if (!res || !res.success) { alert((res && res.message) || '操作失败'); return; }
+        var msg = '成功加入 ' + res.added + ' 个，跳过 ' + res.skipped + ' 个\n\n';
+        (res.results || []).forEach(function(r) {
+          msg += (r.ok ? '✓ ' : '✗ ') + r.text.slice(0, 20) + (r.ok ? ' → ' + (r.faqName || r.faqCode) : '（' + (r.reason || '') + '）') + '\n';
+        });
+        alert(msg);
+        if (res.added > 0) location.reload();
+      }, function() { btn.textContent = oldTxt; btn.disabled = false; alert('请求失败'); });
     };
     updateIssueCount();
   }

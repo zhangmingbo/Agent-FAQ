@@ -124,6 +124,41 @@ export function createRouter(engine) {
     })
   }))
 
+  // 批量自动加入相似问：对每条文本做意图识别，匹配到高置信 FAQ 则自动加入其相似问
+  // （问题追踪批量工具栏用；匹配不到/低置信/已存在 → 跳过并返回原因，不写库）
+  router.post('/analysis/add-questions-batch', asyncHandler(async (req, res) => {
+    const { texts } = req.body
+    if (!texts || !Array.isArray(texts) || texts.length === 0) {
+      res.status(400).json({ message: 'texts 不能为空数组' })
+      return
+    }
+    const threshold = parseFloat(req.body.threshold) || 0.6
+    const results = []
+    let added = 0, skipped = 0
+    for (const raw of texts) {
+      const text = String(raw || '').trim()
+      if (!text) { skipped++; results.push({ text, ok: false, reason: '空文本' }); continue }
+      try {
+        const r = await engine.recognizer.recognize(text)
+        const top = r.top_results && r.top_results[0]
+        if (r.matched && top && top.similarity >= threshold) {
+          const exists = await engine.faqService.questionExists(top.intentCode, text)
+          if (exists) { skipped++; results.push({ text, ok: false, reason: '已存在相似问' }); continue }
+          await engine.faqService.addQuestion(top.intentCode, text)
+          added++
+          results.push({ text, ok: true, faqCode: top.intentCode, faqName: top.intentName, similarity: top.similarity })
+        } else {
+          skipped++
+          results.push({ text, ok: false, reason: r.matched ? '相似度不足' : '未匹配到 FAQ', best: top ? { code: top.intentCode, sim: top.similarity } : null })
+        }
+      } catch (e) {
+        skipped++
+        results.push({ text, ok: false, reason: '识别失败: ' + e.message })
+      }
+    }
+    res.json({ success: true, added, skipped, results })
+  }))
+
   // 将未匹配问题加入已有 FAQ 的相似问（写库 + 增量重编码，无需全量加载）
   router.post('/analysis/add-question', asyncHandler(async (req, res) => {
     const { faqCode, question } = req.body
