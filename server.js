@@ -13,7 +13,7 @@ import { existsSync, mkdirSync } from 'fs'
 
 import config from './config/index.js'
 import pool from './db/pool.js'
-import FAQEngine, { DEFAULT_FEEDBACK_WORDS } from './faq-engine.js'
+import FAQEngine, { DEFAULT_FEEDBACK_WORDS, DEFAULT_COMPLAINT_WORDS } from './faq-engine.js'
 import FaqService from './services/faqService.js'
 import { initPrompts } from './services/llmPrompts.js'
 import ruleLoader from './rules/ruleLoader.js'
@@ -40,6 +40,7 @@ import { createRouter as createDebugRouter } from './routes/debug.js'
 import { createRouter as createActionLogRouter } from './routes/actionLogs.js'
 import taskEngine from './services/taskflow/index.js'
 import taskSuggestService from './services/taskSuggestService.js'
+import autoExpandService from './services/autoExpandService.js'
 import { initReplyTexts, getAllReplyTexts, DEFAULT_REPLY_TEXTS } from './services/replyTexts.js'
 import { initMatchVocab, getAllMatchVocab, DEFAULT_MATCH_VOCAB } from './services/matchVocab.js'
 
@@ -176,11 +177,27 @@ async function start() {
       keywordMinScore: dbConfig.suggest_keyword_min_score,
     })
     await taskSuggestService.loadIgnored()
+    // 相似问自动扩写（第二批 C：配置 → sys_config，数据 → expand_audit，逻辑 → autoExpandService）
+    autoExpandService.configure({
+      simThreshold: dbConfig.expand_sim_threshold,
+      minCount: dbConfig.expand_min_count,
+      enabled: dbConfig.expand_enabled === undefined ? true : dbConfig.expand_enabled !== 'false',
+    })
+    if (dbConfig.expand_sim_threshold === undefined) await configRepo.set('expand_sim_threshold', '0.75')
+    if (dbConfig.expand_min_count === undefined) await configRepo.set('expand_min_count', '2')
+    if (dbConfig.expand_enabled === undefined) await configRepo.set('expand_enabled', 'true')
     // 答案反馈信号词（运营可配，默认仅首次落库）
     if (!dbConfig.feedback_trigger_words) {
       await configRepo.set('feedback_trigger_words', JSON.stringify(DEFAULT_FEEDBACK_WORDS))
     }
     try { engine.feedbackTriggerWords = JSON.parse(dbConfig.feedback_trigger_words || '[]') } catch { engine.feedbackTriggerWords = DEFAULT_FEEDBACK_WORDS }
+    // 投诉情绪兜底信号词（运营可配，默认仅首次落库）
+    if (!dbConfig.complaint_trigger_words) {
+      await configRepo.set('complaint_trigger_words', JSON.stringify(DEFAULT_COMPLAINT_WORDS))
+      engine.complaintTriggerWords = DEFAULT_COMPLAINT_WORDS
+    } else {
+      try { engine.complaintTriggerWords = JSON.parse(dbConfig.complaint_trigger_words) } catch { engine.complaintTriggerWords = DEFAULT_COMPLAINT_WORDS }
+    }
     // 固定话术 / 匹配词表（首次启动自动落库，之后以库为准）
     if (!dbConfig.reply_texts) {
       await configRepo.set('reply_texts', JSON.stringify(DEFAULT_REPLY_TEXTS))
@@ -215,6 +232,9 @@ async function start() {
   await taskEngine.setNlpEngine(engine.recognizer.nlpEngine)
   // 注入 FAQ 例句向量源（同一模型编码，任务 vs FAQ 统一语义仲裁用）
   taskEngine.nlu.setFaqSamples(engine.recognizer.allSamples)
+  // 相似问自动扩写：共享同一 NLP 引擎 + FAQ 例句样本（第一批数据驱动，第二批 C）
+  autoExpandService.setNlpEngine(engine.recognizer.nlpEngine, engine.recognizer.allSamples)
+  autoExpandService.setFaqService(engine.faqService)
   engine.taskEngine = taskEngine
   console.log(`   ✅ 任务加载完成，共 ${taskEngine.taskDefs.size} 个`)
 

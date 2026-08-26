@@ -34,6 +34,15 @@ export const DEFAULT_FEEDBACK_WORDS = [
   '答错', '你理解错', '理解错了', '不对', '我说的是', '你答的不对', '牛头不对马嘴',
 ]
 
+/** 投诉情绪兜底：命中即安抚 + 转人工事件（运营可配，sys_config.complaint_trigger_words，默认仅首次落库） */
+export const DEFAULT_COMPLAINT_WORDS = [
+  '投诉', '消协', '12315', '举报', '差评', '态度差', '服务太差', '服务差',
+  '太差了', '垃圾', '骗子', '欺负', '耍赖', '敷衍', '忽悠', '气死', '受不了了',
+]
+
+/** 否定防护："我不是投诉" 等否定表达不触发投诉兜底 */
+const COMPLAINT_NEG_RE = /(没|不|别|无|不用|不是|没有)[^，。！？!?、\s]{0,4}(投诉|举报|差评|骗子|忽悠|敷衍)/
+
 class FAQEngine {
   /**
    * @param {Object} options - 配置
@@ -109,6 +118,21 @@ class FAQEngine {
     } catch (e) {
       console.warn('[FAQEngine] answer_feedback 建表失败:', e.message)
     }
+
+    // 会话持久化表（重启后按 sessionId 恢复对话上下文/任务进度）
+    try {
+      await pool.execute(
+        `CREATE TABLE IF NOT EXISTS chat_session (
+          session_id VARCHAR(100) PRIMARY KEY,
+          context_json LONGTEXT,
+          last_active BIGINT,
+          created_at BIGINT,
+          KEY idx_session_active (last_active)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+      )
+    } catch (e) {
+      console.warn('[FAQEngine] chat_session 建表失败:', e.message)
+    }
     
     console.log('[FAQEngine] 初始化完成')
   }
@@ -138,6 +162,14 @@ class FAQEngine {
       'INSERT INTO answer_feedback (session_id, user_text, answer) VALUES (?, ?, ?)',
       [sessionId, fb.user_text, fb.answer]
     )
+  }
+
+  /** 投诉情绪快检：命中信号词且非否定表达 → 返回命中词；未命中返回 null */
+  _detectComplaint(text) {
+    if (!this.complaintTriggerWords || !this.complaintTriggerWords.length) return null
+    const lower = String(text || '').toLowerCase()
+    if (COMPLAINT_NEG_RE.test(lower)) return null
+    return this.complaintTriggerWords.find(w => lower.includes(String(w).toLowerCase())) || null
   }
 
   /**
@@ -201,8 +233,11 @@ class FAQEngine {
       }
     }
     
-    // 获取或创建会话上下文
+    // 获取或创建会话上下文（先从 DB 恢复上次进度，重启后不丢）
+    await this._restoreSession(sessionId)
     const context = this._getSession(sessionId)
+
+    let response
 
     // ===== 答案反馈闭环：用户否定上轮回答（运营配置信号词）→ 记录，用于定位"答错的高频问题" =====
     // 检测必须在 push 本轮 user 之前：此时 history 末条是上轮 assistant 回答
@@ -212,13 +247,34 @@ class FAQEngine {
       this._logAnswerFeedback(sessionId, feedback).catch(e => console.error('[FAQEngine] 答案反馈记录失败:', e.message))
     }
 
-    // 记录用户输入到历史
-    context.history.push({ role: 'user', text, timestamp: Date.now() })
+    // ===== 投诉情绪兜底：命中投诉信号词（运营可配）→ 安抚话术 + 转人工事件，不再走业务路由 =====
+    const complaint = this._detectComplaint(text)
+    if (complaint) {
+      console.log(`[COMPLAINT] 命中投诉词: ${complaint} @ session ${sessionId}`)
+      _t('投诉检测', { hit: complaint }, 'warn')
+      // 记录用户输入到历史
+      context.history.push({ role: 'user', text, timestamp: Date.now() })
+      response = {
+        intent_code: null,
+        confidence: 0,
+        source: 'complaint',
+        answer: getReply('complaint_soothe'),
+      }
+      context.pendingEvents = [{
+        type: 'transfer_human',
+        sessionId,
+        taskCode: null,
+        taskName: null,
+        slots: {},
+        reason: 'complaint:' + complaint,
+      }]
+    }
 
-    let response
+    // 记录用户输入到历史
+    if (!response) context.history.push({ role: 'user', text, timestamp: Date.now() })
 
     // ===== 意图路由澄清待选（pendingRoute）：用户上轮被追问"办理还是咨询"，本轮回复选项 =====
-    if (context.pendingRoute) {
+    if (!response && context.pendingRoute) {
       console.log('[ROUTE] 处理路由澄清选项:', text)
       const pending = context.pendingRoute
       const choice = this._parseRouteChoice(text)
@@ -567,8 +623,9 @@ class FAQEngine {
       context.history = context.history.slice(-20)
     }
 
-    // 保存会话
+    // 保存会话（内存 + DB 持久化，重启可恢复）
     this.sessions.set(sessionId, context)
+    this._persistSession(sessionId, context).catch(e => console.warn('[FAQEngine] 会话持久化失败:', e.message))
     
     // ===== [STEP 6] 完成响应 =====
     const duration = Date.now() - startTime
@@ -1103,6 +1160,64 @@ class FAQEngine {
   }
 
   /**
+   * 从 DB 恢复会话上下文（重启/进程重启后按 sessionId 找回对话历史与任务进度）
+   * 仅当内存无该会话且 DB 中未过期时载入；其余情况不动。
+   */
+  async _restoreSession(sessionId) {
+    if (this.sessions.has(sessionId)) return
+    const now = Date.now()
+    const timeout = dialogueRules.getSessionTimeout()
+    try {
+      const [rows] = await pool.execute(
+        'SELECT context_json, last_active FROM chat_session WHERE session_id = ?',
+        [sessionId]
+      )
+      if (!rows.length) return
+      const row = rows[0]
+      if (now - Number(row.last_active) >= timeout) {
+        // 过期：删除 DB 记录，按新会话处理
+        await pool.execute('DELETE FROM chat_session WHERE session_id = ?', [sessionId])
+        return
+      }
+      let saved
+      try { saved = JSON.parse(row.context_json) } catch { return }
+      if (!saved || typeof saved !== 'object') return
+      const restored = {
+        sessionId,
+        history: Array.isArray(saved.history) ? saved.history : [],
+        pendingClarify: saved.pendingClarify || null,
+        pendingRoute: saved.pendingRoute || null,
+        lastActive: now,
+        createdAt: saved.createdAt || now,
+      }
+      this.sessions.set(sessionId, restored)
+      console.log(`[FAQEngine] 会话恢复: ${sessionId}（历史 ${restored.history.length} 条）`)
+    } catch (e) {
+      console.warn('[FAQEngine] 会话恢复失败:', e.message)
+    }
+  }
+
+  /** 持久化会话上下文到 DB（异步落库，重启可恢复） */
+  async _persistSession(sessionId, context) {
+    if (!context) return
+    try {
+      await pool.execute(
+        `INSERT INTO chat_session (session_id, context_json, last_active, created_at)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE context_json = VALUES(context_json), last_active = VALUES(last_active)`,
+        [sessionId, JSON.stringify({
+          history: context.history || [],
+          pendingClarify: context.pendingClarify || null,
+          pendingRoute: context.pendingRoute || null,
+          createdAt: context.createdAt || Date.now(),
+        }), Date.now(), context.createdAt || Date.now()]
+      )
+    } catch (e) {
+      console.warn('[FAQEngine] 会话持久化失败:', e.message)
+    }
+  }
+
+  /**
    * 获取会话上下文
    */
   _getSession(sessionId) {
@@ -1181,13 +1296,14 @@ class FAQEngine {
   }
 
   /**
-   * 清理过期会话
+   * 清理过期会话（内存 + DB）
    */
   cleanSessions() {
     const now = Date.now()
     for (const [id, session] of this.sessions) {
       if (now - session.lastActive > this.sessionTimeout) {
         this.sessions.delete(id)
+        pool.execute('DELETE FROM chat_session WHERE session_id = ?', [id]).catch(() => {})
       }
     }
   }
