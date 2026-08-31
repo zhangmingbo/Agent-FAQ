@@ -317,38 +317,8 @@ class DialogManager {
     // LLM 提取的值必须满足槽位约束（枚举/正则），防止 LLM 乱填/回显整句
     let finalValue = (value !== null && this.nlu.valueMatchesSlot(slotDef, value)) ? value : null
 
-    // 规则/单槽未提取到 → LLM 批量兜底（一次性抽取所有未填槽位；探测阶段不重复调用）
-    // 首轮且输入未提到任何槽位关键词时跳过（避免把触发句"我要报修燃气表"瞎填成槽位值）
-    if (finalValue === null && !probing && this.nlu.mode !== 'rule') {
-      const canBatch = state.turnCount > 1 || this._textMentionsSlots(text, state)
-      if (canBatch) {
-        const all = await this._llmExtractAll(state, text)
-        if (all && Object.keys(all).length > 0) {
-          let llmFilledAny = false
-          for (const [k, v] of Object.entries(all)) {
-            const s = state.slots[k]
-            if (!s || s.filled || !v) continue
-            const sDef = this._slotDefByKey(state, k)
-            // LLM 值必须满足槽位约束
-            if (!sDef || !this.nlu.valueMatchesSlot(sDef, v)) continue
-            const check = this.nlu.validate(sDef, v)
-            if (check.ok) {
-              s.value = String(v)
-              s.filled = true
-              llmFilledAny = true
-              console.log(`[TaskNLU] LLM提取槽位 ${k} = "${v}"`)
-            }
-          }
-          if (llmFilledAny) {
-            const filled = state.slots[slotDef.key]
-            if (filled?.filled) {
-              return { extracted: true, note: '' }
-            }
-            return { extracted: false, reask: '' }
-          }
-        }
-      }
-    }
+    // NER+规则引擎优先策略：LLM 批量提取已禁用，纯规则引擎
+    // 原 LLM 批量兜底逻辑已移除（2024-08 改造）
 
     if (finalValue === null) {
       // 结构化槽位（regex/number/enum）：输入非空且不像闲聊 → 视为格式错误，直接重问

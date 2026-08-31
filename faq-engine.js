@@ -449,7 +449,7 @@ class FAQEngine {
         }
       }
 
-      // ---------- 场景 B：活跃任务（未挂起）→ 先任务对话（LLM 提取），失败才路由判定 ----------
+      // ---------- 场景 B：活跃任务（未挂起）→ 先任务对话（规则引擎提取），失败才路由判定 ----------
       else if (hasActive) {
         console.log('[TASK] 检测到活跃任务，进入任务对话模式')
         const taskState = this.taskEngine.getActiveTask(sessionId)
@@ -469,7 +469,7 @@ class FAQEngine {
         } else {
         // 0) 新任务意图确定性判定（触发词+仲裁，零 LLM 成本）：
         //    用户明确要办另一件事（如"我想预约安装净水器"）→ 先切换任务。
-        //    必须放在 LLM 提取之前——否则 LLM 会把新任务意图当"任务内对话"消化掉，
+        //    必须放在规则提取之前——否则新任务意图会被当"任务内对话"消化掉，
         //    永远触发不了 task_new（历史 bug：换表任务中"我想预约安装净水器"被 LLM 反问）。
         const detect = await this.taskEngine.nlu.detectNewTask(text, {
           tasks: [...this.taskEngine.taskDefs.values()],
@@ -490,14 +490,14 @@ class FAQEngine {
           _t('域外输入快检（任务活跃）', { taskCode: taskState.taskCode, channel: detect.channel }, 'warn')
           response = await this._handleFallback(text, context, { confidence: 0 })
         } else {
-        // 任务进行中：先让任务对话（LLM 提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
+        // 任务进行中：先让任务对话（规则引擎提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
         // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
         const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
         if (taskResult?.events?.length) context.pendingEvents = taskResult.events
 
         if (taskResult && (taskResult.extracted || taskResult.isComplete || taskResult.cancelled || taskResult.reask)) {
           // 任务内：提取到槽位/确认/取消/重问 → 直接用任务回复
-          _t('任务内回复（LLM 提取）', { extracted: taskResult.extracted, isComplete: taskResult.isComplete, cancelled: taskResult.cancelled, reask: taskResult.reask })
+          _t('任务内回复（规则引擎提取）', { extracted: taskResult.extracted, isComplete: taskResult.isComplete, cancelled: taskResult.cancelled, reask: taskResult.reask })
           if (taskResult.question && taskResult.questionText) {
             // 边答边问：先 FAQ 回答问题，再接任务进度提示
             console.log('[TASK] 检测到边答边问，FAQ 回答:', taskResult.questionText)
@@ -526,7 +526,7 @@ class FAQEngine {
             }
           }
         } else {
-          // LLM 提取失败（用户没说槽位、也没确认/取消）→ 可能是任务外（插话/换任务/澄清），用路由判定
+          // 规则提取失败（用户没说槽位、也没确认/取消）→ 可能是任务外（插话/换任务/澄清），用路由判定
           _t('任务对话未提取到槽位，转路由判定', {}, 'warn')
           const route = await this.taskEngine.nlu.route(text, {
             taskState,
@@ -662,7 +662,7 @@ class FAQEngine {
 
   /**
    * 任务对话轮次（task_continue 通道）—— 原 processInput 处理逻辑
-   * 注：场景 B 已内联此逻辑（先 LLM 提取、失败才路由判定），本方法保留备用
+   * 注：场景 B 已内联此逻辑（先规则提取、失败才路由判定），本方法保留备用
    */
   async _handleTaskTurn(sessionId, text, context) {
     const taskResult = await this.taskEngine.processInput(sessionId, text)
