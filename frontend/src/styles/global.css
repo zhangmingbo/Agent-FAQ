@@ -1,0 +1,54 @@
+/* 全局样式 - FAQ 管理后台 v3.0 */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #f0f2f5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 统计卡片 */
+.stat-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.stat-card .label { font-size: 13px; color: #888; margin-bottom: 6px; }
+.stat-card .value { font-size: 28px; font-weight: 700; color: #333; }
+.stat-card .sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+/* 标签 */
+.tag-blue { color: #4361ee; background: #eef2ff; }
+.tag-green { color: #155724; background: #d4edda; }
+.tag-orange { color: #856404; background: #fff3cd; }
+.tag-red { color: #721c24; background: #f8d7da; }
+
+/* 已添加行 */
+.row-added { background-color: #f0fdf4 !important; }
+.row-added td { color: #16a34a !important; }
+
+/* 来源分布条 */
+.source-bar { display: flex; gap: 4px; margin-top: 8px; }
+.source-bar .bar {
+  height: 20px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: #fff; min-width: 30px;
+}
+.bar-direct { background: #4361ee; }
+.bar-clarify { background: #ffc107; color: #333 !important; }
+.bar-fallback { background: #6c757d; }
+.bar-llm { background: #28a745; }
+
+/* 日志列表项 */
+.log-item {
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+  font-size: 13px;
+}
+.log-item:last-child { border-bottom: none; }
+.log-time { color: #aaa; font-size: 11px; }
+.log-text { color: #333; margin: 4px 0; }
+.log-meta { display: flex; gap: 12px; font-size: 12px; color: #888; }
