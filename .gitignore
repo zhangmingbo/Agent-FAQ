@@ -11,10 +11,21 @@ screenshot-*.png
 *.png
 logs/
 
-# npm ¹¤×÷Çø»º´æ
+# npm ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 .npm-cache/
 
 tt.xml
 000666.xml
 
 *.tar.gz
+
+# ä¸´æ—¶è°ƒè¯•/æµ‹è¯•è„šæœ¬
+check-*.js
+cleanup-*.js
+clear-*.js
+debug-*.js
+demo-*.js
+remove-*.js
+restore-*.js
+test-*.js
+update-*.js

@@ -3,9 +3,11 @@
  *
  * 设计：
  *   - 连接配置（总开关 + apiUrl/apiKey/model）与「调用节点」配置分离
- *   - 每个用途（trigger/extract/dialogue/route/meaningless/rerank）是一个可配置节点：
+ *   - 每个用途（meaningless/rerank）是一个可配置节点：
  *     { enabled, model, temperature, maxTokens }，管理后台可视化编辑，sys_config.llm_nodes 存储
  *   - 各业务方法先查 nodeEnabled(用途) 再调用；未启用或失败返回 null/空，上层自行降级
+ *
+ * 注意：任务流程（触发/提取/对话/路由）已改为纯规则引擎，不再使用 LLM
  *
  * 提示词来源：运营配置注册表 llmPrompts（管理后台「LLM 智能层」可编辑，默认值兜底）
  * 兼容任意 OpenAI 格式服务：DeepSeek / 通义千问 / 智谱 GLM / Ollama 等
@@ -15,16 +17,11 @@ import { get as getPrompt, getPromptSource } from './llmPrompts.js'
 import llmCallLogger from './llmCallLogger.js'
 
 /** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖）
- *  NER+规则引擎优先策略：trigger/extract/dialogue/route 默认关闭，由 NER 和规则引擎承担
- *  meaningless/rerank 保留开启（FAQ 侧辅助功能）
+ *  任务流程已改为纯规则引擎，仅保留 FAQ 侧辅助节点
  *  注意：模型不在这里配——全系统统一在「连接配置」的全局模型（llm_model）里控制 */
 export const DEFAULT_LLM_NODES = {
-  trigger:     { enabled: false, temperature: 0,   maxTokens: 20 },   // 任务触发判定（默认关闭，由规则+向量承担）
-  extract:     { enabled: false, temperature: 0,   maxTokens: 200 },  // 槽位提取（默认关闭，由 NER 承担）
-  dialogue:    { enabled: false, temperature: 0.2, maxTokens: 400 },  // 任务对话（默认关闭，由规则模板承担）
-  route:       { enabled: false, temperature: 0,   maxTokens: 10 },   // 意图路由兜底（默认关闭，可配置开启）
-  meaningless: { enabled: true, temperature: 0.1, maxTokens: 10 },   // 无意义检测（保留开启）
-  rerank:      { enabled: true, temperature: 0,   maxTokens: 5 },    // FAQ 意图重排（保留开启）
+  meaningless: { enabled: true, temperature: 0.1, maxTokens: 10 },   // 无意义检测（FAQ 侧）
+  rerank:      { enabled: true, temperature: 0, maxTokens: 5 },      // FAQ 意图重排
 }
 
 class LLMClient {
@@ -92,52 +89,27 @@ class LLMClient {
   }
 
   /** 某用途是否可调用 LLM（总开关 && 节点开关；节点未设置时按默认 true） */
-  nodeEnabled(name, taskLlm = null) {
+  nodeEnabled(name) {
     if (!this.enabled) return false
-    // 任务级总开关：本任务完全不用 LLM
-    if (taskLlm && taskLlm.enabled === false) return false
-    const t = taskLlm?.[name]
-    if (t && t.enabled !== undefined) return !!t.enabled
     const n = this.nodes[name]
     if (n) return n.enabled !== false
     return DEFAULT_LLM_NODES[name]?.enabled !== false
   }
 
-  /**
-   * 解析某用途的"生效节点配置"（任务级 > 全局节点 > 默认值）
-   * 注意：模型不在此解析——全系统统一用「连接配置」的全局模型
-   * @param {string} name - 用途名
-   * @param {Object|null} taskLlm - 任务定义里的 llm 配置块
-   * @returns {{enabled:boolean, model:string, temperature:number, maxTokens:number}}
-   */
-  resolveEffective(name, taskLlm = null) {
-    if (taskLlm && taskLlm.enabled === false) {
-      return { enabled: false, model: this.config?.model || 'deepseek-chat', temperature: 0, maxTokens: 0 }
-    }
-    const t = taskLlm?.[name] || {}
-    const g = this.nodes[name] || DEFAULT_LLM_NODES[name] || {}
+  /** 全局模板来源标注（meaningless/rerank 用） */
+  _globalPromptSource(keys) {
+    const src = (k) => getPromptSource(k) === 'custom' ? 'global' : 'default'
     return {
-      enabled: t.enabled !== undefined ? !!t.enabled : g.enabled !== false,
-      model: this.config?.model || 'deepseek-chat',
-      temperature: typeof t.temperature === 'number' ? t.temperature : (g.temperature ?? 0),
-      maxTokens: typeof t.maxTokens === 'number' ? t.maxTokens : (g.maxTokens ?? 100),
+      system: keys[0] ? src(keys[0]) : 'default',
+      user: keys[1] ? src(keys[1]) : 'default',
     }
-  }
-
-  /** 填充占位符 {xxx}（任务级提示词覆盖用） */
-  _fill(template, vars = {}) {
-    let t = String(template || '')
-    for (const [k, v] of Object.entries(vars)) {
-      t = t.split(`{${k}}`).join(v ?? '')
-    }
-    return t
   }
 
   /**
    * 底层统一 chat 调用
    * @param {Array<{role:string, content:string}>} messages
    * @param {Object} opts - { model?, maxTokens, temperature, node?, sessionId? }
-   *   node: 调用节点名（trigger/extract/dialogue/route/meaningless/rerank），埋点日志用
+   *   node: 调用节点名（meaningless/rerank），埋点日志用
    *   sessionId: 关联的会话（会话调试按会话查看 LLM 调用）
    * @returns {Promise<string>}
    */
@@ -236,161 +208,7 @@ class LLMClient {
     }
   }
 
-  // ==================== 业务方法（每个节点一个） ====================
-
-  /**
-   * LLM 驱动对话：单轮决策（agentic dialogue）——节点 dialogue
-   * @param {string} system - 系统提示词（已填充；任务级覆盖时由调用方传入覆盖模板）
-   * @param {string} user - 用户消息（已填充）
-   * @param {Object} [cfg] - 生效节点配置（任务级解析结果；缺省用全局节点）
-   * @param {Object} [promptSource] - 提示词来源标注 { system: 'task'|'global'|'default', user: ... }（调试用）
-   * @returns {Promise<Object>} { slots, reply, ask_confirm, question }
-   */
-  async dialogueTurn(system, user, cfg = null, promptSource = null) {
-    const eff = cfg || this.resolveEffective('dialogue')
-    if (!eff.enabled) {
-      return { slots: {}, reply: '', ask_confirm: false, question: null }
-    }
-    const raw = await this.chat([
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'dialogue', promptSource })
-
-    const obj = this._parseJson(raw)
-    if (!obj || typeof obj !== 'object') return { slots: {}, reply: '', ask_confirm: false, question: null }
-    return {
-      slots: obj.slots && typeof obj.slots === 'object' ? obj.slots : {},
-      reply: typeof obj.reply === 'string' ? obj.reply.trim() : '',
-      ask_confirm: !!obj.ask_confirm,
-      question: typeof obj.question === 'string' && obj.question.trim() ? obj.question.trim() : null,
-    }
-  }
-
-  /**
-   * 从用户输入一次性抽取所有未填槽位——节点 extract
-   * @returns {Promise<Object>} { key: value }（未启用/失败返回 {}）
-   */
-  async extractSlots(text, task, slotsSpec, state) {
-    const eff = this.resolveEffective('extract', task?.llm || null)
-    if (!eff.enabled) return {}
-    const slotDesc = Object.entries(slotsSpec)
-      .map(([k, s]) => `${k}: ${s.label}${s.type === 'regex' && s.rule ? `（格式：${s.rule}）` : ''}${s.type === 'enum' && s.rule ? `（可选：${s.rule}）` : ''}`)
-      .join('；')
-
-    const filledDesc = Object.entries(state?.slots || {})
-      .filter(([_, s]) => s.filled)
-      .map(([k, s]) => `${k}: ${s.value}`)
-      .join('；')
-
-    // 意图例句帮助 LLM 理解业务语境（如"报修"场景下的地址/故障/电话）
-    const examples = Array.isArray(task.intent_examples) && task.intent_examples.length > 0
-      ? `\n业务场景例句（用户可能这么说）：${task.intent_examples.slice(0, 8).join('；')}`
-      : ''
-
-    // 提示词：任务级覆盖优先，其次运营配置注册表（管理后台可编辑），默认值兜底
-    const sysTpl = task?.llm?.prompts?.extractSystem
-    const userTpl = task?.llm?.prompts?.extractUser
-    const promptSource = {
-      system: sysTpl ? 'task' : (getPromptSource('extract_slots.system') === 'custom' ? 'global' : 'default'),
-      user: userTpl ? 'task' : (getPromptSource('extract_slots.user') === 'custom' ? 'global' : 'default'),
-    }
-    const system = sysTpl ? this._fill(sysTpl, {}) : getPrompt('extract_slots.system')
-    const user = userTpl
-      ? this._fill(userTpl, { taskName: task.name, examples, slotDesc, filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '', text })
-      : getPrompt('extract_slots.user', {
-          taskName: task.name,
-          examples,
-          slotDesc,
-          filledDesc: filledDesc ? `已提取字段：${filledDesc}\n` : '',
-          text,
-        })
-
-    const raw = await this.chat([
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ], { model: eff.model, maxTokens: eff.maxTokens, temperature: eff.temperature, node: 'extract', promptSource })
-
-    return this._parseJson(raw)
-  }
-
-  /**
-   * 提取单个槽位值（LLM 兜底用）——节点 extract
-   * @returns {Promise<string|null>}
-   */
-  async extractSlot(text, slotDef, ctx = {}) {
-    if (!this.nodeEnabled('extract', ctx?.task?.llm || null) || !slotDef?.key) return null
-    const task = ctx.task || { name: '当前任务' }
-    const result = await this.extractSlots(text, task, {
-      [slotDef.key]: {
-        label: slotDef.label || slotDef.key,
-        type: slotDef.extract?.method || 'text',
-        rule: slotDef.extract?.rule || '',
-        required: slotDef.required !== false,
-      },
-    }, ctx.state)
-    const v = result[slotDef.key]
-    return v ? String(v) : null
-  }
-
-  /**
-   * 判断用户输入是否意图触发某个任务（口语化触发判定）——节点 trigger
-   * @returns {Promise<string|null>} 触发的任务 code，未触发返回 null
-   */
-  async judgeTrigger(text, tasks) {
-    if (!this.nodeEnabled('trigger') || !tasks || tasks.length === 0) return null
-    const n = this.nodes.trigger
-    const taskDesc = tasks.map(t =>
-      `${t.code}（${t.name}）：触发表达如 ${(t.trigger_keywords || []).filter(k => typeof k === 'string').slice(0, 5).join('、')}`
-    ).join('\n')
-
-    const system = getPrompt('judge_trigger.system')
-    const user = getPrompt('judge_trigger.user', { taskDesc, text })
-
-    const raw = await this.chat([
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'trigger', promptSource: this._globalPromptSource(['judge_trigger.system', 'judge_trigger.user']) })
-
-    const trimmed = raw.replace(/["'`\s]/g, '')
-    if (!trimmed || trimmed === 'null' || trimmed === '无' || trimmed === '没有') return null
-    const hit = tasks.find(t => t.code === trimmed || trimmed.startsWith(t.code))
-    return hit ? hit.code : null
-  }
-
-  /**
-   * 意图路由判定：用户输入该走哪条通道（规则拿不准时由 LLM 兜底）——节点 route
-   * @returns {Promise<string>} 'continue' | 'new_task' | 'faq' | null
-   */
-  async routeTurn({ taskName, taskContext, text }) {
-    if (!this.nodeEnabled('route')) return null
-    const n = this.nodes.route
-    const system = getPrompt('router.system', { taskName, taskContext })
-    const user = getPrompt('router.user', { taskName, taskContext, text })
-
-    const raw = await this.chat([
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ], { model: n.model, maxTokens: n.maxTokens, temperature: n.temperature, node: 'route', promptSource: this._globalPromptSource(['router.system', 'router.user']) })
-
-    const trimmed = raw.trim().toLowerCase()
-    if (trimmed.startsWith('continue')) return 'continue'
-    if (trimmed.startsWith('new_task')) return 'new_task'
-    if (trimmed.startsWith('faq')) return 'faq'
-    return null
-  }
-
-  /**
-   * 全局模板来源标注（非任务级节点用：trigger/route/meaningless/rerank）
-   * @param {string[]} keys - 提示词注册表 key 列表，如 ['router.system','router.user']
-   * @returns {{system:string, user:string}}
-   */
-  _globalPromptSource(keys) {
-    const src = (k) => getPromptSource(k) === 'custom' ? 'global' : 'default'
-    return {
-      system: keys[0] ? src(keys[0]) : 'default',
-      user: keys[1] ? src(keys[1]) : 'default',
-    }
-  }
+  // ==================== 业务方法（FAQ 侧） ====================
 
   /**
    * 无意义检测（FAQ 侧）——节点 meaningless

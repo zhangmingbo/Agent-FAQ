@@ -1,9 +1,11 @@
 /**
  * 槽位值提取器
  *
- * 支持提取方法：text / regex / number / enum / keyword（含标签的显式提供，如“地址是XX”）
- * 策略：先精确（regex/enum/number/keyword），后文本兜底
+ * 支持提取方法：text / regex / number / enum / keyword（含标签的显式提供，如"地址是XX"）
+ * 策略：先精确（regex/enum/number/keyword），后 NER（复杂槽位），最后文本兜底
  */
+
+import nerClient from './nerClient.js'
 
 class Extractor {
   constructor() {}
@@ -28,21 +30,32 @@ class Extractor {
       value = this._extractByLabel(text, slot)
     }
 
-    // 2) 结构化提取（labelOnly 模式下跳过）
-    if (value === null && !opts.labelOnly) {
-      switch (method) {
-        case 'regex':
-          value = this._extractRegex(text, slot.extract?.rule)
-          break
-        case 'number':
-          value = this._extractNumber(text)
-          break
-        case 'enum':
-          value = this._extractEnum(text, slot.extract?.enum || slot.extract?.rule)
-          break
-        case 'text':
-        default:
-          value = this._extractText(text, slot)
+    // 2) 结构化提取（labelOnly 模式下跳过纯文本，但 NER 不受限）
+    if (value === null) {
+      // NER 提取不受 labelOnly 限制（NER 是结构化提取，不是纯文本）
+      if (method === 'text' && slot.extract?.ner_type) {
+        value = await nerClient.extractForSlot(text, slot)
+      }
+      // 其他结构化提取在 labelOnly 模式下跳过
+      if (value === null && !opts.labelOnly) {
+        switch (method) {
+          case 'regex':
+            value = this._extractRegex(text, slot.extract?.rule)
+            break
+          case 'number':
+            value = this._extractNumber(text)
+            break
+          case 'enum':
+            value = this._extractEnum(text, slot.extract?.enum || slot.extract?.rule)
+            break
+          case 'text':
+          default:
+            // NER 没命中，回退到文本兜底（labelOnly 模式下跳过）
+            if (!opts.labelOnly) {
+              value = this._extractText(text, slot)
+            }
+            break
+        }
       }
     }
 

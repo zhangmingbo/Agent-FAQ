@@ -299,7 +299,7 @@ class TaskNLU {
 
     // ① 无任何候选（都低于各自最低线）→ 域外
     //    注意：taskScore=0 且 faqScore=0（无引擎/编码失败）不在此列——返回 empty，
-    //    route 层走 matchTask 补判（LLM judgeTrigger 可能判定任务）
+    //    route 层走 matchTask 补判（关键词+向量语义判定任务）
     if (noCandidate && (taskScore > 0 || faqScore > 0)) {
       console.log(`[TaskNLU] 仲裁：任务=${taskScore.toFixed(3)}<${taskMin} FAQ=${faqScore.toFixed(3)}<${faqMin}，无候选 → 域外`)
       return { channel: 'out_of_scope', taskScore, faqScore, taskCode, taskName, faqCode, faqName, diff, scores }
@@ -517,14 +517,14 @@ class TaskNLU {
         // 仲裁判 clarify 且有一侧达线（接近）→ 追问用户；双低（都未达线）→ 继续
         if (arb.taskScore > 0 || arb.faqScore > 0) return 'clarify'
 
-        // 仲裁双低（任务/FAQ 语义都拿不准）→ 走完整 matchTask（LLM judgeTrigger 补强）
+        // 仲裁双低（任务/FAQ 语义都拿不准）→ 走完整 matchTask（关键词+向量补强）
         if (!matchedTask) {
-          _t('仲裁双低，走完整 matchTask（LLM 判定补强）')
+          _t('仲裁双低，走完整 matchTask（关键词+向量补强）')
           try {
             const hit = await this.matchTask(t, ctx.tasks, ctx.taskState?.taskCode || null, trace)
             _t('matchTask 结果', { hit: hit ? hit.code : null })
             if (hit) {
-              // 向量双低时 LLM judgeTrigger 判定为任务 → 采信
+              // 向量双低时关键词/向量判定为任务 → 采信
               matchedTask = hit
               return 'task_new'
             }

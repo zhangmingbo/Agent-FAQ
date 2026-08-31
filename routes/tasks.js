@@ -110,6 +110,92 @@ export function createRouter() {
     res.json({ success: true, data: taskEngine.getDebugInfo(sessionId) })
   }))
 
+  // ========== 槽位 CRUD 接口 ==========
+
+  // 获取任务的槽位列表（供步骤编辑器下拉选择）
+  router.get('/tasks/:code/slots', asyncHandler(async (req, res) => {
+    const task = await taskEngine.get(req.params.code)
+    if (!task) {
+      res.status(404).json({ success: false, message: '任务不存在' })
+      return
+    }
+    const slots = (task.slots || []).map(s => ({
+      key: s.key,
+      label: s.label || s.key,
+      required: !!s.required,
+      extract: s.extract || {},
+      answer_validation: s.answer_validation || null,
+    }))
+    console.log(`[DEBUG slots.list] task=${req.params.code}, count=${slots.length}, keys=${slots.map(s => s.key).join(', ')}`)
+    res.json({ success: true, data: slots })
+  }))
+
+  // 新增槽位
+  router.post('/tasks/:code/slots', asyncHandler(async (req, res) => {
+    const { code } = req.params
+    const slot = req.body
+    if (!slot || !slot.key) {
+      res.status(400).json({ success: false, message: '槽位 key 不能为空' })
+      return
+    }
+    const task = await taskEngine.get(code)
+    if (!task) {
+      res.status(404).json({ success: false, message: '任务不存在' })
+      return
+    }
+    const slots = task.slots || []
+    // 检查是否已存在同名槽位
+    if (slots.some(s => s.key === slot.key)) {
+      res.status(400).json({ success: false, message: `槽位 "${slot.key}" 已存在` })
+      return
+    }
+    slots.push(slot)
+    await taskEngine.save({ ...task, slots })
+    console.log(`[DEBUG slots.create] task=${code}, added slot: ${slot.key}`)
+    res.json({ success: true, message: `槽位 "${slot.key}" 已添加`, data: slot })
+  }))
+
+  // 更新槽位
+  router.put('/tasks/:code/slots/:slotKey', asyncHandler(async (req, res) => {
+    const { code, slotKey } = req.params
+    const updates = req.body
+    const task = await taskEngine.get(code)
+    if (!task) {
+      res.status(404).json({ success: false, message: '任务不存在' })
+      return
+    }
+    const slots = task.slots || []
+    const idx = slots.findIndex(s => s.key === slotKey)
+    if (idx === -1) {
+      res.status(404).json({ success: false, message: `槽位 "${slotKey}" 不存在` })
+      return
+    }
+    // 合并更新（保留原有字段，覆盖传入的字段）
+    slots[idx] = { ...slots[idx], ...updates, key: slotKey } // key 不允许修改
+    await taskEngine.save({ ...task, slots })
+    console.log(`[DEBUG slots.update] task=${code}, updated slot: ${slotKey}`)
+    res.json({ success: true, message: `槽位 "${slotKey}" 已更新`, data: slots[idx] })
+  }))
+
+  // 删除槽位
+  router.delete('/tasks/:code/slots/:slotKey', asyncHandler(async (req, res) => {
+    const { code, slotKey } = req.params
+    const task = await taskEngine.get(code)
+    if (!task) {
+      res.status(404).json({ success: false, message: '任务不存在' })
+      return
+    }
+    const slots = task.slots || []
+    const filtered = slots.filter(s => s.key !== slotKey)
+    if (filtered.length === slots.length) {
+      res.status(404).json({ success: false, message: `槽位 "${slotKey}" 不存在` })
+      return
+    }
+    await taskEngine.save({ ...task, slots: filtered })
+    console.log(`[DEBUG slots.delete] task=${code}, deleted slot: ${slotKey}`)
+    res.json({ success: true, message: `槽位 "${slotKey}" 已删除` })
+  }))
+
   // 获取单个任务详情
   router.get('/tasks/:code', asyncHandler(async (req, res) => {
     const task = await taskEngine.get(req.params.code)
@@ -123,6 +209,12 @@ export function createRouter() {
   // 创建/更新任务
   router.post('/tasks', asyncHandler(async (req, res) => {
     const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, completion_message, on_complete, status } = req.body
+
+    console.log(`[DEBUG tasks.save] 收到保存请求: code=${code}`)
+    console.log(`[DEBUG tasks.save] slots 数量: ${slots?.length || 0}`)
+    if (slots) {
+      console.log(`[DEBUG tasks.save] slots keys:`, slots.map(s => s.key).join(', '))
+    }
 
     if (!code || !name) {
       res.status(400).json({ success: false, message: '编码和名称不能为空' })
@@ -155,6 +247,7 @@ export function createRouter() {
       completion_message, on_complete, status,
     })
 
+    console.log(`[DEBUG tasks.save] ✅ 保存成功`)
     res.json({ success: true, message: '保存成功' })
   }))
 

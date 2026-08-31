@@ -205,8 +205,17 @@ class TaskFlowEngine {
   async processInput(sessionId, text, trace = null) {
     const state = this.activeTasks.get(sessionId)
     if (!state || (state.status !== TaskState.COLLECTING && state.status !== TaskState.CONFIRMING)) {
+      console.log(`[DEBUG taskEngine.processInput] 任务不存在或状态不符: sessionId=${sessionId}, state=${state ? state.status : 'null'}`)
       return null
     }
+    
+    console.log(`[DEBUG taskEngine.processInput] 开始处理: sessionId=${sessionId}, text="${text}"`)
+    console.log(`[DEBUG taskEngine.processInput] 当前步骤: ${state.currentStep}, 状态: ${state.status}`)
+    console.log(`[DEBUG taskEngine.processInput] 已填槽位:`, Object.entries(state.slots || {})
+      .filter(([_, s]) => s && s.filled)
+      .map(([k, v]) => `${k}=${v.value}`)
+      .join(', '))
+    
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
 
     // 纯规则引擎对话（dialogManager）

@@ -143,10 +143,6 @@ class TaskDefs {
       arb_task_min: row.arb_task_min === null || row.arb_task_min === undefined ? null : parseFloat(row.arb_task_min),
       arb_faq_min: row.arb_faq_min === null || row.arb_faq_min === undefined ? null : parseFloat(row.arb_faq_min),
       arb_strong_hit: row.arb_strong_hit === null || row.arb_strong_hit === undefined ? null : parseFloat(row.arb_strong_hit),
-      // 任务级 LLM 配置（覆盖全局节点；undefined = 全用全局）
-      //   { enabled: bool(本任务总开关), dialogue: {enabled, model, temperature, maxTokens},
-      //     extract: {...}, prompts: {dialogueSystem, dialogueUser, extractSystem, extractUser} }
-      llm: _parseJson(row.llm, null),
       // 调用接口配置（完成动作 call_api 用）：{ url, method, fieldMap, successMessage }
       api_action: _parseJson(row.api_action, null),
       // api 步骤的结果槽位（系统填充，不向用户收集，也不阻塞确认）：

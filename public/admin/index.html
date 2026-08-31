@@ -113,16 +113,64 @@
     .task-modal-body textarea{resize:vertical;min-height:60px}
     .task-modal-body input:focus,.task-modal-body textarea:focus{outline:none;border-color:#4361ee}
     .task-modal-footer{padding:16px 24px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:#fff;border-radius:0 0 12px 12px}
-    .slot-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:10px;background:#f8f9fa;border-radius:6px}
-    .slot-row input,.slot-row select{padding:6px 8px;font-size:12px}
-    .slot-row .slot-key{width:100px}
-    .slot-row .slot-label{width:100px}
-    .slot-row .slot-prompt{flex:1}
-    .slot-row .slot-type{width:90px}
-    .slot-row .slot-required{width:50px;text-align:center}
-    .slot-row .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
-    .step-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;padding:8px;background:#fff;border:1px solid #e9ecef;border-radius:6px}
-    .step-row input,.step-row select,.step-row textarea{padding:5px 7px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
+    .slot-card{margin-bottom:10px;border:1px solid #e8ecff;border-radius:8px;background:#fafbff;overflow:hidden}
+    .slot-card-header{display:flex;align-items:center;padding:10px 12px;background:#f0f4ff;cursor:pointer;gap:8px}
+    .slot-card-header .slot-title{flex:1;font-size:13px;font-weight:500;color:#333}
+    .slot-card-header .slot-title .slot-key-tag{color:#666;font-weight:normal;font-size:12px}
+    .slot-card-header .slot-toggle{color:#666;font-size:12px;transition:transform 0.2s}
+    .slot-card-header .slot-toggle.collapsed{transform:rotate(-90deg)}
+    .slot-card-header .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
+    .slot-card-body{padding:12px}
+    .slot-card-body.collapsed{display:none}
+    .slot-card-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    .slot-card-row:last-child{margin-bottom:0}
+    .slot-card-row label{font-size:12px;color:#666;min-width:70px}
+    .slot-card-row input,.slot-card-row select,.slot-card-row textarea{padding:6px 8px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
+    .slot-card-row input:focus,.slot-card-row select:focus,.slot-card-row textarea:focus{outline:none;border-color:#4361ee}
+    .slot-card-row .slot-key{width:120px}
+    .slot-card-row .slot-label{width:120px}
+    .slot-card-row .slot-prompt{flex:1}
+    .slot-card-row .slot-type{width:100px}
+    .slot-card-row .slot-ner-type{width:120px}
+    .slot-card-row .slot-rule{flex:1}
+    .slot-card-row .slot-validate-rule{flex:1}
+    .slot-card-row .slot-reask{flex:1}
+    .slot-card-row .slot-default{width:150px}
+    .slot-card-row .slot-required{display:flex;align-items:center;gap:4px;font-size:12px}
+    .slot-card-row .alias-tags{display:flex;flex-wrap:wrap;gap:4px;flex:1}
+    .slot-card-row .alias-tag{background:#e8ecff;color:#4361ee;padding:2px 8px;border-radius:12px;font-size:11px;display:flex;align-items:center;gap:4px}
+    .slot-card-row .alias-tag .remove{cursor:pointer;font-size:14px;line-height:1}
+    .slot-card-row .alias-input{width:120px}
+    .step-card{margin-bottom:10px;border:1px solid #e9ecef;border-radius:8px;background:#fff;overflow:hidden}
+    .step-card-header{display:flex;align-items:center;padding:10px 12px;background:#f8f9fa;cursor:pointer;gap:8px}
+    .step-card-header .step-index{width:24px;height:24px;border-radius:50%;background:#4361ee;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500}
+    .step-card-header .step-title{flex:1;font-size:13px;font-weight:500;color:#333}
+    .step-card-header .step-type-badge{font-size:11px;padding:2px 8px;border-radius:10px;background:#e8ecff;color:#4361ee}
+    .step-card-header .step-toggle{color:#666;font-size:12px;transition:transform 0.2s}
+    .step-card-header .step-toggle.collapsed{transform:rotate(-90deg)}
+    .step-card-header .step-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
+    .step-card-body{padding:12px}
+    .step-card-body.collapsed{display:none}
+    .step-card-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    .step-card-row:last-child{margin-bottom:0}
+    .step-card-row label{font-size:12px;color:#666;min-width:70px}
+    .step-card-row input,.step-card-row select,.step-card-row textarea{padding:6px 8px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
+    .step-card-row input:focus,.step-card-row select:focus,.step-card-row textarea:focus{outline:none;border-color:#4361ee}
+    .step-card-row .step-key{width:120px}
+    .step-card-row .step-slot{width:120px}
+    .step-card-row .step-prompt{flex:1}
+    .step-card-row .step-next{width:120px}
+    .step-card-row .step-api-url{flex:1}
+    .step-card-row .step-api-method{width:80px}
+    .step-card-row .step-api-msg{flex:1}
+    .step-card-row .step-text{flex:1}
+    .step-card-row .step-action{width:150px}
+    .step-card-row .step-msg{flex:1}
+    .step-card-row .step-task{width:150px}
+    .step-card-row .step-return{width:150px}
+    .step-card-controls{display:flex;gap:4px;margin-left:auto}
+    .step-card-controls button{cursor:pointer;background:none;border:none;font-size:14px;padding:2px 6px;color:#666}
+    .step-card-controls button:hover{color:#4361ee}
     .case-row,.map-row{display:flex;gap:4px;align-items:center;margin:3px 0;width:100%}
     .case-row select,.case-row input,.map-row input{padding:4px 6px;font-size:12px;border:1px solid #ddd;border-radius:4px}
     .case-del,.map-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:15px;padding:0 4px;line-height:1}
@@ -2499,53 +2547,6 @@
           '</div>' +
           '<div style="color:#999;font-size:12px;margin-top:4px">任务与 FAQ 语义相似度接近时的判定：差距超过阈值选高者，否则澄清让用户选。此配置只对本任务生效，优先级高于系统配置。</div>' +
         '</div>' +
-        '<div class="form-group"><label>LLM 配置（可选，任务级覆盖全局节点；不配=用全局）</label>' +
-          '<div style="border:1px solid #e8ecff;border-radius:8px;padding:12px;background:#fafbff">' +
-            '<div style="font-size:12px;color:#999;margin-bottom:10px;line-height:1.8"><b style="color:#666">本任务的 LLM 怎么配？三步走：</b><br>① <b>什么都不改 = 跟随全局（推荐）</b>，全局已在「系统配置 → LLM 连接」配好；<br>② 想省成本/要确定性 → 勾选下面"完全不用 LLM"，或单独关掉某节点；<br>③ 想微调这个任务 → 只改下面温度/token，数字留空 = 用全局默认。</div>' +
-            '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tf-llm-enabled" ' + (isEdit && task.llm && task.llm.enabled === false ? 'checked' : '') + '> 本任务完全不用 LLM（对话/提取都走规则）</label>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
-              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
-                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">任务对话 <span style="color:#999;font-weight:normal;font-size:12px">（每轮回复/槽位提取）</span></div>' +
-                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-dialogue-enabled" ' + (isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.enabled === false ? '' : 'checked') + '> 启用</label>' +
-                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-dialogue-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.temperature != null ? task.llm.dialogue.temperature : '') + '"></label>' +
-                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-dialogue-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.maxTokens != null ? task.llm.dialogue.maxTokens : '') + '"></label>' +
-                '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 本任务对话不调 LLM（走规则）。<br>· 温度：留空 = 全局(0.2)；想更稳定填 0；想更自然口语填 0.3~0.5；越高越发散。<br>· token：留空 = 全局(400)；单次回复字数上限，一般 200~400 够用。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
-              '</div>' +
-              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
-                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">槽位提取 <span style="color:#999;font-weight:normal;font-size:12px">（规则提取失败时）</span></div>' +
-                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-extract-enabled" ' + (isEdit && task.llm && task.llm.extract && task.llm.extract.enabled === false ? '' : 'checked') + '> 启用</label>' +
-                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-extract-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.temperature != null ? task.llm.extract.temperature : '') + '"></label>' +
-                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-extract-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.maxTokens != null ? task.llm.extract.maxTokens : '') + '"></label>' +
-                '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 规则提取不到时不再用 LLM 补（提取容易出错的场景可关）。<br>· 温度：留空 = 全局(0)；提取建议用低温（0~0.1）保证准确。<br>· token：留空 = 全局(200)。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
-              '</div>' +
-            '</div>' +
-            '<div style="margin-top:10px">' +
-              '<div style="font-size:12px;color:#888;margin-bottom:6px;line-height:1.7">提示词覆盖：<b>4 个框已预填当前全局提示词</b>，直接在里面改 = 定制本任务；不改 = 继续用全局；想用全局默认就清空该框。<br>注意：{xxx} 是占位符会自动替换，<b>别删</b>。想换口吻 → 改「对话系统提示词」开头那句"你是…售后客服"即可。</div>' +
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话系统提示词 <span style="color:#aaa">（角色与规则）</span></div>' +
-                  '<textarea id="tf-llm-dialogue-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
-                '</div>' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话用户模板 <span style="color:#aaa">（每轮消息）</span></div>' +
-                  '<textarea id="tf-llm-dialogue-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
-                '</div>' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取系统提示词 <span style="color:#aaa">（提取规则）</span></div>' +
-                  '<textarea id="tf-llm-extract-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
-                '</div>' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取用户模板 <span style="color:#aaa">（字段描述）</span></div>' +
-                  '<textarea id="tf-llm-extract-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractUser || '') : '') + '</textarea>' +
-                '</div>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -2596,26 +2597,6 @@
       '</div>' +
     '</div>';
     document.body.appendChild(overlay);
-
-    // 预填 LLM 提示词覆盖框：把当前全局提示词直接写进文本框
-    // （改了 = 定制本任务；不改 = 继续用全局；清空 = 用全局默认）
-    var globalPrompts = {};
-    api('GET', '/api/config/llm-prompts', null, function(res) {
-      if (!res || !res.success) return;
-      var map = {};
-      (res.data || []).forEach(function(p) { map[p.key] = p.value || ''; });
-      var gkeyMap = {
-        'dialogue-system': 'dialogue.system',
-        'dialogue-user': 'dialogue.user',
-        'extract-system': 'extract_slots.system',
-        'extract-user': 'extract_slots.user',
-      };
-      ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
-        globalPrompts[id] = map[gkeyMap[id]] || '';
-        var ta = overlay.querySelector('#tf-llm-' + id);
-        if (ta && !ta.value.trim()) ta.value = globalPrompts[id];
-      });
-    });
 
     // 事件绑定
     var dirty = false;
@@ -2676,11 +2657,11 @@
     // 添加槽位
     overlay.querySelector('#tf-add-slot').onclick = function() {
       var container = overlay.querySelector('#tf-slots');
-      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract_type:'text',extract_rule:'',required:true}));
+      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract:{method:'text',rule:'',ner_type:''},required:true}));
       bindSlotDel(container.lastElementChild);
     };
-    // 绑定已有槽位删除
-    overlay.querySelectorAll('.slot-row').forEach(bindSlotDel);
+    // 绑定已有槽位
+    overlay.querySelectorAll('#tf-slots .slot-card').forEach(bindSlotDel);
 
     // 加载完成动作列表
     api('GET', '/api/tasks/actions', null, function(res) {
@@ -2710,7 +2691,10 @@
     // v2 步骤编辑器
     overlay.querySelector('#tf-add-step').onclick = function() {
       var container = overlay.querySelector('#tf-steps');
-      container.insertAdjacentHTML('beforeend', buildOneStepRow({key:'',type:'collect',next:''}));
+      var stepKeys = currentStepKeys();
+      var slotKeys = currentSlotKeys();
+      var index = container.querySelectorAll('.step-card').length;
+      container.insertAdjacentHTML('beforeend', buildOneStepRow({key:'',type:'collect',next:''}, stepKeys, slotKeys, index));
       bindStepRowEvents(container.lastElementChild);
     };
     overlay.querySelector('#tf-auto-steps').onclick = autoGenerateSteps;
@@ -2726,7 +2710,7 @@
       box.style.display = 'block';
       box.innerHTML = renderFlowPreview(steps);
     };
-    overlay.querySelectorAll('#tf-steps .step-row').forEach(bindStepRowEvents);
+    overlay.querySelectorAll('#tf-steps .step-card').forEach(bindStepRowEvents);
 
     // 保存
     overlay.querySelector('#tf-save').onclick = function() {
@@ -2743,19 +2727,34 @@
       overlay.querySelectorAll('#tf-examples .keyword-tag').forEach(function(tag) {
         examples.push(tag.getAttribute('data-value'));
       });
-      // 收集槽位
+      // 收集槽位（新数据结构）
       var slots = [];
-      overlay.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
-        var key = row.querySelector('.slot-key').value.trim();
-        var label = row.querySelector('.slot-label').value.trim();
+      overlay.querySelectorAll('#tf-slots .slot-card').forEach(function(card) {
+        var key = card.querySelector('.slot-key').value.trim();
+        var label = card.querySelector('.slot-label').value.trim();
         if (!key || !label) return;
+        // 收集别名
+        var aliases = [];
+        card.querySelectorAll('.alias-tag').forEach(function(tag) {
+          var rm = tag.querySelector('.remove');
+          if (rm) aliases.push(rm.getAttribute('data-alias') || tag.textContent.replace('×', '').trim());
+        });
         slots.push({
           key: key,
           label: label,
-          prompt: row.querySelector('.slot-prompt').value.trim(),
-          extract_type: row.querySelector('.slot-type').value,
-          extract_rule: row.querySelector('.slot-rule').value.trim(),
-          required: row.querySelector('.slot-required').checked,
+          prompt: card.querySelector('.slot-prompt').value.trim(),
+          extract: {
+            method: card.querySelector('.slot-type').value,
+            rule: card.querySelector('.slot-rule').value.trim(),
+            ner_type: card.querySelector('.slot-ner-type').value || null
+          },
+          aliases: aliases,
+          required: card.querySelector('.slot-required-check').checked,
+          validate: {
+            rule: card.querySelector('.slot-validate-rule').value.trim(),
+            reask: card.querySelector('.slot-reask').value.trim()
+          },
+          default: card.querySelector('.slot-default').value.trim() || null
         });
       });
       var steps = collectStepRows();
@@ -2832,34 +2831,6 @@
         arb_task_min: (function() { var v = overlay.querySelector('#tf-arb-task-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_faq_min: (function() { var v = overlay.querySelector('#tf-arb-faq-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_strong_hit: (function() { var v = overlay.querySelector('#tf-arb-strong-hit').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
-        // 任务级 LLM 配置（未改动 → undefined → 不覆盖全局；勾选/填值 → 只存差异项）
-        llm: (function() {
-          function nodeOf(prefix) {
-            var enabledChecked = overlay.querySelector('#tf-llm-' + prefix + '-enabled').checked;
-            var temp = overlay.querySelector('#tf-llm-' + prefix + '-temp').value.trim();
-            var tokens = overlay.querySelector('#tf-llm-' + prefix + '-tokens').value.trim();
-            var node = {};
-            if (!enabledChecked) node.enabled = false;
-            if (temp !== '') { var t = parseFloat(temp); if (!isNaN(t)) node.temperature = t; }
-            if (tokens !== '') { var m = parseInt(tokens, 10); if (!isNaN(m)) node.maxTokens = m; }
-            return Object.keys(node).length ? node : undefined;
-          }
-          var out = {};
-          if (overlay.querySelector('#tf-llm-enabled').checked) out.enabled = false;
-          var dlg = nodeOf('dialogue');
-          if (dlg) out.dialogue = dlg;
-          var ext = nodeOf('extract');
-          if (ext) out.extract = ext;
-          var prompts = {};
-          ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
-            var key = id.split('-').map(function(w, i) { return i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join('');
-            var v = overlay.querySelector('#tf-llm-' + id).value.trim();
-            // 与全局一致 = 没定制 → 不存（继续用全局）；改了才存；清空 = 用全局默认
-            if (v && v !== globalPrompts[id]) prompts[key] = v;
-          });
-          if (Object.keys(prompts).length) out.prompts = prompts;
-          return Object.keys(out).length ? out : undefined;
-        })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: onCompleteVal,
         api_action: apiAction,
@@ -2896,26 +2867,150 @@
     return slots.map(function(s) { return buildOneSlotRow(s); }).join('');
   }
 
+  // NER 类型选项
+  var NER_TYPES = [
+    { value: '', label: '不使用 NER' },
+    { value: 'address', label: '地址' },
+    { value: 'name', label: '人名' },
+    { value: 'company', label: '公司' },
+    { value: 'organization', label: '组织' },
+    { value: 'government', label: '政府机构' },
+    { value: 'position', label: '职位' },
+    { value: 'phone', label: '电话（NER）' },
+    { value: 'email', label: '邮箱（NER）' },
+    { value: 'date', label: '日期' },
+    { value: 'time', label: '时间' }
+  ];
+
   function buildOneSlotRow(s) {
-    return '<div class="slot-row">' +
-      '<input class="slot-key" value="' + esc(s.key||'') + '" placeholder="字段名">' +
-      '<input class="slot-label" value="' + esc(s.label||'') + '" placeholder="显示名">' +
-      '<input class="slot-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
-      '<select class="slot-type">' +
-        '<option value="text"' + (s.extract_type==='text'?' selected':'') + '>文本</option>' +
-        '<option value="regex"' + (s.extract_type==='regex'?' selected':'') + '>正则</option>' +
-        '<option value="number"' + (s.extract_type==='number'?' selected':'') + '>数字</option>' +
-        '<option value="enum"' + (s.extract_type==='enum'?' selected':'') + '>枚举</option>' +
-      '</select>' +
-      '<input class="slot-rule" value="' + esc(s.extract_rule||'') + '" placeholder="提取规则" style="width:120px">' +
-      '<label class="slot-required"><input type="checkbox"' + (s.required!==false?' checked':'') + '>必填</label>' +
-      '<button class="slot-del">&times;</button>' +
+    s = s || {};
+    // 兼容旧数据：extract_type -> extract.method
+    var extractMethod = s.extract?.method || s.extract_type || 'text';
+    var extractRule = s.extract?.rule || s.extract_rule || '';
+    var nerType = s.extract?.ner_type || '';
+    var validateRule = s.validate?.rule || '';
+    var reask = s.validate?.reask || '';
+    var aliases = s.aliases || [];
+    var defaultVal = s.default || '';
+    var key = s.key || '';
+    var label = s.label || '';
+    
+    // NER 类型下拉
+    var nerTypeOptions = NER_TYPES.map(function(t) {
+      return '<option value="' + t.value + '"' + (nerType === t.value ? ' selected' : '') + '>' + t.label + '</option>';
+    }).join('');
+    
+    // 别名标签
+    var aliasTagsHtml = aliases.map(function(a) {
+      return '<span class="alias-tag">' + esc(a) + '<span class="remove" data-alias="' + esc(a) + '">&times;</span></span>';
+    }).join('');
+    
+    return '<div class="slot-card" data-key="' + esc(key) + '">' +
+      '<div class="slot-card-header">' +
+        '<span class="slot-toggle">▼</span>' +
+        '<span class="slot-title">' + (label || '未命名槽位') + (key ? ' <span class="slot-key-tag">(' + esc(key) + ')</span>' : '') + '</span>' +
+        '<button class="slot-del" title="删除槽位">&times;</button>' +
+      '</div>' +
+      '<div class="slot-card-body">' +
+        // 第一行：基本信息
+        '<div class="slot-card-row">' +
+          '<label>字段名</label><input class="slot-key" value="' + esc(key) + '" placeholder="如：phone">' +
+          '<label>显示名</label><input class="slot-label" value="' + esc(label) + '" placeholder="如：电话">' +
+          '<label class="slot-required"><input type="checkbox" class="slot-required-check"' + (s.required !== false ? ' checked' : '') + '> 必填</label>' +
+        '</div>' +
+        // 第二行：提取配置
+        '<div class="slot-card-row">' +
+          '<label>提取类型</label>' +
+          '<select class="slot-type">' +
+            '<option value="text"' + (extractMethod === 'text' ? ' selected' : '') + '>文本</option>' +
+            '<option value="regex"' + (extractMethod === 'regex' ? ' selected' : '') + '>正则</option>' +
+            '<option value="number"' + (extractMethod === 'number' ? ' selected' : '') + '>数字</option>' +
+            '<option value="enum"' + (extractMethod === 'enum' ? ' selected' : '') + '>枚举</option>' +
+          '</select>' +
+          '<label>NER 类型</label>' +
+          '<select class="slot-ner-type">' + nerTypeOptions + '</select>' +
+        '</div>' +
+        // 第三行：提取规则
+        '<div class="slot-card-row">' +
+          '<label>提取规则</label>' +
+          '<input class="slot-rule" value="' + esc(extractRule) + '" placeholder="正则表达式或枚举值（逗号分隔）">' +
+        '</div>' +
+        // 第四行：别名
+        '<div class="slot-card-row">' +
+          '<label>别名</label>' +
+          '<div class="alias-tags">' + aliasTagsHtml + '</div>' +
+          '<input class="alias-input" placeholder="回车添加别名">' +
+        '</div>' +
+        // 第五行：提问话术
+        '<div class="slot-card-row">' +
+          '<label>提问话术</label>' +
+          '<input class="slot-prompt" value="' + esc(s.prompt || '') + '" placeholder="如：请留下您的联系电话">' +
+        '</div>' +
+        // 第六行：校验规则
+        '<div class="slot-card-row">' +
+          '<label>校验规则</label>' +
+          '<input class="slot-validate-rule" value="' + esc(validateRule) + '" placeholder="正则表达式（可选）">' +
+          '<label>失败话术</label>' +
+          '<input class="slot-reask" value="' + esc(reask) + '" placeholder="校验失败时的提示">' +
+        '</div>' +
+        // 第七行：默认值
+        '<div class="slot-card-row">' +
+          '<label>默认值</label>' +
+          '<input class="slot-default" value="' + esc(defaultVal) + '" placeholder="预填值（可选）">' +
+        '</div>' +
+      '</div>' +
     '</div>';
   }
 
-  function bindSlotDel(row) {
-    var del = row.querySelector('.slot-del');
-    if (del) del.onclick = function() { row.remove(); };
+  function bindSlotDel(card) {
+    var del = card.querySelector('.slot-del');
+    if (del) del.onclick = function(e) { e.stopPropagation(); card.remove(); };
+    // 折叠/展开
+    var header = card.querySelector('.slot-card-header');
+    var toggle = card.querySelector('.slot-toggle');
+    var body = card.querySelector('.slot-card-body');
+    if (header && toggle && body) {
+      header.onclick = function(e) {
+        if (e.target.classList.contains('slot-del')) return;
+        body.classList.toggle('collapsed');
+        toggle.classList.toggle('collapsed');
+      };
+    }
+    // 别名输入
+    var aliasInput = card.querySelector('.alias-input');
+    var aliasTags = card.querySelector('.alias-tags');
+    if (aliasInput && aliasTags) {
+      aliasInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && aliasInput.value.trim()) {
+          e.preventDefault();
+          var alias = aliasInput.value.trim();
+          var tag = document.createElement('span');
+          tag.className = 'alias-tag';
+          tag.innerHTML = esc(alias) + '<span class="remove" data-alias="' + esc(alias) + '">&times;</span>';
+          tag.querySelector('.remove').onclick = function() { tag.remove(); };
+          aliasTags.appendChild(tag);
+          aliasInput.value = '';
+        }
+      });
+      // 删除别名
+      aliasTags.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove')) {
+          e.target.parentElement.remove();
+        }
+      });
+    }
+    // 更新标题
+    var keyInput = card.querySelector('.slot-key');
+    var labelInput = card.querySelector('.slot-label');
+    var titleEl = card.querySelector('.slot-title');
+    function updateTitle() {
+      var k = keyInput.value.trim();
+      var l = labelInput.value.trim();
+      card.setAttribute('data-key', k);
+      titleEl.innerHTML = (l || '未命名槽位') + (k ? ' <span class="slot-key-tag">(' + esc(k) + ')</span>' : '');
+    }
+    if (keyInput) keyInput.addEventListener('input', updateTitle);
+    if (labelInput) labelInput.addEventListener('input', updateTitle);
   }
 
   // ===== v2 步骤 DSL 编辑器 =====
@@ -2937,18 +3032,18 @@
   // 当前表单里的步骤 key（重建行/加行时取最新）
   function currentStepKeys() {
     var keys = [];
-    document.querySelectorAll('#tf-steps .step-row .step-key').forEach(function(el) {
+    document.querySelectorAll('#tf-steps .step-card .step-key').forEach(function(el) {
       var v = el.value.trim(); if (v) keys.push(v);
     });
     return keys;
   }
-  // 当前表单里的槽位 key（槽位行 + 收集步骤的 slot_key）
+  // 当前表单里的槽位 key（槽位卡片 + 收集步骤的 slot_key）
   function currentSlotKeys() {
     var keys = [];
-    document.querySelectorAll('#tf-slots .slot-row .slot-key').forEach(function(el) {
+    document.querySelectorAll('#tf-slots .slot-card .slot-key').forEach(function(el) {
       var v = el.value.trim(); if (v) keys.push(v);
     });
-    document.querySelectorAll('#tf-steps .step-row .step-slot').forEach(function(el) {
+    document.querySelectorAll('#tf-steps .step-card .step-slot').forEach(function(el) {
       var v = el.value.trim(); if (v) keys.push(v);
     });
     return [...new Set(keys)];
@@ -2996,76 +3091,165 @@
     if (!steps || !steps.length) return '<div style="color:#999;font-size:12px;padding:8px">暂无步骤，点击"从槽位自动生成"一键生成</div>';
     var stepKeys = steps.map(function(s) { return s.key; }).filter(Boolean);
     var slotKeys = currentSlotKeys();
-    return steps.map(function(s) { return buildOneStepRow(s, stepKeys, slotKeys); }).join('');
+    return steps.map(function(s, i) { return buildOneStepRow(s, stepKeys, slotKeys, i); }).join('');
   }
 
-  function buildOneStepRow(s, stepKeys, slotKeys) {
+  // 步骤类型标签
+  var STEP_TYPE_LABELS = {
+    collect: '收集', confirm: '确认', action: '动作', api: '调用接口',
+    subtask: '子任务', branch: '分支', message: '回复', end: '结束'
+  };
+
+  function buildOneStepRow(s, stepKeys, slotKeys, index) {
     s = s || {};
-    var collectExtra = s.type === 'collect' ?
-      '<input class="step-slot" value="' + esc(s.slot_key||'') + '" placeholder="槽位key" style="width:90px">' +
-      '<input class="step-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
-      '<input class="step-extract" value="' + esc((s.extract&&s.extract.method)||'') + '" placeholder="提取:text/regex/number/enum" style="width:120px">' +
-      '<input class="step-rule" value="' + esc((s.extract&&s.extract.rule)||'') + '" placeholder="提取规则/枚举" style="width:110px">' +
-      '<input class="step-validate" value="' + esc((s.validate&&s.validate.rule)||'') + '" placeholder="校验规则" style="width:100px">' +
-      '<input class="step-reask" value="' + esc((s.validate&&s.validate.reask)||'') + '" placeholder="重问话术" style="width:130px">' : '';
-    var actionExtra = s.type === 'action' ?
-      '<input class="step-action" value="' + esc(s.action||'') + '" placeholder="动作名" style="width:130px">' +
-      '<input class="step-msg" value="' + esc(s.done_message||'') + '" placeholder="完成话术">' : '';
-    var apiExtra = s.type === 'api' ?
-      '<input class="step-api-url" value="' + esc(s.url||'') + '" placeholder="接口地址" style="width:190px">' +
-      '<select class="step-api-method"><option value="POST"' + ((s.method||'POST')==='POST'?' selected':'') + '>POST</option><option value="GET"' + (s.method==='GET'?' selected':'') + '>GET</option></select>' +
-      '<div style="font-size:11px;color:#888">请求入参（槽位key = 接口字段）</div>' + buildMapRows(s.fieldMap, 'fm', '槽位key', '接口字段') +
-      '<div style="font-size:11px;color:#888">固定入参（接口字段 = 固定值）</div>' + buildMapRows(s.fixedParams, 'fp', '接口字段', '固定值') +
-      '<div style="font-size:11px;color:#888">结果映射（槽位key = 接口字段路径，接口返回写入对应槽位）</div>' + (function() {
-        var merged = Object.assign({}, s.resultMap || {});
-        // 旧版单字段（resultSlot/resultField）自动迁移进结果映射
-        if (s.resultSlot && !merged[s.resultSlot]) merged[s.resultSlot] = s.resultField || '';
-        return buildMapRows(merged, 'rm', '槽位key', '字段路径如 data.orderNo');
-      })() +
-      '<input class="step-api-msg" value="' + esc(s.done_message||'') + '" placeholder="回复话术(支持 {结果槽位})" style="width:200px">' : '';
-    var subtaskExtra = s.type === 'subtask' ?
-      '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
-      '<select class="step-return" style="width:110px">' + buildStepKeyOptions(s.on_return, stepKeys, '返回步骤') + '</select>' : '';
-    var messageExtra = s.type === 'message' ?
-      '<input class="step-text" value="' + esc(s.text||'') + '" placeholder="回复内容">' : '';
-    var branchExtra = s.type === 'branch' ?
-      '<div class="branch-cases" style="margin:2px 0">' +
-        (s.cases || []).map(function(c) { return buildCaseRow(c, stepKeys, slotKeys); }).join('') +
+    index = index || 0;
+    var typeLabel = STEP_TYPE_LABELS[s.type] || s.type || '未配置';
+    var stepTitle = s.slot_key ? ('收集: ' + (s.label || s.slot_key)) : (s.key || '步骤' + (index + 1));
+    
+    // 不同类型的内容
+    var bodyContent = '';
+    if (s.type === 'collect') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>槽位</label><select class="step-slot">' + buildSlotOptions(s.slot_key, slotKeys) + '</select>' +
+          '<label>提问话术</label><input class="step-prompt" value="' + esc(s.prompt || '') + '" placeholder="留空使用槽位定义的提问话术">' +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
+        '</div>';
+    } else if (s.type === 'confirm') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>确认话术</label><input class="step-prompt" value="' + esc(s.prompt || '') + '" placeholder="如：确认以上信息是否正确？">' +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>确认后</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
+          '<label>取消后</label><select class="step-cancel-next">' + buildStepKeyOptions(s.cancel_next, stepKeys, '取消操作') + '</select>' +
+        '</div>';
+    } else if (s.type === 'api') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>接口地址</label><input class="step-api-url" value="' + esc(s.url || '') + '" placeholder="https://api.example.com/...">' +
+          '<select class="step-api-method"><option value="POST"' + ((s.method || 'POST') === 'POST' ? ' selected' : '') + '>POST</option><option value="GET"' + (s.method === 'GET' ? ' selected' : '') + '>GET</option></select>' +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>请求入参</label>' + buildMapRows(s.fieldMap, 'fm', '槽位key', '接口字段') +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>固定入参</label>' + buildMapRows(s.fixedParams, 'fp', '接口字段', '固定值') +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>结果映射</label>' + (function() {
+            var merged = Object.assign({}, s.resultMap || {});
+            if (s.resultSlot && !merged[s.resultSlot]) merged[s.resultSlot] = s.resultField || '';
+            return buildMapRows(merged, 'rm', '槽位key', '字段路径如 data.orderNo');
+          })() +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>回复话术</label><input class="step-api-msg" value="' + esc(s.done_message || '') + '" placeholder="支持 {结果槽位} 占位符">' +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
+        '</div>';
+    } else if (s.type === 'branch') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>分支条件</label>' +
+          '<div class="branch-cases" style="flex:1">' +
+            (s.cases || []).map(function(c) { return buildCaseRow(c, stepKeys, slotKeys); }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label></label>' +
+          '<button type="button" class="btn-sm branch-add-case">+ 添加条件</button>' +
+          '<label style="margin-left:20px">默认</label><select class="step-default">' + buildStepKeyOptions(s.default_next, stepKeys, '默认下一步') + '</select>' +
+        '</div>';
+    } else if (s.type === 'message') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>回复内容</label><input class="step-text" value="' + esc(s.text || '') + '" placeholder="要回复的内容">' +
+        '</div>' +
+        '<div class="step-card-row">' +
+          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
+        '</div>';
+    } else if (s.type === 'action') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>动作名</label><input class="step-action" value="' + esc(s.action || '') + '" placeholder="如：complete_message">' +
+          '<label>完成话术</label><input class="step-msg" value="' + esc(s.done_message || '') + '" placeholder="动作完成后的回复">' +
+        '</div>';
+    } else if (s.type === 'subtask') {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>子任务</label><input class="step-task" value="' + esc(s.task || '') + '" placeholder="子任务code">' +
+          '<label>返回步骤</label><select class="step-return">' + buildStepKeyOptions(s.on_return, stepKeys, '返回步骤') + '</select>' +
+        '</div>';
+    } else {
+      bodyContent = 
+        '<div class="step-card-row">' +
+          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
+        '</div>';
+    }
+    
+    return '<div class="step-card" data-key="' + esc(s.key || '') + '">' +
+      '<div class="step-card-header">' +
+        '<span class="step-index">' + (index + 1) + '</span>' +
+        '<span class="step-title">' + esc(stepTitle) + '</span>' +
+        '<span class="step-type-badge">' + typeLabel + '</span>' +
+        '<span class="step-toggle">▼</span>' +
+        '<div class="step-card-controls">' +
+          '<button class="step-up" title="上移">↑</button>' +
+          '<button class="step-down" title="下移">↓</button>' +
+          '<button class="step-del" title="删除">&times;</button>' +
+        '</div>' +
       '</div>' +
-      '<button type="button" class="btn-sm branch-add-case" style="margin:2px 4px 2px 0">+ 添加条件</button>' +
-      '<select class="step-default" style="width:130px">' + buildStepKeyOptions(s.default_next, stepKeys, '默认下一步') + '</select>' : '';
-    return '<div class="step-row">' +
-      '<input class="step-key" value="' + esc(s.key||'') + '" placeholder="步骤key" style="width:100px">' +
-      '<select class="step-type">' +
-        '<option value="collect"' + (s.type==='collect'?' selected':'') + '>收集</option>' +
-        '<option value="confirm"' + (s.type==='confirm'?' selected':'') + '>确认</option>' +
-        '<option value="action"' + (s.type==='action'?' selected':'') + '>动作</option>' +
-        '<option value="api"' + (s.type==='api'?' selected':'') + '>调用接口</option>' +
-        '<option value="subtask"' + (s.type==='subtask'?' selected':'') + '>子任务</option>' +
-        '<option value="branch"' + (s.type==='branch'?' selected':'') + '>分支</option>' +
-        '<option value="message"' + (s.type==='message'?' selected':'') + '>回复</option>' +
-      '</select>' +
-      '<input class="step-next" value="' + esc(s.next||'') + '" placeholder="下一步" style="width:90px">' +
-      collectExtra + actionExtra + apiExtra + subtaskExtra + messageExtra + branchExtra +
-      '<button class="step-up" title="上移">↑</button><button class="step-down" title="下移">↓</button><button class="step-del" title="删除">&times;</button>' +
+      '<div class="step-card-body">' +
+        '<div class="step-card-row">' +
+          '<label>步骤类型</label>' +
+          '<select class="step-type">' +
+            '<option value="collect"' + (s.type === 'collect' ? ' selected' : '') + '>收集</option>' +
+            '<option value="confirm"' + (s.type === 'confirm' ? ' selected' : '') + '>确认</option>' +
+            '<option value="api"' + (s.type === 'api' ? ' selected' : '') + '>调用接口</option>' +
+            '<option value="branch"' + (s.type === 'branch' ? ' selected' : '') + '>分支判断</option>' +
+            '<option value="message"' + (s.type === 'message' ? ' selected' : '') + '>回复消息</option>' +
+            '<option value="action"' + (s.type === 'action' ? ' selected' : '') + '>动作</option>' +
+            '<option value="subtask"' + (s.type === 'subtask' ? ' selected' : '') + '>子任务</option>' +
+          '</select>' +
+          '<label>步骤key</label><input class="step-key" value="' + esc(s.key || '') + '" placeholder="如：collect_phone">' +
+        '</div>' +
+        bodyContent +
+      '</div>' +
     '</div>';
   }
 
-  function bindStepRowEvents(row) {
-    var del = row.querySelector('.step-del');
-    if (del) del.onclick = function() { row.remove(); };
-    var up = row.querySelector('.step-up');
-    if (up) up.onclick = function() {
-      var prev = row.previousElementSibling;
-      if (prev && prev.classList.contains('step-row')) row.parentNode.insertBefore(row, prev);
+  function bindStepRowEvents(card) {
+    var del = card.querySelector('.step-del');
+    if (del) del.onclick = function(e) { e.stopPropagation(); card.remove(); };
+    var up = card.querySelector('.step-up');
+    if (up) up.onclick = function(e) {
+      e.stopPropagation();
+      var prev = card.previousElementSibling;
+      if (prev && prev.classList.contains('step-card')) card.parentNode.insertBefore(card, prev);
     };
-    var down = row.querySelector('.step-down');
-    if (down) down.onclick = function() {
-      var next = row.nextElementSibling;
-      if (next && next.classList.contains('step-row')) row.parentNode.insertBefore(next, row);
+    var down = card.querySelector('.step-down');
+    if (down) down.onclick = function(e) {
+      e.stopPropagation();
+      var next = card.nextElementSibling;
+      if (next && next.classList.contains('step-card')) card.parentNode.insertBefore(next, card);
     };
+    // 折叠/展开
+    var header = card.querySelector('.step-card-header');
+    var toggle = card.querySelector('.step-toggle');
+    var body = card.querySelector('.step-card-body');
+    if (header && toggle && body) {
+      header.onclick = function(e) {
+        if (e.target.closest('.step-card-controls')) return;
+        body.classList.toggle('collapsed');
+        toggle.classList.toggle('collapsed');
+      };
+    }
     // 行内动态子元素事件（分支条件行 / 映射行的增删）——事件委托
-    row.addEventListener('click', function(e) {
+    card.addEventListener('click', function(e) {
       var t = e.target;
       if (t.classList.contains('case-del')) {
         var cr = t.closest('.case-row');
@@ -3074,7 +3258,7 @@
         var mr = t.closest('.map-row');
         if (mr) mr.remove();
       } else if (t.classList.contains('branch-add-case')) {
-        var wrap = row.querySelector('.branch-cases');
+        var wrap = card.querySelector('.branch-cases');
         if (wrap) wrap.insertAdjacentHTML('beforeend', buildCaseRow(null, currentStepKeys(), currentSlotKeys()));
       } else if (t.classList.contains('map-add')) {
         var mw = t.closest('.map-rows');
@@ -3090,59 +3274,59 @@
       }
     });
     // 类型切换：重读全部步骤、更新该行类型后整体重渲染
-    var typeSel = row.querySelector('.step-type');
+    var typeSel = card.querySelector('.step-type');
     if (typeSel) typeSel.onchange = function() {
       var steps = collectStepRows();
-      var idx = Array.prototype.indexOf.call(row.parentNode.children, row);
+      var idx = Array.prototype.indexOf.call(card.parentNode.children, card);
       if (idx >= 0 && steps[idx]) steps[idx].type = typeSel.value;
       var container = document.getElementById('tf-steps');
       container.innerHTML = buildStepRows(steps);
-      container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
+      container.querySelectorAll('.step-card').forEach(bindStepRowEvents);
     };
   }
 
   function collectStepRows() {
     // 安全读取：类型切换瞬间 DOM 可能还是旧类型表单（如 collect 行切到 branch），
     // 元素不存在时按空处理，避免 null.value 崩溃
-    function q(row, cls) { var el = row.querySelector(cls); return el ? el.value.trim() : ''; }
-    function qr(row, cls) { var el = row.querySelector(cls); return el ? el.value : ''; }
+    function q(card, cls) { var el = card.querySelector(cls); return el ? el.value.trim() : ''; }
+    function qr(card, cls) { var el = card.querySelector(cls); return el ? el.value : ''; }
     var steps = [];
-    document.querySelectorAll('#tf-steps .step-row').forEach(function(row) {
-      var key = q(row, '.step-key');
-      var type = qr(row, '.step-type');
+    document.querySelectorAll('#tf-steps .step-card').forEach(function(card) {
+      var key = q(card, '.step-key');
+      var type = qr(card, '.step-type');
       if (!key) return;
-      var step = { key: key, type: type, next: q(row, '.step-next') || undefined };
+      var step = { key: key, type: type, next: q(card, '.step-next') || undefined };
       if (type === 'collect') {
-        step.slot_key = (q(row, '.step-slot') || key).trim();
-        step.prompt = q(row, '.step-prompt');
-        step.extract = { method: q(row, '.step-extract') || 'text', rule: q(row, '.step-rule') };
-        var vr = q(row, '.step-validate');
-        var vk = q(row, '.step-reask');
-        if (vr) step.validate = { rule: vr, reask: vk };
+        step.slot_key = (q(card, '.step-slot') || key).trim();
+        step.prompt = q(card, '.step-prompt');
+        // 提取配置从槽位定义读取，步骤不再重复定义
       } else if (type === 'action') {
-        step.action = q(row, '.step-action') || 'complete_message';
-        var dm = q(row, '.step-msg');
+        step.action = q(card, '.step-action') || 'complete_message';
+        var dm = q(card, '.step-msg');
         if (dm) step.done_message = dm;
       } else if (type === 'api') {
-        step.url = q(row, '.step-api-url');
-        step.method = qr(row, '.step-api-method') || 'POST';
-        var fm = readMapRows(row, 'fm');
+        step.url = q(card, '.step-api-url');
+        step.method = qr(card, '.step-api-method') || 'POST';
+        var fm = readMapRows(card, 'fm');
         if (Object.keys(fm).length) step.fieldMap = fm;
-        var fp = readMapRows(row, 'fp');
+        var fp = readMapRows(card, 'fp');
         if (Object.keys(fp).length) step.fixedParams = fp;
         // 回复话术：允许存空字符串（空 = 调用接口后不向用户回显结果）
-        step.done_message = q(row, '.step-api-msg');
+        step.done_message = q(card, '.step-api-msg');
         // 结果映射：槽位key=接口字段路径（旧版单字段 resultSlot/resultField 已并入此表）
-        var rm = readMapRows(row, 'rm');
+        var rm = readMapRows(card, 'rm');
         if (Object.keys(rm).length) step.resultMap = rm;
       } else if (type === 'subtask') {
-        step.task = q(row, '.step-task');
-        step.on_return = q(row, '.step-return') || undefined;
+        step.task = q(card, '.step-task');
+        step.on_return = q(card, '.step-return') || undefined;
       } else if (type === 'message') {
-        step.text = q(row, '.step-text');
+        step.text = q(card, '.step-text');
+      } else if (type === 'confirm') {
+        step.prompt = q(card, '.step-prompt');
+        step.cancel_next = q(card, '.step-cancel-next') || undefined;
       } else if (type === 'branch') {
         var cases = [];
-        row.querySelectorAll('.case-row').forEach(function(crow) {
+        card.querySelectorAll('.case-row').forEach(function(crow) {
           var source = qr(crow, '.case-source') || 'slot';
           var ref = q(crow, '.case-ref');
           var op = qr(crow, '.case-op');
@@ -3157,7 +3341,7 @@
           cases.push({ when: when, next: next });
         });
         if (cases.length) step.cases = cases;
-        var dflt = q(row, '.step-default');
+        var dflt = q(card, '.step-default');
         if (dflt) step.default_next = dflt;
       }
       steps.push(step);
@@ -3217,16 +3401,19 @@
   // 从槽位自动生成：收集 → 确认 → 动作
   function autoGenerateSteps() {
     var slots = [];
-    document.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
-      var key = row.querySelector('.slot-key').value.trim();
-      var label = row.querySelector('.slot-label').value.trim();
+    document.querySelectorAll('#tf-slots .slot-card').forEach(function(card) {
+      var key = card.querySelector('.slot-key').value.trim();
+      var label = card.querySelector('.slot-label').value.trim();
       if (!key || !label) return;
       slots.push({
         key: key, label: label,
-        prompt: row.querySelector('.slot-prompt').value.trim(),
-        extract_type: row.querySelector('.slot-type').value,
-        extract_rule: row.querySelector('.slot-rule').value.trim(),
-        required: row.querySelector('.slot-required').checked,
+        prompt: card.querySelector('.slot-prompt').value.trim(),
+        extract: {
+          method: card.querySelector('.slot-type').value,
+          rule: card.querySelector('.slot-rule').value.trim(),
+          ner_type: card.querySelector('.slot-ner-type').value || null
+        },
+        required: card.querySelector('.slot-required-check').checked,
       });
     });
     var action = document.getElementById('tf-action').value || 'complete_message';
@@ -3236,7 +3423,7 @@
       steps.push({
         key: 'collect_' + s.key, type: 'collect', slot_key: s.key, label: s.label, required: s.required !== false,
         prompt: s.prompt || ('请提供' + s.label),
-        extract: { method: s.extract_type || 'text', rule: s.extract_rule || '' },
+        extract: s.extract,
         next: i < slots.length - 1 ? 'collect_' + slots[i+1].key : 'confirm_step',
       });
     });
@@ -3244,7 +3431,7 @@
     steps.push({ key: 'submit', type: 'action', action: action, done_message: msg });
     var container = document.getElementById('tf-steps');
     container.innerHTML = buildStepRows(steps);
-    container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
+    container.querySelectorAll('.step-card').forEach(bindStepRowEvents);
   }
 
   // 流程链预览：从起点按 next 渲染步骤链（分支显示条件出口）

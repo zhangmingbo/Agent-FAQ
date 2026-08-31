@@ -26,6 +26,7 @@ import llmClient from './services/llmClient.js'
 import { getReply } from './services/replyTexts.js'
 import { getRouteChoiceWords } from './services/matchVocab.js'
 import traceService from './services/traceService.js'
+import SlotAnswerValidator from './services/taskflow/slotAnswerValidator.js'
 import llmCallLogger from './services/llmCallLogger.js'
 import pool from './db/pool.js'
 
@@ -476,6 +477,16 @@ class FAQEngine {
           currentCode: taskState.taskCode,
           trace: traceSteps,
         })
+        console.log(`[DEBUG] detectNewTask 结果:`, JSON.stringify(detect))
+        console.log(`[DEBUG] 当前任务状态: taskCode=${taskState.taskCode}, currentStep=${taskState.currentStep}`)
+        console.log(`[DEBUG] 已填槽位:`, Object.entries(taskState.slots || {})
+          .filter(([_, s]) => s && s.filled)
+          .map(([k, v]) => `${k}=${v.value}`)
+          .join(', '))
+        console.log(`[DEBUG] 未填槽位:`, Object.entries(taskState.slots || {})
+          .filter(([_, s]) => s && !s.filled)
+          .map(([k]) => k)
+          .join(', '))
         const newTaskCode = detect && detect.code
         if (newTaskCode) {
           console.log(`[TASK] 检测到新任务意图（确定性判定）: ${newTaskCode}，当前任务暂存`)
@@ -486,10 +497,12 @@ class FAQEngine {
           // 域外输入快检：任务活跃时用户说与所有业务都无关的话（如"我电脑坏了"），
           // 不进任务对话——否则 LLM 会把域外话题硬套成任务话术（历史 bug）。
           // 例外：裸槽位回答（纯数字电话/短句/含槽位标签）仍交给任务对话提取。
-          console.log('[TASK] 域外输入（任务活跃），不进入任务对话，走业务引导')
-          _t('域外输入快检（任务活跃）', { taskCode: taskState.taskCode, channel: detect.channel }, 'warn')
+          const looksLike = this._looksLikeSlotAnswer(text, taskState)
+          console.log(`[TASK] ️  域外输入快检触发！text="${text}", channel="${detect.channel}", looksLikeSlotAnswer=${looksLike}`)
+          _t('域外输入快检（任务活跃）', { taskCode: taskState.taskCode, channel: detect.channel, looksLike }, 'warn')
           response = await this._handleFallback(text, context, { confidence: 0 })
         } else {
+          console.log(`[TASK] ✅ 进入任务对话提取流程`)
         // 任务进行中：先让任务对话（规则引擎提取）判断——用户在回答槽位问题（电话/姓名/地址）时，
         // LLM 能理解裸回答（"18516237700"→电话、"我姓张"→姓名），不应与 FAQ 抢
         const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
@@ -1153,39 +1166,99 @@ class FAQEngine {
   }
 
   /**
-   * 判断输入是否像"正在回答当前任务的槽位问题"：
-   * 结合当前未填的第一个必填槽位类型判断——
-   * - 电话/手机/号码类：输入须含数字（"13800138000""电话是138"）
-   * - 地址类：长度 ≥ 4 或含地址词
-   * - 姓名类：短句或含"姓/叫"
-   * - 其他自由文本槽（原因/描述/备注/服务类型）：一律放行（可能是回答）
-   * 放行 → 继续交给任务对话提取；拦截 → 域外/无关话术
+   * 判断输入是否像“正在回答当前任务的槽位问题”
+   * ✅ 完全基于前端配置的 answer_validation 规则，无硬编码
    */
   _looksLikeSlotAnswer(text, taskState) {
     const t = String(text || '').trim()
     if (!t) return false
-    // 找到当前未填的第一个必填槽位
+      
+    // ✅ 根据 currentStep 找到当前步骤对应的槽位
     const slots = (taskState && taskState.slots) || {}
+    const currentStep = taskState?.currentStep
+    
+    if (!currentStep) {
+      console.log(`[DEBUG _looksLikeSlotAnswer] no currentStep, return true`)
+      return true  // 没有当前步骤，一律放行
+    }
+    
+    // 从 slots 中找到与 currentStep 匹配的槽位
     let target = null
     for (const [key, s] of Object.entries(slots)) {
-      if (s && s.required && !s.filled) { target = { key, ...s }; break }
+      if (key === currentStep && s && !s.filled) { 
+        target = { key, ...s }; 
+        break 
+      }
     }
-    const label = (target && (target.label || target.key)) || ''
-    const isPhone = /(电话|手机|号码|联系|电话是|手机号)/.test(label)
-    const isAddress = /(地址|住址|小区|门牌|位置)/.test(label)
-    const isName = /(姓名|名字|称呼)/.test(label)
-    if (isPhone) {
-      // 电话槽：纯数字或含数字的输入 → 放行；"我电脑坏了"（无数字）→ 拦截
-      return /\d/.test(t)
+    
+    // 如果 currentStep 对应的槽位已填，找下一个未填的必填槽位
+    if (!target) {
+      for (const [key, s] of Object.entries(slots)) {
+        if (s && s.required && !s.filled) { 
+          target = { key, ...s }; 
+          break 
+        }
+      }
     }
-    if (isAddress) {
-      return t.length >= 4 || /(小区|栋|单元|路|街|号|村|镇)/.test(t)
+      
+    if (!target) {
+      console.log(`[DEBUG _looksLikeSlotAnswer] no target slot, return true`)
+      return true  // 没有未填槽位，一律放行
     }
-    if (isName) {
-      return t.length <= 4 || /(姓|叫|是)/.test(t)
+      
+    // ✅ 使用前端配置的 answer_validation 规则
+    const answerValidation = target.answer_validation
+    if (answerValidation) {
+      const result = SlotAnswerValidator.validate(t, answerValidation)
+      console.log(`[DEBUG _looksLikeSlotAnswer] slot="${target.key}", validation=${JSON.stringify(answerValidation)}, result=${result}`)
+      return result
     }
-    // 自由文本槽（原因/描述/服务类型等）→ 无法从格式判断，一律放行交给任务对话
+      
+    // ✅ 回退：如果没有配置 answer_validation，但配置了 extraction.ner_type，使用默认规则
+    const extract = target.extract || {}
+    const nerType = extract.ner_type
+    if (nerType) {
+      const defaultRules = this._getDefaultNerRules(nerType)
+      if (defaultRules) {
+        const result = SlotAnswerValidator.validate(t, defaultRules)
+        console.log(`[DEBUG _looksLikeSlotAnswer] slot="${target.key}", nerType="${nerType}", using default rules, result=${result}`)
+        return result
+      }
+    }
+      
+    // ✅ 最后回退：自由文本槽，一律放行
+    console.log(`[DEBUG _looksLikeSlotAnswer] slot="${target.key}", no validation config, return true`)
     return true
+  }
+    
+  /**
+   * 获取 NER 类型的默认验证规则（向后兼容）
+   */
+  _getDefaultNerRules(nerType) {
+    const defaults = {
+      'address': {
+        logic: 'OR',
+        rules: [
+          { type: 'min_length', value: 4 },
+          { type: 'contains_any', value: ['小区', '栋', '单元', '路', '街', '号', '村', '镇'] }
+        ]
+      },
+      'phone': {
+        logic: 'AND',
+        rules: [
+          { type: 'has_digit', value: true }
+        ]
+      },
+      'person': {
+        logic: 'OR',
+        rules: [
+          { type: 'max_length', value: 6 },
+          { type: 'contains_any', value: ['姓', '叫', '名'] }
+        ]
+      }
+    }
+      
+    return defaults[nerType] || null
   }
 
   /**

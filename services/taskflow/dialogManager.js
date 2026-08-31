@@ -51,6 +51,9 @@ class DialogManager {
     state.turnCount = (state.turnCount || 0) + 1
     state.lastActive = Date.now()
 
+    console.log(`[DEBUG dialogManager.processTurn] 开始处理回合: turnCount=${state.turnCount}`)
+    console.log(`[DEBUG dialogManager.processTurn] 当前步骤: ${state.currentStep}, 栈深度: ${state.stack?.length || 0}`)
+    
     // 1) 取消意图
     if (this._isCancel(text)) {
       _t('任务对话·取消意图', { text }, 'rule')
@@ -730,9 +733,11 @@ class DialogManager {
     const def = (task?.slots || []).find(s => s.key === step.slot_key)
     if (!def) return null
 
-    const extract = step.extract || {
+    // 优先使用步骤级别的 extract 配置，否则从槽位定义中继承完整配置
+    const extract = step.extract || def.extract || {
       method: def.extract_type || 'text',
       rule: def.extract_rule || '',
+      ner_type: def.extract_ner_type || null,
     }
 
     // 提问话术：枚举槽位自动追加可选值，让用户知道怎么回答（话术已含选项则跳过）
