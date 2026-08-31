@@ -3421,9 +3421,8 @@
     var steps = [];
     slots.forEach(function(s, i) {
       steps.push({
-        key: 'collect_' + s.key, type: 'collect', slot_key: s.key, label: s.label, required: s.required !== false,
+        key: 'collect_' + s.key, type: 'collect', slot_key: s.key,
         prompt: s.prompt || ('请提供' + s.label),
-        extract: s.extract,
         next: i < slots.length - 1 ? 'collect_' + slots[i+1].key : 'confirm_step',
       });
     });
