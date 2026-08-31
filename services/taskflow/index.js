@@ -214,18 +214,16 @@ class TaskFlowEngine {
     }
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
 
-    // LLM 驱动对话（llm/hybrid 模式且 LLM 可用，且该任务未关闭 LLM）；失败自动降级回规则版
+    // NER+规则引擎优先策略：始终使用规则版对话管理器（dialogManager）
+    // LLM 不再参与任务对话，仅保留 meaningless/rerank 等辅助节点
     const taskDef = this.taskDefs.get(state.taskCode)
-    const useLlmDialog = (this.nlu.mode === 'llm' || this.nlu.mode === 'hybrid')
-      && this.llm.nodeEnabled('dialogue', taskDef?.llm || null)
+    const useLlmDialog = false  // 强制关闭 LLM 对话，纯规则引擎
     _t('任务对话·模式选择', {
       taskCode: state.taskCode,
-      mode: useLlmDialog ? 'llm' : 'rule',
+      mode: 'rule (NER+规则引擎)',
       nluMode: this.nlu.mode,
-      dialogueNodeEnabled: this.llm.nodeEnabled('dialogue', taskDef?.llm || null),
-      taskLlmEnabled: taskDef?.llm ? taskDef.llm.enabled !== false : null,
-      taskLlmConfig: taskDef?.llm ? Object.keys(taskDef.llm) : null,
-    }, useLlmDialog ? 'llm' : 'rule')
+      note: 'LLM对话已禁用，使用规则模板',
+    }, 'info')
     let result = null
     if (useLlmDialog) {
       try {
