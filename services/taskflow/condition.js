@@ -65,7 +65,7 @@ export function evalOp(op, actual, expected) {
 
 // ========== 判断源取值 ==========
 
-/** 简单描述条件（trace 用，供 dialogManager / flow / llmDialogManager 共用） */
+/** 简单描述条件（trace 用，供 dialogManager / flow 共用） */
 export function describeCondition(when) {
   if (!when) return '?'
   if (when.and) return 'and(' + when.and.map(describeCondition).join(' & ') + ')'

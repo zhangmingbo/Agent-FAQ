@@ -83,8 +83,6 @@ export function createRouter(engine) {
       expandMinCount: parseInt(config.expand_min_count) || 2,
       // 任务会话超时（分钟；任务挂起/中断后超过此时间失效）
       taskSessionTtlMinutes: parseInt(config.task_session_ttl_minutes) || 30,
-      // LLM 兜底开关（可配置，默认关闭）
-      llmFallbackEnabled: config.llm_fallback_enabled === 'true',
       // 固定话术 / 匹配词表（运营可配，sys_config 存储）
       replyTexts: getAllReplyTexts(),
       matchVocab: getAllMatchVocab(),
@@ -195,12 +193,6 @@ export function createRouter(engine) {
     if (body.taskSessionTtlMinutes !== undefined) {
       await save('task_session_ttl_minutes', body.taskSessionTtlMinutes)
       engine.taskEngine?.setSessionTtl?.(parseInt(body.taskSessionTtlMinutes))
-    }
-
-    // ===== LLM 兜底开关 =====
-    if (body.llmFallbackEnabled !== undefined) {
-      await save('llm_fallback_enabled', body.llmFallbackEnabled)
-      engine.taskEngine?.nlu?.setLlmFallbackEnabled?.(body.llmFallbackEnabled)
     }
 
     // ===== 固定话术 / 匹配词表 =====

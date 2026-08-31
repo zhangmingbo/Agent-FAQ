@@ -1,25 +1,20 @@
 /**
- * 任务引擎理解层（NLU）—— 可插拔门面
+ * 任务引擎理解层（NLU）
  *
  * 职责：
  *   1) 意图判定（matchTask）：用户输入 → 触发哪个任务
- *      分层：关键词+近义扩展（确定性）→ 向量语义（意图例句）→ LLM 判定
- *   2) 槽位提取：规则提取（快/免费）→ LLM 批量补漏（理解任意口语）
- *
- * 三种模式（配置 nlu_mode，sys_config / 环境变量）：
- *   rule   纯规则（离线，零成本）
- *   hybrid 规则优先 + LLM 补漏（默认）
- *   llm    LLM 优先理解，规则校验兜底
+ *      分层：关键词+近义扩展（确定性）→ 向量语义（意图例句）
+ *   2) 槽位提取：规则提取（extractor）
+ *   3) 任务/FAQ 统一语义仲裁（arbitrateTaskFaq）
+ *   4) 路由判定（route）：任务进行中时判定用户意图走向
  *
  * 关键设计：每个任务在 DSL 中声明 intent_examples（意图例句），
- * 向量与 LLM 都以例句为语义资产——新增业务 = 写例句，不维护规则。
+ * 向量以例句为语义资产——新增业务 = 写例句，不维护规则。
  */
 
 import extractor from './extractor.js'
 import { validateSlot } from './validator.js'
-import llmClient from '../llmClient.js'
 import { cosineSimilarity } from '../../src/similarity.js'
-import { get as getPrompt, getPromptSource } from '../llmPrompts.js'
 import dialogueRules from '../../rules/dialogueRules.js'
 import traceService from '../traceService.js'
 
@@ -31,8 +26,6 @@ class TaskNLU {
     /** @type {'rule'|'hybrid'|'llm'} */
     this.mode = 'hybrid'
     this.nlpEngine = null
-    /** @type {boolean} LLM 兜底开关（可配置，默认关闭） */
-    this.llmFallbackEnabled = false
     /**
      * 任务/FAQ 统一语义仲裁阈值（运营可配，管理后台写入 sys_config）
      *   gap       差距阈值：任务与 FAQ 相似度差 > gap 才判显著胜出，否则澄清
@@ -80,12 +73,6 @@ class TaskNLU {
       return true
     }
     return false
-  }
-
-  /** 设置 LLM 兜底开关（可配置，默认关闭） */
-  setLlmFallbackEnabled(enabled) {
-    this.llmFallbackEnabled = !!enabled
-    console.log(`[TaskNLU] LLM 兜底: ${this.llmFallbackEnabled ? '开启' : '关闭'}`)
   }
 
   /** 注入共享 NLP 引擎（复用 FAQ 模型） */
@@ -137,27 +124,8 @@ class TaskNLU {
     const byRule = this._matchByRules(lowerText, tasks, currentCode)
     _t('触发词规则', { hit: byRule ? byRule.code : null, negated: this._isNegation(lowerText) })
     if (byRule && !this._isNegation(lowerText)) return byRule
-    if (this.mode === 'rule') return null
 
-    // 2) LLM 判定（llm 模式优先；hybrid 在规则未命中后尝试）
-    if (llmClient.nodeEnabled('trigger') && text.trim().length >= 3) {
-      try {
-        const candidates = tasks.filter(t => t.status === 1 && t.code !== currentCode)
-        const code = await llmClient.judgeTrigger(text, candidates)
-        _t('LLM 判定（judgeTrigger）', { result: code || 'null' }, code ? 'llm' : 'llm')
-        if (code) {
-          const hit = tasks.find(t => t.code === code)
-          if (hit) {
-            console.log(`[TaskNLU] LLM触发: ${code}`)
-            return hit
-          }
-        }
-      } catch (e) {
-        console.error('[TaskNLU] LLM 触发判定失败:', e.message)
-      }
-    }
-
-    // 3) 向量语义（意图例句；仅较长句子，否定句不触发）
+    // 2) 向量语义（意图例句；仅较长句子，否定句不触发）
     const vecMinLen = this.arbConfig.vecMinLen ?? 5
     if (this.nlpEngine && text.trim().length >= vecMinLen && !NEGATION_RE.test(text) && !this._isNegation(lowerText)) {
       const hit = await this._matchByVector(text, tasks, currentCode)
@@ -372,19 +340,10 @@ class TaskNLU {
    * @returns {Promise<{value:string|null, source:'rule'|null}>}
    */
   async extractSlotValue(text, slotDef, ctx = {}, opts = {}) {
-    // 纯规则提取（NER + extractor）
+    // 纯规则提取（extractor）
     const value = await extractor.extract(text, slotDef, ctx, { labelOnly: !!opts.labelOnly })
     const source = value !== null ? 'rule' : null
     return { value, source }
-  }
-
-  /**
-   * LLM 批量提取所有未填槽位（已废弃，NER+规则引擎优先策略下不再使用）
-   * @returns {Promise<Object|null>} null（始终返回 null，不再调用 LLM）
-   */
-  async extractSlotsBatch(text, task, slotsSpec, state) {
-    // NER+规则引擎优先策略：不再使用 LLM 批量提取
-    return null
   }
 
   /** 校验槽位值（规则层，任何模式下都执行） */
@@ -392,38 +351,13 @@ class TaskNLU {
     return validateSlot(slotDef, value)
   }
 
-  // ========== LLM 驱动对话（agentic dialogue） ==========
-
-  /**
-   * 单轮对话决策：LLM 看到「任务目标 + 字段约束 + 已收集 + 对话历史 + 最新输入」，
-   * 输出 { slots, reply, ask_confirm, question }。系统侧负责校验/确认门禁/执行。
-   * @param {Object} opts - { task, slotDesc, filledDesc, history, text }
-   * @returns {Promise<{slots:Object, reply:string, ask_confirm:boolean, question:string|null}>}
-   */
-  async dialogue({ task, slotDesc, filledDesc, history, text }) {
-    const eff = llmClient.resolveEffective('dialogue', task?.llm || null)
-    if (!eff.enabled) throw new Error('LLM 对话未启用（任务级配置关闭或节点关闭）')
-    // 提示词：任务级覆盖优先，其次运营配置注册表；来源标注供调试（LLM 调用日志）
-    const sysTpl = task?.llm?.prompts?.dialogueSystem
-    const userTpl = task?.llm?.prompts?.dialogueUser
-    const sysSrc = sysTpl ? 'task' : (getPromptSource('dialogue.system') === 'custom' ? 'global' : 'default')
-    const userSrc = userTpl ? 'task' : (getPromptSource('dialogue.user') === 'custom' ? 'global' : 'default')
-    const system = sysTpl
-      ? llmClient._fill(sysTpl, { taskName: task.name, slotDesc })
-      : getPrompt('dialogue.system', { taskName: task.name, slotDesc })
-    const user = userTpl
-      ? llmClient._fill(userTpl, { taskName: task.name, slotDesc, filledDesc, history, text })
-      : getPrompt('dialogue.user', { taskName: task.name, slotDesc, filledDesc, history, text })
-    return llmClient.dialogueTurn(system, user, eff, { system: sysSrc, user: userSrc })
-  }
-
   // ========== 意图路由（任务通道 vs FAQ 通道） ==========
 
   /**
-   * 新任务意图判定（场景 B 专用：LLM 提取前先判，避免 LLM 吞掉仲裁的 task_new 判定）
+   * 新任务意图判定（场景 B 专用：规则提取前先判，避免吞掉仲裁的 task_new 判定）
    *
    * 只走规则快检（触发词/近义扩展 + 否定防护，用于 taskBoost 抬升）与统一语义仲裁（一次编码），
-   * 不调用 LLM——保证在任务对话每一轮都零额外大模型成本。
+   * 零 LLM 成本。
    *
    * 重要：本方法**只执行仲裁的原始判定**，不做任何额外业务裁决——
    * 仲裁判 clarify（任务/FAQ 差距 < 阈值）就返回 null，交由原流程处理；
@@ -604,33 +538,7 @@ class TaskNLU {
       _t('无候选任务')
     }
 
-    // ===== LLM 兜底（可配置开关：开启时才调用，关闭则跳过） =====
-    if (this.llmFallbackEnabled && llmClient.nodeEnabled('route')) {
-      _t('走 LLM 三选一兜底（router 提示词）')
-      try {
-        const decision = await llmClient.routeTurn({
-          taskName: ctx.taskState?.taskName || '',
-          taskContext: ctx.filledDesc || '',
-          text: t,
-        })
-        _t('LLM 路由判定', { decision: decision || 'null(拿不准)' }, decision ? 'llm' : 'warn')
-        if (decision === 'faq') return 'faq'
-        if (decision === 'new_task') return 'task_new'
-        if (decision === 'continue') {
-          // LLM 认为在继续任务：无任务上下文则不合理 → 追问
-          return ctx.taskState ? 'task_continue' : 'clarify'
-        }
-        // LLM 返回 null（拿不准）→ 追问用户
-        return 'clarify'
-      } catch (e) {
-        _t('LLM 路由判定异常', { message: e.message }, 'error')
-        console.error('[TaskNLU] LLM 路由判定失败:', e.message)
-      }
-    } else if (!this.llmFallbackEnabled) {
-      _t('LLM 兜底已关闭（配置 llmFallbackEnabled=false）')
-    }
-
-    // ===== 降级（LLM 不可用/失败） =====
+    // ===== 降级 =====
     // 触发词命中但仲裁未执行（rule 模式无向量）→ 追问用户二选一
     if (byRuleHit && this.mode === 'rule') {
       _t('降级：触发词命中但无仲裁能力 → 澄清', { byRuleHit }, 'warn')

@@ -17,7 +17,6 @@
 import { getStore, closeStore } from './store.js'
 import TaskDefs from './taskDefs.js'
 import DialogManager from './dialogManager.js'
-import LLMDialogManager from './llmDialogManager.js'
 import llmClient, { DEFAULT_LLM_NODES } from '../llmClient.js'
 import nlu from './nlu.js'
 import traceService from '../traceService.js'
@@ -35,12 +34,10 @@ class TaskFlowEngine {
     /** 任务定义（code → def），委托 taskDefs 单例 */
     this.taskDefs = TaskDefs.defs
 
-    // 理解层（意图判定/槽位提取，可插拔模式：rule/hybrid/llm）
+    // 理解层（意图判定/槽位提取）
     this.nlu = nlu
-    // 规则版对话管理器（确定性骨架，LLM 不可用时降级用）
+    // 规则版对话管理器（确定性骨架）
     this.dialog = new DialogManager(TaskDefs, nlu)
-    // LLM 驱动对话管理器（llm/hybrid 模式主用）
-    this.llmDialog = new LLMDialogManager(TaskDefs, nlu)
 
     /** @type {import('./store.js').MemoryStore|import('./store.js').RedisStore|null} */
     this.store = null
@@ -188,8 +185,6 @@ class TaskFlowEngine {
       stack: [],
       turnCount: 0,
       skipCount: 0,
-      // LLM 驱动对话的对话历史（最近若干轮，仅 llmDialog 使用）
-      history: [],
       startedAt: Date.now(),
       lastActive: Date.now(),
     }
@@ -214,28 +209,12 @@ class TaskFlowEngine {
     }
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(trace, step, detail, level)
 
-    // NER+规则引擎优先策略：始终使用规则版对话管理器（dialogManager）
-    // LLM 不再参与任务对话，仅保留 meaningless/rerank 等辅助节点
-    const taskDef = this.taskDefs.get(state.taskCode)
-    const useLlmDialog = false  // 强制关闭 LLM 对话，纯规则引擎
-    _t('任务对话·模式选择', {
+    // 纯规则引擎对话（dialogManager）
+    _t('任务对话·模式', {
       taskCode: state.taskCode,
-      mode: 'rule (NER+规则引擎)',
-      nluMode: this.nlu.mode,
-      note: 'LLM对话已禁用，使用规则模板',
+      mode: 'rule',
     }, 'info')
-    let result = null
-    if (useLlmDialog) {
-      try {
-        result = await this.llmDialog.processTurn(state, text, trace)
-      } catch (e) {
-        console.error(`[TaskFlow] LLM 对话失败，降级规则模式: ${e.message}`)
-        _t('任务对话·LLM 失败，降级规则模式', { message: e.message }, 'error')
-        result = await this.dialog.processTurn(state, text, trace)
-      }
-    } else {
-      result = await this.dialog.processTurn(state, text, trace)
-    }
+    const result = await this.dialog.processTurn(state, text, trace)
 
     if (result.isComplete || result.cancelled) {
       this.activeTasks.delete(sessionId)

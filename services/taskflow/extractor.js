@@ -1,24 +1,12 @@
 /**
  * 槽位值提取器
  *
- * 支持提取方法：text / regex / number / enum / keyword（含标签的显式提供，如"地址是XX"）
+ * 支持提取方法：text / regex / number / enum / keyword（含标签的显式提供，如“地址是XX”）
  * 策略：先精确（regex/enum/number/keyword），后文本兜底
- * LLM 扩展点：setLlmExtractor(fn) 注册大模型提取器，规则提取不到时调用（默认未启用）
  */
 
 class Extractor {
-  constructor() {
-    /** @type {Function|null} (text, slotDef, ctx) => Promise<string|null> */
-    this.llmExtractor = null
-  }
-
-  /**
-   * 注册 LLM 提取器（可选）
-   * @param {Function} fn
-   */
-  setLlmExtractor(fn) {
-    this.llmExtractor = fn
-  }
+  constructor() {}
 
   /**
    * 从用户输入中提取槽位值
@@ -55,15 +43,6 @@ class Extractor {
         case 'text':
         default:
           value = this._extractText(text, slot)
-      }
-    }
-
-    // 3) LLM 兜底（可选）
-    if (value === null && !opts.labelOnly && this.llmExtractor) {
-      try {
-        value = await this.llmExtractor(text, slot, ctx)
-      } catch (e) {
-        console.error('[TaskFlow] LLM 提取失败:', e.message)
       }
     }
 

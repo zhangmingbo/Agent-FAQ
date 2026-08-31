@@ -414,25 +414,6 @@ class DialogManager {
     return this._slotDef(state, step)
   }
 
-  /** LLM 一次性抽取所有未填槽位（委托理解层） */
-  async _llmExtractAll(state, text) {
-    const task = this.defs.get(state.taskCode)
-    if (!task) return null
-    const unfilled = Object.entries(state.slots).filter(([_, s]) => !s.filled)
-    if (unfilled.length === 0) return null
-    const slotsSpec = {}
-    for (const [key, s] of unfilled) {
-      const sDef = this._slotDefByKey(state, key)
-      slotsSpec[key] = {
-        label: s.label,
-        type: sDef?.extract?.method || 'text',
-        rule: sDef?.extract?.rule || '',
-        required: s.required,
-      }
-    }
-    return this.nlu.extractSlotsBatch(text, task, slotsSpec, state)
-  }
-
   /** 构建当前步骤的提问话术（含进度提示） */
   _buildPrompt(state, step) {
     if (state.skipCount >= 2) {
