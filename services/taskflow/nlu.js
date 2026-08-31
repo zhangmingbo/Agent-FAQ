@@ -31,6 +31,8 @@ class TaskNLU {
     /** @type {'rule'|'hybrid'|'llm'} */
     this.mode = 'hybrid'
     this.nlpEngine = null
+    /** @type {boolean} LLM 兜底开关（可配置，默认关闭） */
+    this.llmFallbackEnabled = false
     /**
      * 任务/FAQ 统一语义仲裁阈值（运营可配，管理后台写入 sys_config）
      *   gap       差距阈值：任务与 FAQ 相似度差 > gap 才判显著胜出，否则澄清
@@ -78,6 +80,12 @@ class TaskNLU {
       return true
     }
     return false
+  }
+
+  /** 设置 LLM 兜底开关（可配置，默认关闭） */
+  setLlmFallbackEnabled(enabled) {
+    this.llmFallbackEnabled = !!enabled
+    console.log(`[TaskNLU] LLM 兜底: ${this.llmFallbackEnabled ? '开启' : '关闭'}`)
   }
 
   /** 注入共享 NLP 引擎（复用 FAQ 模型） */
@@ -356,61 +364,27 @@ class TaskNLU {
   // ========== 槽位提取 ==========
 
   /**
-   * 提取单个槽位值
-   * llm 模式：文本槽位 LLM 优先（规则对自然语言只会整句抓取，LLM 才能理解任意口语）
-   * hybrid/rule：规则优先，hybrid 下 LLM 兜底
+   * 提取单个槽位值（纯 NER + 规则引擎，不调用 LLM）
    * @param {string} text
    * @param {Object} slotDef - 槽位定义（含 extract/validate）
    * @param {Object} ctx - { taskCode, state }
    * @param {Object} opts - { labelOnly }
-   * @returns {Promise<{value:string|null, source:'rule'|'llm'|null}>}
+   * @returns {Promise<{value:string|null, source:'rule'|null}>}
    */
   async extractSlotValue(text, slotDef, ctx = {}, opts = {}) {
-    const method = slotDef.extract?.method || 'text'
-    const llmFirst = this.mode === 'llm' && llmClient.nodeEnabled('extract', ctx?.task?.llm || null) && !opts.labelOnly && method === 'text'
-    let value = null
-    let source = null
-
-    // LLM 优先（llm 模式）：理解任意口语，如"我姓张"→"张"
-    if (llmFirst) {
-      try {
-        value = await llmClient.extractSlot(text, slotDef, ctx)
-        source = value !== null ? 'llm' : null
-      } catch (e) {
-        console.error('[TaskNLU] LLM 单槽提取失败:', e.message)
-      }
-    }
-
-    // 规则提取（显式标签优先，如"地址是X"）
-    if (value === null) {
-      value = await extractor.extract(text, slotDef, ctx, { labelOnly: !!opts.labelOnly })
-      source = value !== null ? 'rule' : null
-    }
-
-    // LLM 兜底（hybrid 模式：规则未提取到时）
-    if (value === null && !llmFirst && this.mode !== 'rule' && llmClient.nodeEnabled('extract', ctx?.task?.llm || null) && !opts.labelOnly) {
-      try {
-        value = await llmClient.extractSlot(text, slotDef, ctx)
-        source = value !== null ? 'llm' : null
-      } catch (e) {
-        console.error('[TaskNLU] LLM 单槽提取失败:', e.message)
-      }
-    }
+    // 纯规则提取（NER + extractor）
+    const value = await extractor.extract(text, slotDef, ctx, { labelOnly: !!opts.labelOnly })
+    const source = value !== null ? 'rule' : null
     return { value, source }
   }
 
   /**
-   * LLM 批量提取所有未填槽位（规则未覆盖时的补漏）
-   * @returns {Promise<Object|null>} { key: value }
+   * LLM 批量提取所有未填槽位（已废弃，NER+规则引擎优先策略下不再使用）
+   * @returns {Promise<Object|null>} null（始终返回 null，不再调用 LLM）
    */
   async extractSlotsBatch(text, task, slotsSpec, state) {
-    if (this.mode === 'rule' || !llmClient.nodeEnabled('extract', task?.llm || null)) return null
-    try {
-      return await llmClient.extractSlots(text, task, slotsSpec, state)
-    } catch (e) {
-      console.error('[TaskNLU] LLM 批量提取失败:', e.message)
-      return null
-    }
+    // NER+规则引擎优先策略：不再使用 LLM 批量提取
+    return null
   }
 
   /** 校验槽位值（规则层，任何模式下都执行） */
@@ -630,8 +604,8 @@ class TaskNLU {
       _t('无候选任务')
     }
 
-    // ===== LLM 兜底（规则拿不准：任务中插话 / 触发词+咨询疑云 / 无任务咨询疑云） =====
-    if (llmClient.nodeEnabled('route')) {
+    // ===== LLM 兜底（可配置开关：开启时才调用，关闭则跳过） =====
+    if (this.llmFallbackEnabled && llmClient.nodeEnabled('route')) {
       _t('走 LLM 三选一兜底（router 提示词）')
       try {
         const decision = await llmClient.routeTurn({
@@ -652,6 +626,8 @@ class TaskNLU {
         _t('LLM 路由判定异常', { message: e.message }, 'error')
         console.error('[TaskNLU] LLM 路由判定失败:', e.message)
       }
+    } else if (!this.llmFallbackEnabled) {
+      _t('LLM 兜底已关闭（配置 llmFallbackEnabled=false）')
     }
 
     // ===== 降级（LLM 不可用/失败） =====

@@ -238,6 +238,8 @@ async function start() {
     if (dbConfig.task_session_ttl_minutes) {
       taskEngine.setSessionTtl(parseInt(dbConfig.task_session_ttl_minutes, 10))
     }
+    // LLM 兜底开关（可配置，默认关闭）
+    taskEngine.nlu.setLlmFallbackEnabled(dbConfig.llm_fallback_enabled === 'true')
   }
   // 接入共享 NLP 引擎（复用 FAQ 识别器已加载的向量模型，支持语义触发）
   await taskEngine.setNlpEngine(engine.recognizer.nlpEngine)

@@ -14,15 +14,17 @@
 import { get as getPrompt, getPromptSource } from './llmPrompts.js'
 import llmCallLogger from './llmCallLogger.js'
 
-/** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖，默认全开=现行为）
+/** 调用节点默认配置（管理后台可改，sys_config.llm_nodes 覆盖）
+ *  NER+规则引擎优先策略：trigger/extract/dialogue/route 默认关闭，由 NER 和规则引擎承担
+ *  meaningless/rerank 保留开启（FAQ 侧辅助功能）
  *  注意：模型不在这里配——全系统统一在「连接配置」的全局模型（llm_model）里控制 */
 export const DEFAULT_LLM_NODES = {
-  trigger:     { enabled: true, temperature: 0,   maxTokens: 20 },   // 任务触发判定
-  extract:     { enabled: true, temperature: 0,   maxTokens: 200 },  // 槽位提取
-  dialogue:    { enabled: true, temperature: 0.2, maxTokens: 400 },  // 任务对话
-  route:       { enabled: true, temperature: 0,   maxTokens: 10 },   // 意图路由兜底
-  meaningless: { enabled: true, temperature: 0.1, maxTokens: 10 },   // 无意义检测
-  rerank:      { enabled: true, temperature: 0,   maxTokens: 5 },    // FAQ 意图重排
+  trigger:     { enabled: false, temperature: 0,   maxTokens: 20 },   // 任务触发判定（默认关闭，由规则+向量承担）
+  extract:     { enabled: false, temperature: 0,   maxTokens: 200 },  // 槽位提取（默认关闭，由 NER 承担）
+  dialogue:    { enabled: false, temperature: 0.2, maxTokens: 400 },  // 任务对话（默认关闭，由规则模板承担）
+  route:       { enabled: false, temperature: 0,   maxTokens: 10 },   // 意图路由兜底（默认关闭，可配置开启）
+  meaningless: { enabled: true, temperature: 0.1, maxTokens: 10 },   // 无意义检测（保留开启）
+  rerank:      { enabled: true, temperature: 0,   maxTokens: 5 },    // FAQ 意图重排（保留开启）
 }
 
 class LLMClient {
