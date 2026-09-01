@@ -12,9 +12,40 @@ import autoExpandService from '../services/autoExpandService.js'
 import { getAllReplyTexts, setReplyTexts } from '../services/replyTexts.js'
 import { getAllMatchVocab, setMatchVocab } from '../services/matchVocab.js'
 import llmClient from '../services/llmClient.js'
+import nerClient from '../services/taskflow/nerClient.js'
 
 export function createRouter(engine) {
   const router = Router()
+
+  // ===== NER 类型管理 =====
+  // 获取完整 NER 类型列表（内置 + 自定义）
+  router.get('/config/ner-types', asyncHandler(async (req, res) => {
+    res.json({ success: true, data: nerClient.getTypes() })
+  }))
+
+  // 保存用户自定义 NER 类型
+  router.post('/config/ner-types', asyncHandler(async (req, res) => {
+    const { types } = req.body
+    if (!Array.isArray(types)) {
+      res.status(400).json({ success: false, message: 'types 必须是数组' })
+      return
+    }
+    // 只保存用户自定义的 regex 类型（过滤掉内置 model 类型）
+    const custom = types.filter(t => t.source === 'regex')
+    await nerClient.setCustomTypes(custom)
+    res.json({ success: true, data: nerClient.getTypes() })
+  }))
+
+  // 测试正则匹配
+  router.post('/config/ner-types/test', asyncHandler(async (req, res) => {
+    const { text } = req.body
+    if (!text) {
+      res.status(400).json({ success: false, message: '缺少 text 参数' })
+      return
+    }
+    const results = nerClient.testRegex(text)
+    res.json({ success: true, data: results })
+  }))
 
   // LLM 调用节点配置（页面单独刷新用；主数据已含在 GET /config 的 llmNodes）
   router.get('/config/llm-nodes', asyncHandler(async (req, res) => {

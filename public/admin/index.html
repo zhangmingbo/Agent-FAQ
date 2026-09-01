@@ -581,13 +581,13 @@
     var oldTabs = panel.querySelector('#rules-tabs');
     if (oldTabs) {
       // 移除旧的 tabs 和 tab panels
-      var toRemove = panel.querySelectorAll('#rules-tabs, #tab-tasks, #tab-rules, #tab-llm');
+      var toRemove = panel.querySelectorAll('#rules-tabs, #tab-tasks, #tab-rules, #tab-llm, #tab-ner');
       toRemove.forEach(function(el) { el.remove(); });
     }
     // 创建标签导航（任务流程 | 对话规则 | LLM 智能层）
     var tabs = document.createElement('div');
     tabs.id = 'rules-tabs';
-    tabs.innerHTML = '<button class="tab-btn active" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="llm">LLM 智能层</button>';
+    tabs.innerHTML = '<button class="tab-btn active" data-tab="tasks">任务流程</button><button class="tab-btn" data-tab="rules">对话规则</button><button class="tab-btn" data-tab="llm">LLM 智能层</button><button class="tab-btn" data-tab="ner">NER 管理</button>';
     // 把原有内容包进 tab panel
     var rulesPanel = document.createElement('div');
     rulesPanel.className = 'tab-panel';
@@ -603,11 +603,17 @@
     llmPanel.className = 'tab-panel';
     llmPanel.id = 'tab-llm';
     llmPanel.innerHTML = buildLLMPanelHTML();
+    // 创建 NER 管理面板
+    var nerPanel = document.createElement('div');
+    nerPanel.className = 'tab-panel';
+    nerPanel.id = 'tab-ner';
+    nerPanel.innerHTML = buildNERPanelHTML();
     // 组装
     panel.appendChild(tabs);
     panel.appendChild(tasksPanel);
     panel.appendChild(rulesPanel);
     panel.appendChild(llmPanel);
+    panel.appendChild(nerPanel);
     // 对话规则 tab 底部追加"匹配容错"配置区
     injectMatchTolerance(rulesPanel);
     // 默认激活"任务流程"页签 → 加载任务列表
@@ -622,8 +628,10 @@
       rulesPanel.classList.toggle('active', tab === 'rules');
       tasksPanel.classList.toggle('active', tab === 'tasks');
       llmPanel.classList.toggle('active', tab === 'llm');
+      nerPanel.classList.toggle('active', tab === 'ner');
       if (tab === 'tasks') { loadTasks(); }
       if (tab === 'llm') loadLLMPanel();
+      if (tab === 'ner') loadNERPanel();
     });
   }
 
@@ -1559,6 +1567,170 @@
       if (res.success) loadLLMPanel();
     });
   };
+
+  // ===== NER 管理面板 =====
+  function buildNERPanelHTML() {
+    return '<div class="task-panel">' +
+      '<div class="task-header">' +
+        '<h4>NER 实体类型管理</h4>' +
+        '<button class="btn-sm btn-primary" id="ner-add-btn">+ 新增类型</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:12px">管理 NER 实体类型。内置类型由 NER 模型识别，正则类型通过正则表达式后处理提取。保存后立即生效。</div>' +
+      '<div id="ner-type-list"><div class="task-empty"><div class="icon">🔍</div><div>加载中...</div></div></div>' +
+      '<div id="ner-test-area" style="margin-top:20px;border-top:1px solid #eee;padding-top:16px">' +
+        '<h5 style="font-size:13px;margin:0 0 8px">正则匹配测试</h5>' +
+        '<div style="display:flex;gap:8px;align-items:center">' +
+          '<input id="ner-test-input" placeholder="输入测试文本..." style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px">' +
+          '<button class="btn-sm btn-primary" id="ner-test-btn">测试</button>' +
+        '</div>' +
+        '<div id="ner-test-result" style="margin-top:8px;font-size:12px;color:#666"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function loadNERPanel() {
+    api('GET', '/api/config/ner-types', null, function(res) {
+      var el = document.getElementById('ner-type-list');
+      if (!el) return;
+      if (!res.success) { el.innerHTML = '<div class="task-empty">加载失败</div>'; return; }
+      var types = res.data || [];
+      if (!types.length) { el.innerHTML = '<div class="task-empty">暂无 NER 类型</div>'; return; }
+      var html = '<div class="task-table-wrap"><table class="el-table" style="width:100%">' +
+        '<thead><tr>' +
+        '<th style="width:120px">类型标识</th>' +
+        '<th style="width:100px">中文名称</th>' +
+        '<th style="width:80px">来源</th>' +
+        '<th>正则表达式</th>' +
+        '<th style="width:70px">状态</th>' +
+        '<th style="width:120px">操作</th>' +
+        '</tr></thead><tbody>';
+      types.forEach(function(t) {
+        var isModel = t.source === 'model';
+        var sourceLabel = isModel ? 'NER模型' : '正则';
+        var statusLabel = t.enabled !== false ? '<span class="status-tag on">已启用</span>' : '<span class="status-tag off">已禁用</span>';
+        var regexDisplay = t.regex ? '<code style="font-size:11px;background:#f5f5f5;padding:2px 6px;border-radius:3px">' + esc(t.regex) + '</code>' : '<span style="color:#ccc">—</span>';
+        var actions = '<button class="btn-sm" onclick="nerEditType(\'' + esc(t.type) + '\')">编辑</button>';
+        if (!isModel) actions += ' <button class="btn-sm" style="color:#e74c3c" onclick="nerDeleteType(\'' + esc(t.type) + '\')">删除</button>';
+        html += '<tr>' +
+          '<td><b>' + esc(t.type) + '</b></td>' +
+          '<td>' + esc(t.label || '') + '</td>' +
+          '<td><span style="font-size:11px;padding:2px 6px;border-radius:8px;background:' + (isModel ? '#e8f5e9;color:#2e7d32' : '#e3f2fd;color:#1565c0') + '">' + sourceLabel + '</span></td>' +
+          '<td>' + regexDisplay + '</td>' +
+          '<td>' + statusLabel + '</td>' +
+          '<td>' + actions + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+      el.innerHTML = html;
+      // 绑定测试按钮
+      var testBtn = document.getElementById('ner-test-btn');
+      if (testBtn) testBtn.onclick = nerTestRegex;
+    });
+  }
+
+  // 缓存当前 NER 类型列表
+  var _nerTypesCache = [];
+
+  function nerLoadTypes(cb) {
+    api('GET', '/api/config/ner-types', null, function(res) {
+      _nerTypesCache = (res.success && res.data) ? res.data : [];
+      cb(_nerTypesCache);
+    });
+  }
+
+  window.nerEditType = function(typeKey) {
+    nerLoadTypes(function(types) {
+      var t = types.find(function(x) { return x.type === typeKey; });
+      if (!t) return;
+      showNEREditModal(t, false);
+    });
+  };
+
+  window.nerDeleteType = function(typeKey) {
+    if (!confirm('确认删除类型「' + typeKey + '」？')) return;
+    nerLoadTypes(function(types) {
+      var filtered = types.filter(function(x) { return x.type !== typeKey; });
+      api('POST', '/api/config/ner-types', { types: filtered }, function(res) {
+        if (res.success) loadNERPanel();
+        else alert(res.message || '删除失败');
+      });
+    });
+  };
+
+  function showNEREditModal(t, isNew) {
+    var overlay = document.createElement('div');
+    overlay.className = 'task-modal-overlay';
+    overlay.innerHTML = '<div class="task-modal" style="width:min(94vw,560px)">' +
+      '<div class="task-modal-header"><h3>' + (isNew ? '新增 NER 类型' : '编辑 NER 类型') + '</h3><button class="close-btn" id="ner-modal-close">&times;</button></div>' +
+      '<div class="task-modal-body">' +
+        '<div class="form-group"><label>类型标识（英文，唯一）</label><input id="ner-edit-type" value="' + esc(t.type || '') + '" placeholder="如 order_no"' + (isNew ? '' : ' readonly style="background:#f5f5f5"') + '></div>' +
+        '<div class="form-group"><label>中文名称</label><input id="ner-edit-label" value="' + esc(t.label || '') + '" placeholder="如 订单号"></div>' +
+        '<div class="form-group"><label>正则表达式</label><input id="ner-edit-regex" value="' + esc(t.regex || '') + '" placeholder="如 \\d{10,20}" style="font-family:monospace"></div>' +
+        '<div class="form-group"><label><input type="checkbox" id="ner-edit-enabled"' + (t.enabled !== false ? ' checked' : '') + '> 启用</label></div>' +
+      '</div>' +
+      '<div class="task-modal-footer">' +
+        '<button class="btn-sm" id="ner-edit-cancel">取消</button>' +
+        '<button class="btn-sm btn-primary" id="ner-edit-save">保存</button>' +
+      '</div></div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('#ner-modal-close').onclick = function() { overlay.remove(); };
+    overlay.querySelector('#ner-edit-cancel').onclick = function() { overlay.remove(); };
+    overlay.querySelector('#ner-edit-save').onclick = function() {
+      var typeVal = overlay.querySelector('#ner-edit-type').value.trim();
+      var labelVal = overlay.querySelector('#ner-edit-label').value.trim();
+      var regexVal = overlay.querySelector('#ner-edit-regex').value.trim();
+      var enabledVal = overlay.querySelector('#ner-edit-enabled').checked;
+      if (!typeVal) { alert('请填写类型标识'); return; }
+      if (!labelVal) { alert('请填写中文名称'); return; }
+      // 校验正则
+      if (regexVal) {
+        try { new RegExp(regexVal); } catch(e) { alert('正则表达式有误：' + e.message); return; }
+      }
+      nerLoadTypes(function(types) {
+        if (isNew) {
+          // 检查重复
+          if (types.find(function(x) { return x.type === typeVal; })) { alert('类型标识已存在'); return; }
+          types.push({ type: typeVal, label: labelVal, regex: regexVal, source: 'regex', enabled: enabledVal });
+        } else {
+          types = types.map(function(x) {
+            if (x.type === typeVal) return Object.assign({}, x, { label: labelVal, regex: regexVal, enabled: enabledVal });
+            return x;
+          });
+        }
+        api('POST', '/api/config/ner-types', { types: types }, function(res) {
+          if (res.success) { overlay.remove(); loadNERPanel(); }
+          else alert(res.message || '保存失败');
+        });
+      });
+    };
+  }
+
+  // 新增类型按钮
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'ner-add-btn') {
+      showNEREditModal({ type: '', label: '', regex: '', source: 'regex', enabled: true }, true);
+    }
+  });
+
+  // 正则测试
+  function nerTestRegex() {
+    var input = document.getElementById('ner-test-input');
+    var result = document.getElementById('ner-test-result');
+    if (!input || !result) return;
+    var text = input.value.trim();
+    if (!text) { result.innerHTML = '<span style="color:#999">请输入测试文本</span>'; return; }
+    api('POST', '/api/config/ner-types/test', { text: text }, function(res) {
+      if (!res.success) { result.innerHTML = '<span style="color:red">测试失败</span>'; return; }
+      var items = res.data || [];
+      if (!items.length) { result.innerHTML = '<span style="color:#999">暂无正则类型</span>'; return; }
+      var html = '';
+      items.forEach(function(item) {
+        var matchStr = item.matches.length ? item.matches.map(function(m) { return '<b style="color:#4361ee">' + esc(m) + '</b>'; }).join(', ') : '<span style="color:#ccc">无匹配</span>';
+        html += '<div style="margin-bottom:4px"><span style="display:inline-block;width:80px;font-weight:600">' + esc(item.label) + '</span> ' + matchStr + '</div>';
+      });
+      result.innerHTML = html;
+    });
+  }
 
   // ===== 任务面板 HTML =====
   function buildTaskPanelHTML() {
