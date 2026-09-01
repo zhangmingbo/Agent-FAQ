@@ -1,7 +1,7 @@
 <template>
   <div class="login-wrap">
     <div class="login-card">
-      <h2>智能体管理平台</h2>
+      <h2>Argos-智能体平台</h2>
       <el-form :model="form" @submit.prevent="handleLogin" style="margin-top:24px">
         <el-form-item>
           <el-input v-model="form.username" placeholder="用户名" prefix-icon="User" size="large" />
