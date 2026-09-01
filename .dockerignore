@@ -4,6 +4,6 @@ deploy-linux
 .git
 *.tar
 *.png
-*.md
+docs/
 deploy.sh
 .gitignore
