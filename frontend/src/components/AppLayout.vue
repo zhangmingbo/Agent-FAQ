@@ -53,7 +53,7 @@ const menuItems = [
   { path: '/issues', title: '问题追踪', icon: 'Search' },
   { path: '/task-tracking', title: '任务管理', icon: 'List' },
   { path: '/faq', title: 'FAQ 管理', icon: 'Document' },
-  { path: '/rules', title: '规则引擎', icon: 'SetUp' },
+  { path: '/rules', title: '流程设计', icon: 'SetUp' },
   { path: '/config', title: '系统配置', icon: 'Setting' },
 ]
 

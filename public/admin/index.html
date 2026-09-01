@@ -117,6 +117,7 @@
     .slot-row .slot-label{width:100px}
     .slot-row .slot-prompt{flex:1}
     .slot-row .slot-type{width:90px}
+    .slot-row .slot-ner-type{width:100px}
     .slot-row .slot-required{width:50px;text-align:center}
     .slot-row .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
     .step-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;padding:8px;background:#fff;border:1px solid #e9ecef;border-radius:6px}
@@ -543,6 +544,13 @@
   }, 300);
 
   function injectTaskTabs(panel) {
+    // 清理可能残留的旧注入内容
+    var oldTabs = panel.querySelector('#rules-tabs');
+    if (oldTabs) {
+      // 移除旧的 tabs 和 tab panels
+      var toRemove = panel.querySelectorAll('#rules-tabs, #tab-tasks, #tab-rules, #tab-llm');
+      toRemove.forEach(function(el) { el.remove(); });
+    }
     // 创建标签导航（任务流程 | 对话规则 | LLM 智能层）
     var tabs = document.createElement('div');
     tabs.id = 'rules-tabs';
@@ -777,7 +785,7 @@
       div.style.cssText = 'margin-top:30px;max-width:500px';
       div.innerHTML =
         '<h3 style="font-size:15px;margin-bottom:16px">任务/FAQ 仲裁阈值</h3>' +
-        '<div style="font-size:12px;color:#999;margin-bottom:12px">用户输入同时命中任务和 FAQ 时对比相似度判定通道。保存立即生效；单个任务可在「规则引擎→任务流程」中单独覆盖。</div>' +
+        '<div style="font-size:12px;color:#999;margin-bottom:12px">用户输入同时命中任务和 FAQ 时对比相似度判定通道。保存立即生效；单个任务可在「流程设计→任务流程」中单独覆盖。</div>' +
         '<div id="arb-threshold-form"></div>';
       panel.appendChild(div);
       renderArbForm();
@@ -2201,53 +2209,6 @@
           '</div>' +
           '<div style="color:#999;font-size:12px;margin-top:4px">任务与 FAQ 语义相似度接近时的判定：差距超过阈值选高者，否则澄清让用户选。此配置只对本任务生效，优先级高于系统配置。</div>' +
         '</div>' +
-        '<div class="form-group"><label>LLM 配置（可选，任务级覆盖全局节点；不配=用全局）</label>' +
-          '<div style="border:1px solid #e8ecff;border-radius:8px;padding:12px;background:#fafbff">' +
-            '<div style="font-size:12px;color:#999;margin-bottom:10px;line-height:1.8"><b style="color:#666">本任务的 LLM 怎么配？三步走：</b><br>① <b>什么都不改 = 跟随全局（推荐）</b>，全局已在「系统配置 → LLM 连接」配好；<br>② 想省成本/要确定性 → 勾选下面"完全不用 LLM"，或单独关掉某节点；<br>③ 想微调这个任务 → 只改下面温度/token，数字留空 = 用全局默认。</div>' +
-            '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tf-llm-enabled" ' + (isEdit && task.llm && task.llm.enabled === false ? 'checked' : '') + '> 本任务完全不用 LLM（对话/提取都走规则）</label>' +
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
-              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
-                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">任务对话 <span style="color:#999;font-weight:normal;font-size:12px">（每轮回复/槽位提取）</span></div>' +
-                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-dialogue-enabled" ' + (isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.enabled === false ? '' : 'checked') + '> 启用</label>' +
-                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-dialogue-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.temperature != null ? task.llm.dialogue.temperature : '') + '"></label>' +
-                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-dialogue-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.maxTokens != null ? task.llm.dialogue.maxTokens : '') + '"></label>' +
-                '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 本任务对话不调 LLM（走规则）。<br>· 温度：留空 = 全局(0.2)；想更稳定填 0；想更自然口语填 0.3~0.5；越高越发散。<br>· token：留空 = 全局(400)；单次回复字数上限，一般 200~400 够用。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
-              '</div>' +
-              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
-                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">槽位提取 <span style="color:#999;font-weight:normal;font-size:12px">（规则提取失败时）</span></div>' +
-                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-extract-enabled" ' + (isEdit && task.llm && task.llm.extract && task.llm.extract.enabled === false ? '' : 'checked') + '> 启用</label>' +
-                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-extract-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.temperature != null ? task.llm.extract.temperature : '') + '"></label>' +
-                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-extract-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.maxTokens != null ? task.llm.extract.maxTokens : '') + '"></label>' +
-                '</div>' +
-                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 规则提取不到时不再用 LLM 补（提取容易出错的场景可关）。<br>· 温度：留空 = 全局(0)；提取建议用低温（0~0.1）保证准确。<br>· token：留空 = 全局(200)。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
-              '</div>' +
-            '</div>' +
-            '<div style="margin-top:10px">' +
-              '<div style="font-size:12px;color:#888;margin-bottom:6px;line-height:1.7">提示词覆盖：<b>4 个框已预填当前全局提示词</b>，直接在里面改 = 定制本任务；不改 = 继续用全局；想用全局默认就清空该框。<br>注意：{xxx} 是占位符会自动替换，<b>别删</b>。想换口吻 → 改「对话系统提示词」开头那句"你是…售后客服"即可。</div>' +
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话系统提示词 <span style="color:#aaa">（角色与规则）</span></div>' +
-                  '<textarea id="tf-llm-dialogue-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
-                '</div>' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话用户模板 <span style="color:#aaa">（每轮消息）</span></div>' +
-                  '<textarea id="tf-llm-dialogue-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
-                '</div>' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取系统提示词 <span style="color:#aaa">（提取规则）</span></div>' +
-                  '<textarea id="tf-llm-extract-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
-                '</div>' +
-                '<div>' +
-                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取用户模板 <span style="color:#aaa">（字段描述）</span></div>' +
-                  '<textarea id="tf-llm-extract-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractUser || '') : '') + '</textarea>' +
-                '</div>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -2298,26 +2259,6 @@
       '</div>' +
     '</div>';
     document.body.appendChild(overlay);
-
-    // 预填 LLM 提示词覆盖框：把当前全局提示词直接写进文本框
-    // （改了 = 定制本任务；不改 = 继续用全局；清空 = 用全局默认）
-    var globalPrompts = {};
-    api('GET', '/api/config/llm-prompts', null, function(res) {
-      if (!res || !res.success) return;
-      var map = {};
-      (res.data || []).forEach(function(p) { map[p.key] = p.value || ''; });
-      var gkeyMap = {
-        'dialogue-system': 'dialogue.system',
-        'dialogue-user': 'dialogue.user',
-        'extract-system': 'extract_slots.system',
-        'extract-user': 'extract_slots.user',
-      };
-      ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
-        globalPrompts[id] = map[gkeyMap[id]] || '';
-        var ta = overlay.querySelector('#tf-llm-' + id);
-        if (ta && !ta.value.trim()) ta.value = globalPrompts[id];
-      });
-    });
 
     // 事件绑定
     var dirty = false;
@@ -2378,7 +2319,7 @@
     // 添加槽位
     overlay.querySelector('#tf-add-slot').onclick = function() {
       var container = overlay.querySelector('#tf-slots');
-      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract_type:'text',extract_rule:'',required:true}));
+      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract_type:'text',extract_rule:'',extract_ner_type:'',required:true}));
       bindSlotDel(container.lastElementChild);
     };
     // 绑定已有槽位删除
@@ -2457,6 +2398,7 @@
           prompt: row.querySelector('.slot-prompt').value.trim(),
           extract_type: row.querySelector('.slot-type').value,
           extract_rule: row.querySelector('.slot-rule').value.trim(),
+          extract_ner_type: row.querySelector('.slot-ner-type').value || null,
           required: row.querySelector('.slot-required').checked,
         });
       });
@@ -2534,34 +2476,6 @@
         arb_task_min: (function() { var v = overlay.querySelector('#tf-arb-task-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_faq_min: (function() { var v = overlay.querySelector('#tf-arb-faq-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_strong_hit: (function() { var v = overlay.querySelector('#tf-arb-strong-hit').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
-        // 任务级 LLM 配置（未改动 → undefined → 不覆盖全局；勾选/填值 → 只存差异项）
-        llm: (function() {
-          function nodeOf(prefix) {
-            var enabledChecked = overlay.querySelector('#tf-llm-' + prefix + '-enabled').checked;
-            var temp = overlay.querySelector('#tf-llm-' + prefix + '-temp').value.trim();
-            var tokens = overlay.querySelector('#tf-llm-' + prefix + '-tokens').value.trim();
-            var node = {};
-            if (!enabledChecked) node.enabled = false;
-            if (temp !== '') { var t = parseFloat(temp); if (!isNaN(t)) node.temperature = t; }
-            if (tokens !== '') { var m = parseInt(tokens, 10); if (!isNaN(m)) node.maxTokens = m; }
-            return Object.keys(node).length ? node : undefined;
-          }
-          var out = {};
-          if (overlay.querySelector('#tf-llm-enabled').checked) out.enabled = false;
-          var dlg = nodeOf('dialogue');
-          if (dlg) out.dialogue = dlg;
-          var ext = nodeOf('extract');
-          if (ext) out.extract = ext;
-          var prompts = {};
-          ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
-            var key = id.split('-').map(function(w, i) { return i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join('');
-            var v = overlay.querySelector('#tf-llm-' + id).value.trim();
-            // 与全局一致 = 没定制 → 不存（继续用全局）；改了才存；清空 = 用全局默认
-            if (v && v !== globalPrompts[id]) prompts[key] = v;
-          });
-          if (Object.keys(prompts).length) out.prompts = prompts;
-          return Object.keys(out).length ? out : undefined;
-        })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: onCompleteVal,
         api_action: apiAction,
@@ -2608,6 +2522,20 @@
         '<option value="regex"' + (s.extract_type==='regex'?' selected':'') + '>正则</option>' +
         '<option value="number"' + (s.extract_type==='number'?' selected':'') + '>数字</option>' +
         '<option value="enum"' + (s.extract_type==='enum'?' selected':'') + '>枚举</option>' +
+      '</select>' +
+      '<select class="slot-ner-type" title="NER 类型（文本类型槽位可指定 NER 模型识别的实体类型）">' +
+        '<option value="">无 NER</option>' +
+        '<option value="address"' + (s.extract_ner_type==='address'?' selected':'') + '>地址</option>' +
+        '<option value="name"' + (s.extract_ner_type==='name'?' selected':'') + '>姓名</option>' +
+        '<option value="company"' + (s.extract_ner_type==='company'?' selected':'') + '>公司</option>' +
+        '<option value="organization"' + (s.extract_ner_type==='organization'?' selected':'') + '>机构</option>' +
+        '<option value="phone"' + (s.extract_ner_type==='phone'?' selected':'') + '>电话</option>' +
+        '<option value="email"' + (s.extract_ner_type==='email'?' selected':'') + '>邮箱</option>' +
+        '<option value="date"' + (s.extract_ner_type==='date'?' selected':'') + '>日期</option>' +
+        '<option value="time"' + (s.extract_ner_type==='time'?' selected':'') + '>时间</option>' +
+        '<option value="government"' + (s.extract_ner_type==='government'?' selected':'') + '>政府机构</option>' +
+        '<option value="position"' + (s.extract_ner_type==='position'?' selected':'') + '>职位</option>' +
+        '<option value="scene"' + (s.extract_ner_type==='scene'?' selected':'') + '>场景</option>' +
       '</select>' +
       '<input class="slot-rule" value="' + esc(s.extract_rule||'') + '" placeholder="提取规则" style="width:120px">' +
       '<label class="slot-required"><input type="checkbox"' + (s.required!==false?' checked':'') + '>必填</label>' +
@@ -2704,12 +2632,12 @@
   function buildOneStepRow(s, stepKeys, slotKeys) {
     s = s || {};
     var collectExtra = s.type === 'collect' ?
-      '<input class="step-slot" value="' + esc(s.slot_key||'') + '" placeholder="槽位key" style="width:90px">' +
-      '<input class="step-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
-      '<input class="step-extract" value="' + esc((s.extract&&s.extract.method)||'') + '" placeholder="提取:text/regex/number/enum" style="width:120px">' +
-      '<input class="step-rule" value="' + esc((s.extract&&s.extract.rule)||'') + '" placeholder="提取规则/枚举" style="width:110px">' +
-      '<input class="step-validate" value="' + esc((s.validate&&s.validate.rule)||'') + '" placeholder="校验规则" style="width:100px">' +
-      '<input class="step-reask" value="' + esc((s.validate&&s.validate.reask)||'') + '" placeholder="重问话术" style="width:130px">' : '';
+      '<select class="step-slot" style="width:110px">' +
+        '<option value="">选择槽位</option>' +
+        slotKeys.map(function(k) { return '<option value="' + esc(k) + '"' + (s.slot_key===k?' selected':'') + '>' + esc(k) + '</option>'; }).join('') +
+      '</select>' +
+      '<input class="step-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术（留空用槽位默认）">' +
+      '<span style="font-size:11px;color:#999">提取/校验规则在槽位定义中配置</span>' : '';
     var actionExtra = s.type === 'action' ?
       '<input class="step-action" value="' + esc(s.action||'') + '" placeholder="动作名" style="width:130px">' +
       '<input class="step-msg" value="' + esc(s.done_message||'') + '" placeholder="完成话术">' : '';
@@ -2817,10 +2745,7 @@
       if (type === 'collect') {
         step.slot_key = (q(row, '.step-slot') || key).trim();
         step.prompt = q(row, '.step-prompt');
-        step.extract = { method: q(row, '.step-extract') || 'text', rule: q(row, '.step-rule') };
-        var vr = q(row, '.step-validate');
-        var vk = q(row, '.step-reask');
-        if (vr) step.validate = { rule: vr, reask: vk };
+        // extract/validate 继承自槽位定义，步骤级不重复配置
       } else if (type === 'action') {
         step.action = q(row, '.step-action') || 'complete_message';
         var dm = q(row, '.step-msg');
@@ -2928,6 +2853,7 @@
         prompt: row.querySelector('.slot-prompt').value.trim(),
         extract_type: row.querySelector('.slot-type').value,
         extract_rule: row.querySelector('.slot-rule').value.trim(),
+        extract_ner_type: row.querySelector('.slot-ner-type').value || null,
         required: row.querySelector('.slot-required').checked,
       });
     });
@@ -2938,7 +2864,6 @@
       steps.push({
         key: 'collect_' + s.key, type: 'collect', slot_key: s.key, label: s.label, required: s.required !== false,
         prompt: s.prompt || ('请提供' + s.label),
-        extract: { method: s.extract_type || 'text', rule: s.extract_rule || '' },
         next: i < slots.length - 1 ? 'collect_' + slots[i+1].key : 'confirm_step',
       });
     });
@@ -3049,7 +2974,7 @@
     var items = menu.querySelectorAll('.el-menu-item');
     var ref = null;
     for (var i = 0; i < items.length; i++) {
-      if (items[i].textContent.indexOf('规则引擎') >= 0) { ref = items[i]; break; }
+      if (items[i].textContent.indexOf('流程设计') >= 0) { ref = items[i]; break; }
     }
     var el = document.createElement('li');
     el.className = 'el-menu-item';
