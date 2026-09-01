@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const http = axios.create({ baseURL: '', timeout: 15000 })
+import http from '@/utils/http'
 
 // 问题追踪
 export const getUnmatched = (params) =>

@@ -43,43 +43,51 @@
     <div class="table-wrap">
       <el-table :data="items" stripe style="width:100%" v-loading="loading">
         <el-table-column type="index" label="#" width="50" />
-        <el-table-column label="任务名称" width="12%">
+        <el-table-column label="用户名" width="100">
+          <template #default="{ row }">
+            <span>{{ row.user_id || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="会话ID" min-width="150">
+          <template #default="{ row }">
+            <span class="session-id" :title="row.session_id">{{ row.session_id }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="任务名称" min-width="140">
           <template #default="{ row }">
             <span class="task-name">{{ row.task_name }}</span>
             <div class="task-code">{{ row.task_code }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="触发原文" min-width="18%">
+        <el-table-column label="触发原文" min-width="160">
           <template #default="{ row }">
             <ExpandCell :text="row.trigger_text || '-'" :max-length="50" />
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="9%" align="center">
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row.status)" size="small" effect="light">
               {{ statusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="当前步骤" width="12%">
+        <el-table-column label="当前步骤" min-width="120">
           <template #default="{ row }">
             <span>{{ row.current_step || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="轮次" width="6%" align="center">
+        <el-table-column label="轮次" width="70" align="center">
           <template #default="{ row }">
             <span>{{ row.turn_count }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="会话ID" width="14%">
-          <template #default="{ row }">
-            <span class="session-id" :title="row.session_id">{{ row.session_id }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="开始时间" width="14%" prop="started_at" />
-        <el-table-column label="操作" width="8%" align="center">
+        <el-table-column label="开始时间" width="170" prop="started_at" />
+        <el-table-column label="操作" width="220" align="center">
           <template #default="{ row }">
             <el-button size="small" link type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" link type="warning" @click="openRemark(row)">标注</el-button>
+            <el-button v-if="isActive(row.status)" size="small" link type="danger" @click="handleCancel(row)">取消</el-button>
+            <el-button size="small" link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -95,7 +103,7 @@
     </div>
 
     <!-- 详情弹窗 -->
-    <el-dialog v-model="showDetail" title="任务实例详情" width="600px" destroy-on-close>
+    <el-dialog v-model="showDetail" title="任务实例详情" width="640px" destroy-on-close>
       <div v-if="detail" class="detail-content">
         <div class="detail-section">
           <h4>基本信息</h4>
@@ -105,7 +113,6 @@
               <el-tag :type="statusTagType(detail.status)" size="small">{{ statusLabel(detail.status) }}</el-tag>
             </div>
             <div class="detail-item"><span class="label">会话ID</span><span class="session-id">{{ detail.session_id }}</span></div>
-            <div class="detail-item"><span class="label">用户ID</span><span>{{ detail.user_id || '-' }}</span></div>
             <div class="detail-item"><span class="label">触发原文</span><span>{{ detail.trigger_text || '-' }}</span></div>
             <div class="detail-item"><span class="label">当前步骤</span><span>{{ detail.current_step || '-' }}</span></div>
             <div class="detail-item"><span class="label">对话轮次</span><span>{{ detail.turn_count }}</span></div>
@@ -132,7 +139,24 @@
             </el-table-column>
           </el-table>
         </div>
+
+        <div class="detail-section">
+          <h4>管理员标注</h4>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <el-input v-model="detailRemark" type="textarea" :rows="2" placeholder="输入标注内容..." style="flex:1" />
+            <el-button type="primary" size="small" @click="saveRemark(detail.id)" :loading="savingRemark">保存</el-button>
+          </div>
+        </div>
       </div>
+    </el-dialog>
+
+    <!-- 标注弹窗 -->
+    <el-dialog v-model="showRemarkModal" title="管理员标注" width="460px" destroy-on-close>
+      <el-input v-model="remarkText" type="textarea" :rows="3" placeholder="输入标注内容..." />
+      <template #footer>
+        <el-button @click="showRemarkModal = false">取消</el-button>
+        <el-button type="primary" @click="saveRemarkFromModal" :loading="savingRemark">保存</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -141,14 +165,16 @@
 import { ref, computed, onMounted } from 'vue'
 import StatCard from '@/components/StatCard.vue'
 import ExpandCell from '@/components/ExpandCell.vue'
-import { getTaskInstances, getTaskInstanceStats, getTaskInstanceDetail } from '@/api/taskInstance'
+import { getTaskInstances, getTaskInstanceStats, getTaskInstanceDetail, updateTaskInstance, deleteTaskInstance, cancelTaskInstance } from '@/api/taskInstance'
+import { getTasks } from '@/api/task'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 任务列表（从任务定义 API 加载，供筛选下拉）
 const taskList = ref([])
 
 async function loadTaskList() {
   try {
-    const res = await fetch('/api/tasks').then(r => r.json())
+    const res = await getTasks()
     if (res.success) taskList.value = res.data || []
   } catch { /* ignore */ }
 }
@@ -222,6 +248,7 @@ async function openDetail(row) {
     const res = await getTaskInstanceDetail(row.id)
     if (res.success) {
       detail.value = res.data
+      detailRemark.value = res.data.remark || ''
       showDetail.value = true
     }
   } catch (e) {
@@ -246,6 +273,81 @@ function statusLabel(status) {
 
 function statusTagType(status) {
   return STATUS_MAP[status]?.type || 'info'
+}
+
+function isActive(status) {
+  return ['collecting', 'confirming', 'executing', 'suspended'].includes(status)
+}
+
+// 标注
+const showRemarkModal = ref(false)
+const remarkText = ref('')
+const remarkTargetId = ref(null)
+const detailRemark = ref('')
+const savingRemark = ref(false)
+
+function openRemark(row) {
+  remarkTargetId.value = row.id
+  remarkText.value = row.remark || ''
+  showRemarkModal.value = true
+}
+
+async function saveRemarkFromModal() {
+  savingRemark.value = true
+  try {
+    await updateTaskInstance(remarkTargetId.value, { remark: remarkText.value })
+    ElMessage.success('标注已保存')
+    showRemarkModal.value = false
+    loadData()
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingRemark.value = false
+  }
+}
+
+async function saveRemark(id) {
+  savingRemark.value = true
+  try {
+    await updateTaskInstance(id, { remark: detailRemark.value })
+    ElMessage.success('标注已保存')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingRemark.value = false
+  }
+}
+
+// 删除
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm(`确认删除任务「${row.task_name}」的实例记录？`, '删除确认', { type: 'warning' })
+    const res = await deleteTaskInstance(row.id)
+    if (res.success) {
+      ElMessage.success('已删除')
+      reload()
+    } else {
+      ElMessage.error(res.message || '删除失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('删除失败')
+  }
+}
+
+// 手动取消
+async function handleCancel(row) {
+  try {
+    await ElMessageBox.confirm(`确认取消任务「${row.task_name}」？`, '取消确认', { type: 'warning' })
+    const res = await cancelTaskInstance(row.id)
+    if (res.success) {
+      ElMessage.success('已取消')
+      reload()
+    } else {
+      ElMessage.error(res.message || '取消失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('取消失败')
+  }
 }
 
 onMounted(() => {

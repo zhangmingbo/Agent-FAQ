@@ -12,22 +12,22 @@
       <div class="rule-table-wrap">
         <el-table :data="rules.confirmWords" size="small" style="width:100%">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column label="模式" min-width="55%">
+          <el-table-column label="模式" min-width="300">
             <template #default="{ row }">
               <el-input v-model="row.pattern" size="small" placeholder="输入模式..." />
             </template>
           </el-table-column>
-          <el-table-column label="正则" width="8%" align="center">
+          <el-table-column label="正则" width="70" align="center">
             <template #default="{ row }">
               <el-checkbox v-model="row.isRegex" />
             </template>
           </el-table-column>
-          <el-table-column label="权重" width="12%" align="center">
+          <el-table-column label="权重" width="100" align="center">
             <template #default="{ row }">
               <el-input-number v-model="row.weight" size="small" :min="0" :max="1" :step="0.1" :controls="false" style="width:60px" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="10%" align="center">
+          <el-table-column label="操作" width="80" align="center">
             <template #default="{ $index }">
               <el-button size="small" type="danger" text @click="removeRule('confirmWords', $index)">删除</el-button>
             </template>
@@ -46,22 +46,22 @@
       <div class="rule-table-wrap">
         <el-table :data="rules.denyWords" size="small" style="width:100%">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column label="模式" min-width="55%">
+          <el-table-column label="模式" min-width="300">
             <template #default="{ row }">
               <el-input v-model="row.pattern" size="small" placeholder="输入模式..." />
             </template>
           </el-table-column>
-          <el-table-column label="正则" width="8%" align="center">
+          <el-table-column label="正则" width="70" align="center">
             <template #default="{ row }">
               <el-checkbox v-model="row.isRegex" />
             </template>
           </el-table-column>
-          <el-table-column label="权重" width="12%" align="center">
+          <el-table-column label="权重" width="100" align="center">
             <template #default="{ row }">
               <el-input-number v-model="row.weight" size="small" :min="0" :max="1" :step="0.1" :controls="false" style="width:60px" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="10%" align="center">
+          <el-table-column label="操作" width="80" align="center">
             <template #default="{ $index }">
               <el-button size="small" type="danger" text @click="removeRule('denyWords', $index)">删除</el-button>
             </template>
@@ -80,22 +80,22 @@
       <div class="rule-table-wrap">
         <el-table :data="rules.meaninglessWords" size="small" style="width:100%">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column label="模式" min-width="55%">
+          <el-table-column label="模式" min-width="300">
             <template #default="{ row }">
               <el-input v-model="row.pattern" size="small" placeholder="输入模式..." />
             </template>
           </el-table-column>
-          <el-table-column label="正则" width="8%" align="center">
+          <el-table-column label="正则" width="70" align="center">
             <template #default="{ row }">
               <el-checkbox v-model="row.isRegex" />
             </template>
           </el-table-column>
-          <el-table-column label="权重" width="12%" align="center">
+          <el-table-column label="权重" width="100" align="center">
             <template #default="{ row }">
               <el-input-number v-model="row.weight" size="small" :min="0" :max="1" :step="0.1" :controls="false" style="width:60px" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="10%" align="center">
+          <el-table-column label="操作" width="80" align="center">
             <template #default="{ $index }">
               <el-button size="small" type="danger" text @click="removeRule('meaninglessWords', $index)">删除</el-button>
             </template>

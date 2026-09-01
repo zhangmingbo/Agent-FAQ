@@ -1,5 +1,3 @@
-import axios from 'axios'
-
-const http = axios.create({ baseURL: '', timeout: 15000 })
+import http from '@/utils/http'
 
 export const getStats = () => http.get('/api/stats').then(r => r.data)

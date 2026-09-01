@@ -2,7 +2,7 @@
   <el-container style="height: 100vh">
     <!-- 侧边栏 -->
     <el-aside width="200px" class="sidebar">
-      <div class="logo">📋 FAQ 管理</div>
+      <div class="logo"> 智能体管理平台</div>
       <el-menu
         :default-active="activeMenu"
         router
@@ -25,7 +25,10 @@
     <el-container>
       <el-header class="topbar">
         <h2>{{ currentTitle }}</h2>
-        <el-button size="small" @click="refresh" :icon="Refresh">刷新</el-button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <el-button size="small" @click="refresh" :icon="Refresh">刷新</el-button>
+          <el-button size="small" type="danger" plain @click="handleLogout">退出</el-button>
+        </div>
       </el-header>
       <el-main class="content">
         <router-view @refresh="onRefresh" />
@@ -38,6 +41,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, ChatDotSquare } from '@element-plus/icons-vue'
+import { logout } from '@/utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,7 +60,7 @@ const menuItems = [
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => {
   const item = menuItems.find(m => m.path === route.path)
-  return item?.title || 'FAQ 管理后台'
+  return item?.title || '智能体管理平台'
 })
 
 function refresh() {
@@ -69,6 +73,11 @@ function onRefresh() {
 
 function openChatPreview() {
   window.open('/', '_blank')
+}
+
+function handleLogout() {
+  logout()
+  router.push('/login')
 }
 </script>
 

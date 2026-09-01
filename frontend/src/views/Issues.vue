@@ -21,25 +21,25 @@
       <div class="table-wrap">
         <el-table :data="unmatchedItems" stripe style="width:100%" @sort-change="handleUnmatchedSort">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column label="用户问题" width="18%">
+          <el-table-column label="用户问题" min-width="200">
             <template #default="{ row }">
               <ExpandCell :text="row.text" :max-length="40" />
               <el-tag v-if="addedMap[row.text]" size="small" type="success" style="margin-left:6px">✓ 已添加</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="机器人回答" min-width="35%">
+          <el-table-column label="机器人回答" min-width="300">
             <template #default="{ row }">
               <ExpandCell :text="row.answer || ''" :max-length="50" empty-text="无回答" />
             </template>
           </el-table-column>
-          <el-table-column prop="count" label="出现次数" sortable="custom" width="8%" align="center">
+          <el-table-column prop="count" label="出现次数" sortable="custom" width="90" align="center">
             <template #default="{ row }">
               <el-tag size="small" type="danger">{{ row.count }} 次</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="lastTime" label="最近出现" sortable="custom" width="14%" />
-          <el-table-column prop="firstTime" label="首次出现" width="14%" />
-          <el-table-column label="操作" width="10%" align="center">
+          <el-table-column prop="lastTime" label="最近出现" sortable="custom" width="150" />
+          <el-table-column prop="firstTime" label="首次出现" width="150" />
+          <el-table-column label="操作" width="100" align="center">
             <template #default="{ row }">
               <el-button size="small" :type="addedMap[row.text] ? 'default' : 'primary'" @click="openSuggest(row.text)">+ 相似问</el-button>
             </template>
@@ -70,29 +70,29 @@
       <div class="table-wrap">
         <el-table :data="lowConfItems" stripe style="width:100%" @sort-change="handleLowConfSort">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column label="用户问题" width="18%">
+          <el-table-column label="用户问题" min-width="200">
             <template #default="{ row }">
               <ExpandCell :text="row.text" :max-length="40" />
               <el-tag v-if="addedMap[row.text]" size="small" type="success" style="margin-left:6px">✓ 已添加</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="机器人回答" min-width="35%">
+          <el-table-column label="机器人回答" min-width="300">
             <template #default="{ row }">
               <ExpandCell :text="row.answer || ''" :max-length="50" empty-text="无回答" />
             </template>
           </el-table-column>
-          <el-table-column prop="confidence" label="置信度" sortable="custom" width="8%" align="center">
+          <el-table-column prop="confidence" label="置信度" sortable="custom" width="90" align="center">
             <template #default="{ row }">
               <el-tag size="small" type="warning">{{ (row.confidence * 100).toFixed(1) }}%</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="intent" label="匹配到" sortable="custom" width="14%">
+          <el-table-column prop="intent" label="匹配到" sortable="custom" width="150">
             <template #default="{ row }">
               {{ store.getFaqName(row.intent) }}
             </template>
           </el-table-column>
-          <el-table-column prop="time" label="时间" sortable="custom" width="14%" />
-          <el-table-column label="操作" width="10%" align="center">
+          <el-table-column prop="time" label="时间" sortable="custom" width="150" />
+          <el-table-column label="操作" width="100" align="center">
             <template #default="{ row }">
               <el-button size="small" :type="addedMap[row.text] ? 'default' : 'primary'" @click="openSuggest(row.text)">+ 相似问</el-button>
             </template>

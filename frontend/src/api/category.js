@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const http = axios.create({ baseURL: '', timeout: 15000 })
+import http from '@/utils/http'
 
 export const getCategories = () => http.get('/api/categories').then(r => r.data)
 export const getCategoryFaqs = (id) => http.get(`/api/categories/${id}/faqs`).then(r => r.data)

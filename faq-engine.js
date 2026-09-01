@@ -320,7 +320,7 @@ class FAQEngine {
           // 场景 C：无任务时澄清 → 触发候选任务（用原始触发句）
           const def = await this.taskEngine.get(pending.taskCode)
           if (def) {
-            const state = this.taskEngine.startTask(sessionId, def, traceSteps)
+            const state = this.taskEngine.startTask(sessionId, def, traceSteps, pending.triggerText, userId)
             const taskResult = await this.taskEngine.processInput(sessionId, pending.triggerText, traceSteps)
             if (taskResult?.events?.length) context.pendingEvents = taskResult.events
             response = {
@@ -405,7 +405,7 @@ class FAQEngine {
           if (route === 'task_new') {
             // 换办另一件事：中断暂存当前任务，走新任务流程
             await this.taskEngine.stash(sessionId, traceSteps)
-            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps, userId)
           } else if (route === 'clarify') {
             // 挂起状态下仍拿不准 → 追问（恢复办理 or 继续咨询）
             console.log('[ROUTE] 挂起中拿不准，追问用户')
@@ -466,7 +466,7 @@ class FAQEngine {
           await this.taskEngine._remove(sessionId)
           this.taskEngine.activeTasks.delete(sessionId)
           // 落回无任务路由（场景 C）：触发词可重新发起，否则 FAQ
-          response = await this._handleNoActiveTask(text, context, traceSteps)
+          response = await this._handleNoActiveTask(text, context, traceSteps, userId)
         } else {
         // 0) 新任务意图确定性判定（触发词+仲裁，零 LLM 成本）：
         //    用户明确要办另一件事（如"我想预约安装净水器"）→ 先切换任务。
@@ -492,7 +492,7 @@ class FAQEngine {
           console.log(`[TASK] 检测到新任务意图（确定性判定）: ${newTaskCode}，当前任务暂存`)
           _t('新任务意图（确定性判定）', { from: taskState.taskCode, to: newTaskCode }, 'task')
           await this.taskEngine.stash(sessionId, traceSteps)
-          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+          response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps, userId)
         } else if (detect && detect.channel === 'out_of_scope' && !this._looksLikeSlotAnswer(text, taskState)) {
           // 域外输入快检：任务活跃时用户说与所有业务都无关的话（如"我电脑坏了"），
           // 不进任务对话——否则 LLM 会把域外话题硬套成任务话术（历史 bug）。
@@ -588,7 +588,7 @@ class FAQEngine {
             console.log('[TASK] 路由→新任务，当前任务中断暂存')
             _t('切换新任务（当前中断暂存）', { taskCode: taskState.taskCode })
             await this.taskEngine.stash(sessionId, traceSteps)
-            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps)
+            response = await this._tryStartTask(sessionId, text, context, /* fromStash */ true, traceSteps, userId)
           } else if (route === 'out_of_scope') {
             // 任务中用户说域外话（"我家门坏了"）→ 不挂起，回任务继续引导（不打断办事）
             console.log('[TASK] 域外输入，继续任务引导')
@@ -619,7 +619,7 @@ class FAQEngine {
 
       // ---------- 场景 C：无活跃任务 → 路由判定后决定触发任务或 FAQ ----------
       else {
-        response = await this._handleNoActiveTask(text, context, traceSteps)
+        response = await this._handleNoActiveTask(text, context, traceSteps, userId)
       }
     }
 
@@ -733,7 +733,7 @@ class FAQEngine {
    * @param {boolean} fromStash - 是否有被中断的任务可恢复
    * @param {Array|null} traceSteps - 轨迹步骤数组（调试用，可选）
    */
-  async _tryStartTask(sessionId, text, context, fromStash = false, traceSteps = null) {
+  async _tryStartTask(sessionId, text, context, fromStash = false, traceSteps = null, userId = null) {
     let matchedTask = await this.taskEngine.matchTask(text, null, traceSteps)
     // matchTask 有长度门槛（LLM≥3字/向量≥5字），短句如"安装"会被跳过；
     // 但 route() 仲裁已判任务胜出（例句向量无长度门槛）——回退用仲裁结果补上
@@ -757,7 +757,7 @@ class FAQEngine {
     if (!matchedTask) return null
 
     console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
-    const taskState = this.taskEngine.startTask(sessionId, matchedTask, traceSteps)
+    const taskState = this.taskEngine.startTask(sessionId, matchedTask, traceSteps, text, userId)
     const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
     if (taskResult?.events?.length && context) context.pendingEvents = taskResult.events
     if (taskResult) {
@@ -1265,7 +1265,7 @@ class FAQEngine {
    * 无活跃任务时的路由判定（场景 C 专用，也是任务超时失效后的回退路径）
    * 命中触发词且无咨询疑云 → task_new；咨询疑云 → faq；混杂 → clarify 追问；域外 → 引导
    */
-  async _handleNoActiveTask(text, context, traceSteps) {
+  async _handleNoActiveTask(text, context, traceSteps, userId = null) {
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(traceSteps, step, detail, level)
     const sessionId = context.sessionId
     // 无任务上下文时 route 判定：命中触发词且无咨询疑云 → task_new；
@@ -1278,7 +1278,7 @@ class FAQEngine {
     })
     _t('路由判定', { route, hasActiveTask: false }, route === 'clarify' ? 'warn' : 'task')
     if (route === 'task_new') {
-      return this._tryStartTask(sessionId, text, context, /* fromStash */ false, traceSteps)
+      return this._tryStartTask(sessionId, text, context, /* fromStash */ false, traceSteps, userId)
     } else if (route === 'clarify') {
       // 无法区分任务还是咨询（触发词+咨询疑云混杂）→ 追问二选一
       console.log('[ROUTE] 无法区分任务/咨询，追问用户')

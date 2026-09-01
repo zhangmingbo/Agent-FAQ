@@ -38,6 +38,7 @@ import { createRouter as createHealthRouter } from './routes/health.js'
 import { createRouter as createTasksRouter } from './routes/tasks.js'
 import { createRouter as createDebugRouter } from './routes/debug.js'
 import { createRouter as createActionLogRouter } from './routes/actionLogs.js'
+import { createRouter as createTaskInstanceRouter } from './routes/taskInstance.js'
 import taskEngine from './services/taskflow/index.js'
 import taskSuggestService from './services/taskSuggestService.js'
 import autoExpandService from './services/autoExpandService.js'
@@ -138,6 +139,7 @@ app.use('/api', createUploadRouter(engine, UPLOADS_DIR))
 app.use('/api', createTasksRouter())
 app.use('/api', createDebugRouter())
 app.use('/api', createActionLogRouter())
+app.use('/api', createTaskInstanceRouter())
 
 // ========== 错误处理 ==========
 

@@ -116,40 +116,40 @@
       <div class="table-wrap">
         <el-table :data="recentItems" stripe style="width:100%" @sort-change="handleRecentSort">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column prop="userId" label="用户" sortable="custom" width="8%">
+          <el-table-column prop="userId" label="用户" sortable="custom" width="80">
             <template #default="{ row }">
               <span v-if="row.userId" style="font-size:12px;color:#666">{{ row.userId }}</span>
               <span v-else style="color:#ccc">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="用户问题" width="22%">
+          <el-table-column label="用户问题" min-width="200">
             <template #default="{ row }">
               <ExpandCell :text="row.text" :max-length="40" />
             </template>
           </el-table-column>
-          <el-table-column label="机器人回答" min-width="28%">
+          <el-table-column label="机器人回答" min-width="250">
             <template #default="{ row }">
               <ExpandCell :text="row.answer || ''" :max-length="50" empty-text="无回答" />
             </template>
           </el-table-column>
-          <el-table-column prop="intent" label="匹配意图" sortable="custom" width="12%">
+          <el-table-column prop="intent" label="匹配意图" sortable="custom" width="120">
             <template #default="{ row }">
               <span v-if="row.intent">{{ store.getFaqName(row.intent) }}</span>
               <span v-else style="color:#aaa">未匹配</span>
             </template>
           </el-table-column>
-          <el-table-column prop="confidence" label="置信度" sortable="custom" width="8%" align="center">
+          <el-table-column prop="confidence" label="置信度" sortable="custom" width="90" align="center">
             <template #default="{ row }">
               <el-tag v-if="row.confidence" size="small" :type="row.confidence >= 0.65 ? 'primary' : 'warning'">{{ (row.confidence * 100).toFixed(1) }}%</el-tag>
               <span v-else style="color:#aaa">-</span>
             </template>
           </el-table-column>
-          <el-table-column prop="source" label="来源" sortable="custom" width="8%">
+          <el-table-column prop="source" label="来源" sortable="custom" width="100">
             <template #default="{ row }">
               <el-tag size="small" type="primary">{{ getSourceLabel(row.source) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="time" label="时间" sortable="custom" width="10%" />
+          <el-table-column prop="time" label="时间" sortable="custom" width="150" />
         </el-table>
       </div>
       <div class="pagination">

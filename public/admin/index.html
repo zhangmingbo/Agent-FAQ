@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FAQ 管理后台 v3.0</title>
+  <title>智能体管理平台 v3.0</title>
   <script type="module" crossorigin src="./assets/index-D334h4Ji.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-CKU7t4Vg.css">
   <style>
@@ -66,13 +66,11 @@
     #config-tabs .cfg-tab-btn.active{color:#4361ee;border-bottom-color:#4361ee}
     .cfg-tab-panel{display:none;background:#fff;border:1px solid #eef0f4;border-radius:10px;padding:24px 28px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
     .cfg-tab-panel.active{display:block}
-    .analysis-tab{padding:7px 18px;cursor:pointer;font-size:13px;color:#666;border:1px solid #ddd;border-radius:6px;background:#fff;transition:all .2s}
-    .analysis-tab:hover{color:#4361ee;border-color:#4361ee}
-    .analysis-tab.active{color:#fff;background:#4361ee;border-color:#4361ee}
     .cfg-tab-panel h3{font-size:15px !important;color:#333 !important;margin:0 0 6px !important}
     .cfg-tab-panel .cfg-panel-desc{font-size:12px;color:#999;margin-bottom:16px}
-    /* 识别参数：原生表单放开宽度并排双栏 */
+    /* 识别参数：原生表单放开宽度并排双栏（隐藏底部保存按钮的空白表单项） */
     .cfg-tab-panel .el-form{max-width:none !important;display:grid !important;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));column-gap:44px;row-gap:4px}
+    .config-panel .el-form-item:last-child{display:none !important}
     /* 阈值区：自适应列数（宽屏多列，窄屏自动收） */
     .cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:4px 44px}
     .cfg-item{margin-bottom:16px}
@@ -113,64 +111,16 @@
     .task-modal-body textarea{resize:vertical;min-height:60px}
     .task-modal-body input:focus,.task-modal-body textarea:focus{outline:none;border-color:#4361ee}
     .task-modal-footer{padding:16px 24px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:10px;position:sticky;bottom:0;background:#fff;border-radius:0 0 12px 12px}
-    .slot-card{margin-bottom:10px;border:1px solid #e8ecff;border-radius:8px;background:#fafbff;overflow:hidden}
-    .slot-card-header{display:flex;align-items:center;padding:10px 12px;background:#f0f4ff;cursor:pointer;gap:8px}
-    .slot-card-header .slot-title{flex:1;font-size:13px;font-weight:500;color:#333}
-    .slot-card-header .slot-title .slot-key-tag{color:#666;font-weight:normal;font-size:12px}
-    .slot-card-header .slot-toggle{color:#666;font-size:12px;transition:transform 0.2s}
-    .slot-card-header .slot-toggle.collapsed{transform:rotate(-90deg)}
-    .slot-card-header .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
-    .slot-card-body{padding:12px}
-    .slot-card-body.collapsed{display:none}
-    .slot-card-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-    .slot-card-row:last-child{margin-bottom:0}
-    .slot-card-row label{font-size:12px;color:#666;min-width:70px}
-    .slot-card-row input,.slot-card-row select,.slot-card-row textarea{padding:6px 8px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
-    .slot-card-row input:focus,.slot-card-row select:focus,.slot-card-row textarea:focus{outline:none;border-color:#4361ee}
-    .slot-card-row .slot-key{width:120px}
-    .slot-card-row .slot-label{width:120px}
-    .slot-card-row .slot-prompt{flex:1}
-    .slot-card-row .slot-type{width:100px}
-    .slot-card-row .slot-ner-type{width:120px}
-    .slot-card-row .slot-rule{flex:1}
-    .slot-card-row .slot-validate-rule{flex:1}
-    .slot-card-row .slot-reask{flex:1}
-    .slot-card-row .slot-default{width:150px}
-    .slot-card-row .slot-required{display:flex;align-items:center;gap:4px;font-size:12px}
-    .slot-card-row .alias-tags{display:flex;flex-wrap:wrap;gap:4px;flex:1}
-    .slot-card-row .alias-tag{background:#e8ecff;color:#4361ee;padding:2px 8px;border-radius:12px;font-size:11px;display:flex;align-items:center;gap:4px}
-    .slot-card-row .alias-tag .remove{cursor:pointer;font-size:14px;line-height:1}
-    .slot-card-row .alias-input{width:120px}
-    .step-card{margin-bottom:10px;border:1px solid #e9ecef;border-radius:8px;background:#fff;overflow:hidden}
-    .step-card-header{display:flex;align-items:center;padding:10px 12px;background:#f8f9fa;cursor:pointer;gap:8px}
-    .step-card-header .step-index{width:24px;height:24px;border-radius:50%;background:#4361ee;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500}
-    .step-card-header .step-title{flex:1;font-size:13px;font-weight:500;color:#333}
-    .step-card-header .step-type-badge{font-size:11px;padding:2px 8px;border-radius:10px;background:#e8ecff;color:#4361ee}
-    .step-card-header .step-toggle{color:#666;font-size:12px;transition:transform 0.2s}
-    .step-card-header .step-toggle.collapsed{transform:rotate(-90deg)}
-    .step-card-header .step-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
-    .step-card-body{padding:12px}
-    .step-card-body.collapsed{display:none}
-    .step-card-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-    .step-card-row:last-child{margin-bottom:0}
-    .step-card-row label{font-size:12px;color:#666;min-width:70px}
-    .step-card-row input,.step-card-row select,.step-card-row textarea{padding:6px 8px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
-    .step-card-row input:focus,.step-card-row select:focus,.step-card-row textarea:focus{outline:none;border-color:#4361ee}
-    .step-card-row .step-key{width:120px}
-    .step-card-row .step-slot{width:120px}
-    .step-card-row .step-prompt{flex:1}
-    .step-card-row .step-next{width:120px}
-    .step-card-row .step-api-url{flex:1}
-    .step-card-row .step-api-method{width:80px}
-    .step-card-row .step-api-msg{flex:1}
-    .step-card-row .step-text{flex:1}
-    .step-card-row .step-action{width:150px}
-    .step-card-row .step-msg{flex:1}
-    .step-card-row .step-task{width:150px}
-    .step-card-row .step-return{width:150px}
-    .step-card-controls{display:flex;gap:4px;margin-left:auto}
-    .step-card-controls button{cursor:pointer;background:none;border:none;font-size:14px;padding:2px 6px;color:#666}
-    .step-card-controls button:hover{color:#4361ee}
+    .slot-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:10px;background:#f8f9fa;border-radius:6px}
+    .slot-row input,.slot-row select{padding:6px 8px;font-size:12px}
+    .slot-row .slot-key{width:100px}
+    .slot-row .slot-label{width:100px}
+    .slot-row .slot-prompt{flex:1}
+    .slot-row .slot-type{width:90px}
+    .slot-row .slot-required{width:50px;text-align:center}
+    .slot-row .slot-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:16px;padding:2px 6px}
+    .step-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;padding:8px;background:#fff;border:1px solid #e9ecef;border-radius:6px}
+    .step-row input,.step-row select,.step-row textarea{padding:5px 7px;font-size:12px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box}
     .case-row,.map-row{display:flex;gap:4px;align-items:center;margin:3px 0;width:100%}
     .case-row select,.case-row input,.map-row input{padding:4px 6px;font-size:12px;border:1px solid #ddd;border-radius:4px}
     .case-del,.map-del{cursor:pointer;color:#e74c3c;background:none;border:none;font-size:15px;padding:0 4px;line-height:1}
@@ -639,20 +589,22 @@
   // ===== 问题追踪页：注入「表达挖掘」子页签 =====
   // （原在规则引擎→任务流程 tab，已移至问题追踪页）
   (function(){
-    // 幂等由 DOM 存在性保证（不依赖布尔标志：Vue 路由切页后 .sub-tab-bar 可能被复用，
-    // 旧的 tab/panel 仍留在 DOM，仅靠 issuesInjected 标志会导致重复注入两个"表达挖掘"）
+    var issuesInjected = false;
     var observer = new MutationObserver(function(){
+      if (issuesInjected) return;
       var tabbar = document.querySelector('.sub-tab-bar');
       if (!tabbar) return;
       if (tabbar.textContent.indexOf('未匹配') === -1) return;
-      if (document.getElementById('suggest-issues-tab')) return; // 已注入，跳过
+      issuesInjected = true;
       injectSuggestTab(tabbar);
     });
     observer.observe(document.getElementById('app'), { childList: true, subtree: true });
+    var lastHref3 = location.href;
+    setInterval(function(){
+      if (location.href !== lastHref3) { lastHref3 = location.href; issuesInjected = false; }
+    }, 300);
 
     function injectSuggestTab(tabbar) {
-      // 双重保险：注入前再查一次 DOM，防 MutationObserver 并发重复
-      if (document.getElementById('suggest-issues-tab') || document.getElementById('suggest-issues-panel')) return;
       // 样式（原生 .sub-tab 带 scoped 属性，注入元素不命中，需补）
       var st = document.createElement('style');
       st.textContent =
@@ -711,19 +663,8 @@
         }
       });
 
-      // 4) 重新挖掘按钮：触发后台预计算（推理在服务端，完成后自动刷新展示）
-      document.getElementById('suggest-issues-refresh').onclick = function(){
-        var btn = document.getElementById('suggest-issues-refresh');
-        var oldTxt = btn.textContent;
-        btn.textContent = '计算中...';
-        btn.disabled = true;
-        api('POST', '/api/tasks/suggestions/refresh', {}, function(res) {
-          btn.textContent = oldTxt;
-          btn.disabled = false;
-          if (res && res.success) { loadSuggestions(area); }
-          else { alert((res && res.message) || '计算失败'); }
-        }, function(){ btn.textContent = oldTxt; btn.disabled = false; alert('计算失败'); });
-      };
+      // 4) 重新挖掘按钮
+      document.getElementById('suggest-issues-refresh').onclick = function(){ loadSuggestions(area); };
     }
   })();
 
@@ -900,9 +841,7 @@
                 'short-text-len': 'shortTextLen', 'short-regex-hit': 'shortRegexHit', 'short-contains-hit': 'shortContainsHit',
                 'task-vec-min-len': 'taskVecMinLen',
                 'analysis-recommend-threshold': 'analysisRecommendThreshold', 'analysis-max-confidence': 'analysisMaxConfidence',
-                'suggest-min-len': 'suggestMinLen', 'suggest-sim-threshold': 'suggestSimThreshold', 'suggest-keyword-min-score': 'suggestKeywordMinScore',
-                'expand-sim-threshold': 'expandSimThreshold', 'expand-min-count': 'expandMinCount',
-                'task-session-ttl': 'taskSessionTtlMinutes'
+                'suggest-min-len': 'suggestMinLen', 'suggest-sim-threshold': 'suggestSimThreshold', 'suggest-keyword-min-score': 'suggestKeywordMinScore'
               };
               var any = false;
               for (var id in ids) {
@@ -913,8 +852,6 @@
                 payload[ids[id]] = v;
                 any = true;
               }
-              var expandSw = document.getElementById('expand-enabled');
-              if (expandSw) { payload.expandEnabled = expandSw.checked; any = true; }
               // 固定话术 + 匹配词表（配置驱动，不允许硬编码）
               var tp = collectTextsPayload();
               if (tp === null) return; // 含 emoji 等不支持字符，中止保存
@@ -1054,22 +991,6 @@
           row('触发词最低分', 'suggest-keyword-min-score', cfg.suggestKeywordMinScore,
             '作用：候选表达命中任务触发词，但综合分仍低于此值 → 判定太弱不算候选（防"电话xxx"误配）。<br>典型值：0.65~0.85，建议 0.75。',
             '命中触发词但综合分仍低 → 不算候选') +
-          row('扩写相似度线', 'expand-sim-threshold', cfg.expandSimThreshold,
-            '作用：高频未匹配表达与某 FAQ 例句的语义相似度 ≥ 此值 → 自动扩写为该 FAQ 的相似问（写入即生效，分析页可回滚）。<br>调大：更保守，扩写更少更准；调小：扩写更多但可能误扩。<br>典型值：0.70~0.85，建议 0.75。',
-            '高频未匹配且相似度达线 → 自动扩写为相似问') +
-          row('扩写最低次数', 'expand-min-count', cfg.expandMinCount,
-            '作用：同一表达出现 ≥ 此次数才考虑扩写（单次提问可能是偶发，不值得扩）。<br>典型值：2~5，建议 2。',
-            '同一表达出现 ≥ 此次数才扩写',
-            { min: 1, max: 10, step: 1 }) +
-          '<div class="cfg-item">' +
-            '<div style="font-size:13px;color:#555;margin-bottom:6px">自动扩写开关</div>' +
-            '<label style="font-size:13px;display:flex;align-items:center;gap:8px"><input id="expand-enabled" type="checkbox" ' + (cfg.expandEnabled ? 'checked' : '') + '> 开启（分析页"扫描扩写"按钮可用）</label>' +
-          '</div>' +
-          '<div class="cfg-item" style="margin-top:10px">' +
-            '<div style="font-size:13px;color:#555;margin-bottom:6px">任务会话超时（分钟） <span style="color:#999;font-weight:normal">（当前 ' + cfg.taskSessionTtlMinutes + '）</span></div>' +
-            '<input id="task-session-ttl" type="number" min="1" max="1440" step="1" value="' + cfg.taskSessionTtlMinutes + '" style="width:140px;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box">' +
-            '<div class="cfg-comment">任务被挂起/中断后，超过此时间（分钟）即失效，用户回来不再续接旧任务。典型值：10~120，默认 30。</div>' +
-          '</div>' +
           '</div>';
       });
     }
@@ -1355,9 +1276,7 @@
       return { replyTexts, matchVocab };
     }
 
-    // 全局一次注入 tooltip 样式（CSS 规则跨 Vue 重渲染存活）
-    // 注意：不再隐藏原生保存按钮——右上角"保存配置"与面板内原生按钮并存，
-    //       隐藏原生按钮会导致"刷新按钮删除后保存入口消失"的问题
+    // 全局一次注入 tooltip 样式 + 隐藏原生底部保存按钮（CSS 规则跨 Vue 重渲染存活）
     function ensureArbTipStyle() {
       if (document.getElementById('arb-tip-style')) return;
       var st = document.createElement('style');
@@ -1366,7 +1285,8 @@
         '.arb-tip{position:relative;display:inline-block;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#4361ee;color:#fff;font-size:11px;font-weight:bold;cursor:help;margin-left:6px;vertical-align:middle}' +
         '.arb-tip .arb-tip-box{visibility:hidden;opacity:0;position:absolute;left:24px;top:-8px;width:300px;background:#2b2f3a;color:#e8eaed;font-size:12px;line-height:1.7;font-weight:normal;padding:12px 14px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9999;transition:opacity .15s,visibility .15s;white-space:normal;text-align:left}' +
         '.arb-tip:hover .arb-tip-box{visibility:visible;opacity:1}' +
-        '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}';
+        '.arb-tip .arb-tip-box::after{content:"";position:absolute;left:-6px;top:14px;border:6px solid transparent;border-right-color:#2b2f3a}' +
+        '.config-panel button.el-button--primary{display:none !important}';
       document.head.appendChild(st);
     }
 
@@ -1407,43 +1327,30 @@
       }
     }
 
-    // 右上角放"保存配置"按钮（点击触发原生保存逻辑）
-    // 说明：早期靠找"刷新"按钮定位，但刷新按钮已移除 → 改为直接插到头部登出按钮旁；
-    //       点击时触发配置面板内原生保存按钮（el-form 的 type=primary 保存按钮）
+    // 右上角"刷新"按钮的位置换成"保存配置"（点击时触发原生保存逻辑）
     function placeTopRightSave() {
       ensureArbTipStyle();
       if (document.getElementById('config-save-top-btn')) return;
+      var refreshBtn = null;
+      var btns = document.querySelectorAll('button.el-button--small');
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        if (b.closest('.config-panel')) continue;
+        if (b.textContent.trim() === '刷新') { refreshBtn = b; break; }
+      }
+      if (!refreshBtn) return;
       var btn = document.createElement('button');
       btn.id = 'config-save-top-btn';
       btn.className = 'el-button el-button--small el-button--primary';
       btn.textContent = '保存配置';
       btn.style.marginLeft = '8px';
       btn.onclick = function() {
-        // 触发面板内原生保存按钮（.config-panel 下 el-button--primary 且文字为"保存配置"）
-        var native = null;
-        var panel = document.querySelector('.config-panel');
-        if (panel) {
-          var btns = panel.querySelectorAll('button');
-          for (var i = 0; i < btns.length; i++) {
-            if (btns[i].textContent.trim() === '保存配置') { native = btns[i]; break; }
-          }
-        }
+        var native = document.querySelector('.config-panel button.el-button--primary');
         if (native && native.click) native.click();
         else alert('未找到原生保存按钮');
       };
-      // 插入到头部右侧（登出按钮旁）；找不到头部则插到配置面板内
-      var header = document.querySelector('.el-header.topbar') || document.querySelector('.el-header');
-      if (header) {
-        var logout = header.querySelector('[data-logout-btn]');
-        if (logout && logout.parentNode) {
-          logout.parentNode.insertBefore(btn, logout.nextSibling);
-          return;
-        }
-        header.appendChild(btn);
-        return;
-      }
-      var panel = document.querySelector('.config-panel');
-      if (panel) panel.appendChild(btn);
+      refreshBtn.parentNode.insertBefore(btn, refreshBtn);
+      refreshBtn.remove();
     }
 
     // 路由变化时重置（进入/离开 /config 页面）
@@ -1670,7 +1577,7 @@
       }
       var items = (res.data && res.data.items) || [];
       var countEl = document.getElementById('suggest-issues-count');
-      if (countEl) countEl.textContent = '共 ' + ((res.data && res.data.total) || items.length) + ' 条待挖掘表达' + (res.data && res.data.computedAtLabel ? '｜数据时间 ' + res.data.computedAtLabel : '');
+      if (countEl) countEl.textContent = '共 ' + ((res.data && res.data.total) || items.length) + ' 条待挖掘表达';
       if (!items.length) {
         area.innerHTML = '<div class="task-empty"><div class="icon">✅</div><div>暂无待挖掘表达（暂无匹配到任务的未命中话术）</div></div>';
         return;
@@ -1775,47 +1682,7 @@
       if (!res.success || !res.data) return;
       renderDebugTrace(sessionId, res.data.turns || []);
     });
-    // 同时加载该会话的 LLM 调用日志（显示在轨迹下方）
-    api('GET', '/api/debug/llm-calls?sessionId=' + encodeURIComponent(sessionId) + '&limit=50', null, function(res) {
-      renderLlmCalls(sessionId, (res && res.data && res.data.items) || []);
-    });
   };
-
-  // 渲染该会话的 LLM 调用日志（节点/耗时/请求/响应）
-  function renderLlmCalls(sessionId, items) {
-    var view = debugEl('trace-view');
-    if (!view) return;
-    if (!items.length) return;
-    var NODE_LABEL = { trigger: '任务触发', extract: '槽位提取', dialogue: '任务对话', route: '意图路由', meaningless: '无意义检测', rerank: 'FAQ重排' };
-    var html = '<div class="debug-header" style="margin:20px 0 8px;padding-top:14px;border-top:2px solid #eee">' +
-      '<h4 style="margin:0">🤖 本会话 LLM 调用（' + items.length + ' 次）</h4>' +
-      '<div style="font-size:12px;color:#999;margin-top:4px">每次调用 LLM 的节点、耗时、请求与响应（内存日志，重启清空）</div></div>';
-    items.forEach(function(c) {
-      var t = new Date(c.time);
-      var time = t.getHours() + ':' + String(t.getMinutes()).padStart(2,'0') + ':' + String(t.getSeconds()).padStart(2,'0');
-      var stCls = c.status === 'ok' ? 'on' : 'danger';
-      var stTxt = c.status === 'ok' ? '成功' : '失败';
-      // 提示词来源（调试辅助）：默认 / 全局自定义 / 任务自定义
-      var SRC_LABEL = { default: '默认提示词', global: '全局自定义', task: '任务自定义' };
-      var srcTags = '';
-      var ps = c.promptSource || {};
-      if (ps.system) srcTags += '<span class="status-tag" style="border-color:#7048e8;color:#7048e8">sys:' + esc(SRC_LABEL[ps.system] || ps.system) + '</span>';
-      if (ps.user) srcTags += '<span class="status-tag" style="border-color:#7048e8;color:#7048e8">user:' + esc(SRC_LABEL[ps.user] || ps.user) + '</span>';
-      html += '<div style="border:1px solid #e9ecef;border-radius:8px;margin-bottom:8px;padding:10px 12px;background:#fff">' +
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">' +
-          '<span class="status-tag" style="background:#eef2ff;color:#4361ee">' + esc(NODE_LABEL[c.node] || c.node) + '</span>' +
-          '<span class="status-tag ' + stCls + '">' + stTxt + '</span>' +
-          '<span style="color:#868e96">' + time + '</span>' +
-          '<span style="color:#868e96">' + c.durationMs + 'ms</span>' +
-          srcTags +
-          (c.error ? '<span style="color:#e03131">' + esc(String(c.error).slice(0, 80)) + '</span>' : '') +
-        '</div>' +
-        (c.user ? '<div style="font-size:12px;color:#555;margin-top:6px;word-break:break-all"><b>请求:</b> ' + esc(c.user) + '</div>' : '') +
-        (c.response ? '<div style="font-size:12px;color:#2b8a3e;margin-top:4px;word-break:break-all"><b>响应:</b> ' + esc(c.response) + '</div>' : '') +
-      '</div>';
-    });
-    view.insertAdjacentHTML('beforeend', html);
-  }
 
   // 渲染交互图：时间线式，每轮 = 用户输入 → 处理步骤 → 机器人回复
   function renderDebugTrace(sessionId, turns) {
@@ -2095,230 +1962,6 @@
     };
     menu.appendChild(item);
   }
-
-
-  // ===== 智能分析页：注入「答案反馈」+「任务漏斗」+「相似问自动扩写」区块 =====
-  function loadAnalysisFeedback() {
-    var box = document.getElementById('analysis-feedback-body');
-    if (!box) return;
-    api('GET', '/api/analysis/feedback?limit=10', null, function(res) {
-      var items = (res && res.items) || [];
-      if (!items.length) {
-        box.innerHTML = '<div style="color:#999;padding:6px 0">暂无反馈记录（用户对回答表示"不是这个/没听懂"等不满时记录于此）</div>';
-        return;
-      }
-      var html = '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
-        '<th style="width:30%;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">问题</th>' +
-        '<th style="width:52px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">次数</th>' +
-        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">上轮回答</th>' +
-        '<th style="width:110px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">最近时间</th>' +
-        '</tr></thead><tbody>';
-      items.forEach(function(it) {
-        html += '<tr>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all">' + esc(it.user_text) + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5"><span class="status-tag danger">' + it.cnt + '</span></td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all;color:#666">' + esc(it.answer || '') + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;color:#888">' + esc(it.last_time || '') + '</td></tr>';
-      });
-      html += '</tbody></table>';
-      box.innerHTML = html;
-    });
-  }
-  function loadAnalysisFunnel() {
-    var box = document.getElementById('analysis-funnel-body');
-    if (!box) return;
-    api('GET', '/api/analysis/funnel', null, function(res) {
-      var items = (res && res.items) || [];
-      if (!items.length) {
-        box.innerHTML = '<div style="color:#999;padding:6px 0">暂无任务数据（用户触发任务后会统计在这里）</div>';
-        return;
-      }
-      var html = '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
-        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">任务</th>' +
-        '<th style="width:60px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">触发</th>' +
-        '<th style="width:60px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">收集</th>' +
-        '<th style="width:60px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">完成</th>' +
-        '<th style="width:70px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">动作成功</th>' +
-        '<th style="width:80px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">完成率</th>' +
-        '</tr></thead><tbody>';
-      items.forEach(function(it) {
-        var rateCls = it.completeRate >= 70 ? 'on' : (it.completeRate >= 40 ? '' : 'danger');
-        html += '<tr>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + esc(it.name || it.task) + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.started + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.progressed + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.completed + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + it.actionOk + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5"><span class="status-tag ' + rateCls + '">' + it.completeRate + '%</span></td></tr>';
-      });
-      html += '</tbody></table>';
-      box.innerHTML = html;
-    });
-  }
-  // 相似问自动扩写：扫描高频未匹配 → 自动扩写为 FAQ 相似问（审计可回滚）
-  function loadAnalysisExpand() {
-    var box = document.getElementById('analysis-expand-body');
-    if (!box) return;
-    box.innerHTML = '加载中...';
-    api('GET', '/api/analysis/expand/audit', null, function(res) {
-      var items = (res && res.items) || [];
-      if (!items.length) {
-        box.innerHTML = '<div style="color:#999;padding:6px 0">暂无自动扩写记录（点击上方"扫描扩写"处理高频未匹配问题）</div>';
-        return;
-      }
-      var html = '<table style="width:100%;border-collapse:collapse"><thead><tr>' +
-        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">用户原话</th>' +
-        '<th style="text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">扩写到 FAQ</th>' +
-        '<th style="width:70px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">相似度</th>' +
-        '<th style="width:100px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">时间</th>' +
-        '<th style="width:90px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">状态</th>' +
-        '<th style="width:80px;text-align:left;padding:6px 8px;background:#f5f7fa;color:#606266;border-bottom:1px solid #ebeef5">操作</th>' +
-        '</tr></thead><tbody>';
-      items.forEach(function(it) {
-        var st = it.status === 'applied'
-          ? '<span class="status-tag on">已扩写</span>'
-          : '<span class="status-tag">已回滚</span>';
-        var op = it.status === 'applied'
-          ? '<button class="btn-sm" data-expand-revert="' + it.id + '">回滚</button>'
-          : '';
-        html += '<tr>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all">' + esc(it.user_text) + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;word-break:break-all">' + esc(it.faq_name || it.faq_code) + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + (it.similarity ? Math.round(it.similarity * 100) + '%' : '-') + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5;color:#888">' + esc(it.created_time || '') + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + st + '</td>' +
-          '<td style="padding:6px 8px;border-bottom:1px solid #ebeef5">' + op + '</td></tr>';
-      });
-      html += '</tbody></table>';
-      box.innerHTML = html;
-      box.querySelectorAll('[data-expand-revert]').forEach(function(btn) {
-        btn.onclick = function() {
-          var id = btn.getAttribute('data-expand-revert');
-          if (!confirm('确认回滚这条自动扩写？将删除对应相似问。')) return;
-          api('POST', '/api/analysis/expand/revert', { id: parseInt(id, 10) }, function(res2) {
-            alert(res2.message || '已回滚');
-            loadAnalysisExpand();
-          });
-        };
-      });
-    });
-  }
-  function runAnalysisExpand() {
-    var box = document.getElementById('analysis-expand-body');
-    if (box) box.innerHTML = '扫描中...';
-    api('POST', '/api/analysis/expand/run', {}, function(res) {
-      var added = (res && res.added) || [];
-      if (box) {
-        if (added.length) {
-          box.innerHTML = '<div style="color:#67c23a;padding:6px 0">本次自动扩写 ' + added.length + ' 条：' + added.map(function(a) { return esc(a.text); }).join('、') + '</div>';
-        } else {
-          box.innerHTML = '<div style="color:#999;padding:6px 0">本次无符合条件的自动扩写（高频未匹配中未发现与 FAQ 相似度 ≥ 阈值的新表达）</div>';
-        }
-      }
-      loadAnalysisExpand();
-    }, function() {
-      if (box) box.innerHTML = '<div style="color:#f56c6c;padding:6px 0">扫描失败</div>';
-    });
-  }
-  // ===== 数据分析：独立 overlay（答案反馈 / 任务漏斗 / 相似问自动扩写），不占原页面布局 =====
-  window.openAnalysisOverlay = function() {
-    var old = document.getElementById('analysis-overlay');
-    if (old) old.remove();
-
-    var overlay = document.createElement('div');
-    overlay.id = 'analysis-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999999;display:flex;align-items:center;justify-content:center';
-    overlay.innerHTML =
-      '<div style="background:#fff;border-radius:12px;width:92vw;max-width:1200px;height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
-        '<div style="padding:16px 24px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center">' +
-          '<h3 style="margin:0;font-size:16px">📊 数据分析</h3>' +
-          '<button class="btn-sm" id="analysis-close">&times; 关闭</button>' +
-        '</div>' +
-        '<div style="padding:8px 24px;font-size:12px;color:#999">基于对话数据的运营分析：答案反馈定位答错高频问题、任务漏斗定位流失环节、自动扩写把高频未匹配补进 FAQ 相似问。</div>' +
-        '<div style="padding:8px 24px;border-bottom:1px solid #eee;display:flex;gap:8px">' +
-          '<button class="btn-sm analysis-tab active" data-tab="feedback">答案反馈</button>' +
-          '<button class="btn-sm analysis-tab" data-tab="funnel">任务漏斗</button>' +
-          '<button class="btn-sm analysis-tab" data-tab="expand">相似问自动扩写</button>' +
-        '</div>' +
-        '<div style="flex:1;overflow-y:auto;padding:16px 24px">' +
-          '<div class="analysis-panel" data-panel="feedback">' +
-            '<div style="background:#fff;border:1px solid #ebeef5;border-radius:8px;padding:14px 16px">' +
-              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-                '<b style="font-size:13px;color:#333">答案反馈（答错的高频问题）</b>' +
-                '<button class="btn-sm" data-af-refresh>⟳ 刷新</button></div>' +
-              '<div id="analysis-feedback-body" style="font-size:12px">加载中...</div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="analysis-panel" data-panel="funnel" style="display:none">' +
-            '<div style="background:#fff;border:1px solid #ebeef5;border-radius:8px;padding:14px 16px">' +
-              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-                '<b style="font-size:13px;color:#333">任务漏斗</b>' +
-                '<button class="btn-sm" data-af-refresh2>⟳ 刷新</button></div>' +
-              '<div id="analysis-funnel-body" style="font-size:12px">加载中...</div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="analysis-panel" data-panel="expand" style="display:none">' +
-            '<div style="background:#fff;border:1px solid #ebeef5;border-radius:8px;padding:14px 16px">' +
-              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-                '<b style="font-size:13px;color:#333">相似问自动扩写（高频未匹配 → FAQ 相似问）</b>' +
-                '<div style="display:flex;gap:6px">' +
-                  '<button class="btn-sm" data-expand-run>⚡ 扫描扩写</button>' +
-                  '<button class="btn-sm" data-af-refresh3>⟳ 刷新</button></div></div>' +
-              '<div id="analysis-expand-body" style="font-size:12px">加载中...</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-
-    overlay.querySelector('#analysis-close').onclick = function() { overlay.remove(); };
-    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
-    // tab 切换：仅首次进入该 tab 时加载数据，避免重复请求
-    var loaded = { feedback: false, funnel: false, expand: false };
-    overlay.querySelectorAll('.analysis-tab').forEach(function(btn) {
-      btn.onclick = function() {
-        overlay.querySelectorAll('.analysis-tab').forEach(function(b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        var tab = btn.getAttribute('data-tab');
-        overlay.querySelectorAll('.analysis-panel').forEach(function(p) {
-          p.style.display = p.getAttribute('data-panel') === tab ? '' : 'none';
-        });
-        if (tab === 'feedback' && !loaded.feedback) { loaded.feedback = true; loadAnalysisFeedback(); }
-        if (tab === 'funnel' && !loaded.funnel) { loaded.funnel = true; loadAnalysisFunnel(); }
-        if (tab === 'expand' && !loaded.expand) { loaded.expand = true; loadAnalysisExpand(); }
-      };
-    });
-    var r1 = overlay.querySelector('[data-af-refresh]');
-    if (r1) r1.onclick = loadAnalysisFeedback;
-    var r2 = overlay.querySelector('[data-af-refresh2]');
-    if (r2) r2.onclick = loadAnalysisFunnel;
-    var r3 = overlay.querySelector('[data-af-refresh3]');
-    if (r3) r3.onclick = loadAnalysisExpand;
-    var runBtn = overlay.querySelector('[data-expand-run]');
-    if (runBtn) runBtn.onclick = runAnalysisExpand;
-    loadAnalysisFeedback();
-    loaded.feedback = true;
-  };
-
-  // 侧边栏「数据分析」菜单注入（与原页面布局完全隔离，独立 overlay）
-  function injectAnalysisMenu() {
-    var menu = document.querySelector('.el-menu');
-    if (!menu || menu.querySelector('.el-menu-item[data-analysis-menu]')) return;
-    var item = document.createElement('li');
-    item.className = 'el-menu-item';
-    item.setAttribute('data-analysis-menu', '1');
-    item.setAttribute('style', 'cursor:pointer');
-    item.innerHTML = '<i class="el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M888 792H200V168c0-22-18-40-40-40s-40 18-40 40v664c0 22 18 40 40 40h728c22 0 40-18 40-40s-18-40-40-40zM320 640h56c22 0 40-18 40-40V448c0-22-18-40-40-40h-56c-22 0-40 18-40 40v152c0 22 18 40 40 40zm216 0h56c22 0 40-18 40-40V288c0-22-18-40-40-40h-56c-22 0-40 18-40 40v312c0 22 18 40 40 40zm216 0h56c22 0 40-18 40-40V440c0-22-18-40-40-40h-56c-22 0-40 18-40 40v160c0 22 18 40 40 40z"/></svg></i><span>数据分析</span>';
-    item.onclick = function() {
-      menu.querySelectorAll('.el-menu-item').forEach(function(m) { m.classList.remove('is-active'); });
-      item.classList.add('is-active');
-      window.openAnalysisOverlay();
-    };
-    menu.appendChild(item);
-  }
-  var analysisMenuObserver = new MutationObserver(function() { injectAnalysisMenu(); });
-  analysisMenuObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
-  injectAnalysisMenu();
   var alMenuObserver = new MutationObserver(injectActionLogMenu);
   alMenuObserver.observe(document.getElementById('app'), { childList: true, subtree: true });
   injectActionLogMenu();
@@ -2355,7 +1998,7 @@
     // ② 左上角 LOGO「📋 FAQ 管理」→「📋 智能体平台」（侧边栏顶部 .logo 元素）
     document.querySelectorAll('.el-aside .logo, .sidebar .logo, .logo').forEach(function(l) {
       if (l.textContent.includes('FAQ 管理') && !l.getAttribute('data-brand-renamed')) {
-        l.textContent = l.textContent.replace('FAQ 管理', '智能体平台');
+        l.textContent = l.textContent.replace('FAQ 管理', '智能体管理平台');
         l.setAttribute('data-brand-renamed', '1');
       }
     });
@@ -2365,8 +2008,9 @@
   adjustHeader();
 
 
-  // ===== 问题追踪（未匹配/低置信度）批量处理：多选 + 批量处理 =====
-  var collectIssueTexts = function() {
+  // ===== 问题追踪（未匹配/低置信度）批量处理：多选 + 批量处理 / 批量加入相似问 =====
+  var issueFaqOptionsLoaded = false;
+  function collectIssueTexts() {
     var out = [];
     document.querySelectorAll('.el-table__body-wrapper tbody tr').forEach(function(row) {
       var cb = row.querySelector('[data-issue-check]');
@@ -2376,7 +2020,7 @@
       }
     });
     return out;
-  };
+  }
   function updateIssueCount() {
     var n = collectIssueTexts().length;
     var el = document.querySelector('[data-batch-count]');
@@ -2414,6 +2058,7 @@
       '<label style="cursor:pointer;display:flex;align-items:center;gap:4px"><input type="checkbox" data-batch-all> 全选</label>' +
       '<span data-batch-count style="color:#888">已选 0 项</span>' +
       '<span style="flex:1"></span>' +
+      '<select data-batch-faq style="padding:5px 8px;border:1px solid #dcdfe6;border-radius:4px;font-size:12px;max-width:260px"><option value="">选择要加入的 FAQ…</option></select>' +
       '<button class="btn-sm" data-batch-addq>批量加入相似问</button>' +
       '<button class="btn-sm btn-danger" data-batch-ignore>批量处理</button>';
     table.parentNode.insertBefore(bar, table);
@@ -2423,7 +2068,19 @@
       document.querySelectorAll('.el-table__body-wrapper tbody tr [data-issue-check]').forEach(function(c) { c.checked = allCb.checked; });
       updateIssueCount();
     };
-    // 批量处理（标记忽略）
+    // FAQ 下拉选项
+    if (!issueFaqOptionsLoaded) {
+      issueFaqOptionsLoaded = true;
+      api('GET', '/api/faq', null, function(res) {
+        var list = (res && Array.isArray(res)) ? res : ((res && res.data) || []);
+        var sel = document.querySelector('[data-batch-faq]');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">选择要加入的 FAQ…</option>' + list.map(function(f) {
+          return '<option value="' + esc(f.code) + '">' + esc(f.code + (f.name ? ' · ' + f.name : '')) + '</option>';
+        }).join('');
+      });
+    }
+    // 批量处理
     bar.querySelector('[data-batch-ignore]').onclick = function() {
       var texts = collectIssueTexts();
       if (!texts.length) { alert('请先勾选要处理的问题'); return; }
@@ -2436,26 +2093,23 @@
         });
       });
     };
-    // 批量加入相似问：自动识别每条问题最像哪个 FAQ，匹配到高置信则加入（无需手动选 FAQ）
+    // 批量加入相似问
     bar.querySelector('[data-batch-addq]').onclick = function() {
       var texts = collectIssueTexts();
+      var faq = bar.querySelector('[data-batch-faq]').value;
       if (!texts.length) { alert('请先勾选要加入的问题'); return; }
-      if (!confirm('将选中的 ' + texts.length + ' 个问题自动识别 FAQ 并加入相似问？\n（匹配不到或相似度不足的会跳过并在结果中列出）')) return;
-      var btn = bar.querySelector('[data-batch-addq]');
-      var oldTxt = btn.textContent;
-      btn.textContent = '识别中...';
-      btn.disabled = true;
-      api('POST', '/api/analysis/add-questions-batch', { texts: texts }, function(res) {
-        btn.textContent = oldTxt;
-        btn.disabled = false;
-        if (!res || !res.success) { alert((res && res.message) || '操作失败'); return; }
-        var msg = '成功加入 ' + res.added + ' 个，跳过 ' + res.skipped + ' 个\n\n';
-        (res.results || []).forEach(function(r) {
-          msg += (r.ok ? '✓ ' : '✗ ') + r.text.slice(0, 20) + (r.ok ? ' → ' + (r.faqName || r.faqCode) : '（' + (r.reason || '') + '）') + '\n';
+      if (!faq) { alert('请先选择要加入的 FAQ'); return; }
+      if (!confirm('将选中的 ' + texts.length + ' 个问题加入「' + faq + '」的相似问？')) return;
+      var done = 0, ok = 0;
+      texts.forEach(function(t) {
+        api('POST', '/api/analysis/add-question', { faqCode: faq, question: t }, function(res) {
+          done++; if (res && res.success) ok++;
+          if (done === texts.length) {
+            alert('完成：成功 ' + ok + ' 个，失败/已存在 ' + (done - ok) + ' 个');
+            location.reload();
+          }
         });
-        alert(msg);
-        if (res.added > 0) location.reload();
-      }, function() { btn.textContent = oldTxt; btn.disabled = false; alert('请求失败'); });
+      });
     };
     updateIssueCount();
   }
@@ -2547,6 +2201,53 @@
           '</div>' +
           '<div style="color:#999;font-size:12px;margin-top:4px">任务与 FAQ 语义相似度接近时的判定：差距超过阈值选高者，否则澄清让用户选。此配置只对本任务生效，优先级高于系统配置。</div>' +
         '</div>' +
+        '<div class="form-group"><label>LLM 配置（可选，任务级覆盖全局节点；不配=用全局）</label>' +
+          '<div style="border:1px solid #e8ecff;border-radius:8px;padding:12px;background:#fafbff">' +
+            '<div style="font-size:12px;color:#999;margin-bottom:10px;line-height:1.8"><b style="color:#666">本任务的 LLM 怎么配？三步走：</b><br>① <b>什么都不改 = 跟随全局（推荐）</b>，全局已在「系统配置 → LLM 连接」配好；<br>② 想省成本/要确定性 → 勾选下面"完全不用 LLM"，或单独关掉某节点；<br>③ 想微调这个任务 → 只改下面温度/token，数字留空 = 用全局默认。</div>' +
+            '<label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="tf-llm-enabled" ' + (isEdit && task.llm && task.llm.enabled === false ? 'checked' : '') + '> 本任务完全不用 LLM（对话/提取都走规则）</label>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
+              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
+                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">任务对话 <span style="color:#999;font-weight:normal;font-size:12px">（每轮回复/槽位提取）</span></div>' +
+                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-dialogue-enabled" ' + (isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.enabled === false ? '' : 'checked') + '> 启用</label>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-dialogue-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.temperature != null ? task.llm.dialogue.temperature : '') + '"></label>' +
+                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-dialogue-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.dialogue && task.llm.dialogue.maxTokens != null ? task.llm.dialogue.maxTokens : '') + '"></label>' +
+                '</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 本任务对话不调 LLM（走规则）。<br>· 温度：留空 = 全局(0.2)；想更稳定填 0；想更自然口语填 0.3~0.5；越高越发散。<br>· token：留空 = 全局(400)；单次回复字数上限，一般 200~400 够用。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
+              '</div>' +
+              '<div style="border:1px solid #eef0f4;border-radius:8px;padding:10px;background:#fff">' +
+                '<div style="font-size:13px;color:#4361ee;margin-bottom:6px">槽位提取 <span style="color:#999;font-weight:normal;font-size:12px">（规则提取失败时）</span></div>' +
+                '<label style="font-size:12px;color:#666;display:flex;align-items:center;gap:4px;margin-bottom:6px;cursor:pointer"><input type="checkbox" id="tf-llm-extract-enabled" ' + (isEdit && task.llm && task.llm.extract && task.llm.extract.enabled === false ? '' : 'checked') + '> 启用</label>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                  '<label style="font-size:12px;color:#666">温度 <input id="tf-llm-extract-temp" type="number" step="0.1" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.temperature != null ? task.llm.extract.temperature : '') + '"></label>' +
+                  '<label style="font-size:12px;color:#666">token <input id="tf-llm-extract-tokens" type="number" style="width:60px" value="' + esc(isEdit && task.llm && task.llm.extract && task.llm.extract.maxTokens != null ? task.llm.extract.maxTokens : '') + '"></label>' +
+                '</div>' +
+                '<div style="font-size:11px;color:#999;margin-top:6px;line-height:1.7">怎么填：<br>· 启用：关掉 = 规则提取不到时不再用 LLM 补（提取容易出错的场景可关）。<br>· 温度：留空 = 全局(0)；提取建议用低温（0~0.1）保证准确。<br>· token：留空 = 全局(200)。<br>· 模型统一在「系统配置 → LLM 连接」配，这里不用管。</div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="margin-top:10px">' +
+              '<div style="font-size:12px;color:#888;margin-bottom:6px;line-height:1.7">提示词覆盖：<b>4 个框已预填当前全局提示词</b>，直接在里面改 = 定制本任务；不改 = 继续用全局；想用全局默认就清空该框。<br>注意：{xxx} 是占位符会自动替换，<b>别删</b>。想换口吻 → 改「对话系统提示词」开头那句"你是…售后客服"即可。</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话系统提示词 <span style="color:#aaa">（角色与规则）</span></div>' +
+                  '<textarea id="tf-llm-dialogue-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueSystem || '') : '') + '</textarea>' +
+                '</div>' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">对话用户模板 <span style="color:#aaa">（每轮消息）</span></div>' +
+                  '<textarea id="tf-llm-dialogue-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.dialogueUser || '') : '') + '</textarea>' +
+                '</div>' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取系统提示词 <span style="color:#aaa">（提取规则）</span></div>' +
+                  '<textarea id="tf-llm-extract-system" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractSystem || '') : '') + '</textarea>' +
+                '</div>' +
+                '<div>' +
+                  '<div style="font-size:12px;color:#555;margin-bottom:4px">提取用户模板 <span style="color:#aaa">（字段描述）</span></div>' +
+                  '<textarea id="tf-llm-extract-user" rows="7" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;resize:vertical">' + esc(isEdit && task.llm && task.llm.prompts ? (task.llm.prompts.extractUser || '') : '') + '</textarea>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
         '<div class="form-group"><label>槽位定义（需要收集的信息）</label>' +
           '<div id="tf-slots">' + buildSlotRows(isEdit ? task.slots : []) + '</div>' +
           '<button class="btn-sm" id="tf-add-slot" style="margin-top:6px">+ 添加槽位</button>' +
@@ -2597,6 +2298,26 @@
       '</div>' +
     '</div>';
     document.body.appendChild(overlay);
+
+    // 预填 LLM 提示词覆盖框：把当前全局提示词直接写进文本框
+    // （改了 = 定制本任务；不改 = 继续用全局；清空 = 用全局默认）
+    var globalPrompts = {};
+    api('GET', '/api/config/llm-prompts', null, function(res) {
+      if (!res || !res.success) return;
+      var map = {};
+      (res.data || []).forEach(function(p) { map[p.key] = p.value || ''; });
+      var gkeyMap = {
+        'dialogue-system': 'dialogue.system',
+        'dialogue-user': 'dialogue.user',
+        'extract-system': 'extract_slots.system',
+        'extract-user': 'extract_slots.user',
+      };
+      ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
+        globalPrompts[id] = map[gkeyMap[id]] || '';
+        var ta = overlay.querySelector('#tf-llm-' + id);
+        if (ta && !ta.value.trim()) ta.value = globalPrompts[id];
+      });
+    });
 
     // 事件绑定
     var dirty = false;
@@ -2657,11 +2378,11 @@
     // 添加槽位
     overlay.querySelector('#tf-add-slot').onclick = function() {
       var container = overlay.querySelector('#tf-slots');
-      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract:{method:'text',rule:'',ner_type:''},required:true}));
+      container.insertAdjacentHTML('beforeend', buildOneSlotRow({key:'',label:'',prompt:'',extract_type:'text',extract_rule:'',required:true}));
       bindSlotDel(container.lastElementChild);
     };
-    // 绑定已有槽位
-    overlay.querySelectorAll('#tf-slots .slot-card').forEach(bindSlotDel);
+    // 绑定已有槽位删除
+    overlay.querySelectorAll('.slot-row').forEach(bindSlotDel);
 
     // 加载完成动作列表
     api('GET', '/api/tasks/actions', null, function(res) {
@@ -2691,10 +2412,7 @@
     // v2 步骤编辑器
     overlay.querySelector('#tf-add-step').onclick = function() {
       var container = overlay.querySelector('#tf-steps');
-      var stepKeys = currentStepKeys();
-      var slotKeys = currentSlotKeys();
-      var index = container.querySelectorAll('.step-card').length;
-      container.insertAdjacentHTML('beforeend', buildOneStepRow({key:'',type:'collect',next:''}, stepKeys, slotKeys, index));
+      container.insertAdjacentHTML('beforeend', buildOneStepRow({key:'',type:'collect',next:''}));
       bindStepRowEvents(container.lastElementChild);
     };
     overlay.querySelector('#tf-auto-steps').onclick = autoGenerateSteps;
@@ -2710,7 +2428,7 @@
       box.style.display = 'block';
       box.innerHTML = renderFlowPreview(steps);
     };
-    overlay.querySelectorAll('#tf-steps .step-card').forEach(bindStepRowEvents);
+    overlay.querySelectorAll('#tf-steps .step-row').forEach(bindStepRowEvents);
 
     // 保存
     overlay.querySelector('#tf-save').onclick = function() {
@@ -2727,34 +2445,19 @@
       overlay.querySelectorAll('#tf-examples .keyword-tag').forEach(function(tag) {
         examples.push(tag.getAttribute('data-value'));
       });
-      // 收集槽位（新数据结构）
+      // 收集槽位
       var slots = [];
-      overlay.querySelectorAll('#tf-slots .slot-card').forEach(function(card) {
-        var key = card.querySelector('.slot-key').value.trim();
-        var label = card.querySelector('.slot-label').value.trim();
+      overlay.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
+        var key = row.querySelector('.slot-key').value.trim();
+        var label = row.querySelector('.slot-label').value.trim();
         if (!key || !label) return;
-        // 收集别名
-        var aliases = [];
-        card.querySelectorAll('.alias-tag').forEach(function(tag) {
-          var rm = tag.querySelector('.remove');
-          if (rm) aliases.push(rm.getAttribute('data-alias') || tag.textContent.replace('×', '').trim());
-        });
         slots.push({
           key: key,
           label: label,
-          prompt: card.querySelector('.slot-prompt').value.trim(),
-          extract: {
-            method: card.querySelector('.slot-type').value,
-            rule: card.querySelector('.slot-rule').value.trim(),
-            ner_type: card.querySelector('.slot-ner-type').value || null
-          },
-          aliases: aliases,
-          required: card.querySelector('.slot-required-check').checked,
-          validate: {
-            rule: card.querySelector('.slot-validate-rule').value.trim(),
-            reask: card.querySelector('.slot-reask').value.trim()
-          },
-          default: card.querySelector('.slot-default').value.trim() || null
+          prompt: row.querySelector('.slot-prompt').value.trim(),
+          extract_type: row.querySelector('.slot-type').value,
+          extract_rule: row.querySelector('.slot-rule').value.trim(),
+          required: row.querySelector('.slot-required').checked,
         });
       });
       var steps = collectStepRows();
@@ -2831,6 +2534,34 @@
         arb_task_min: (function() { var v = overlay.querySelector('#tf-arb-task-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_faq_min: (function() { var v = overlay.querySelector('#tf-arb-faq-min').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
         arb_strong_hit: (function() { var v = overlay.querySelector('#tf-arb-strong-hit').value.trim(); return v === '' ? undefined : parseFloat(v); })(),
+        // 任务级 LLM 配置（未改动 → undefined → 不覆盖全局；勾选/填值 → 只存差异项）
+        llm: (function() {
+          function nodeOf(prefix) {
+            var enabledChecked = overlay.querySelector('#tf-llm-' + prefix + '-enabled').checked;
+            var temp = overlay.querySelector('#tf-llm-' + prefix + '-temp').value.trim();
+            var tokens = overlay.querySelector('#tf-llm-' + prefix + '-tokens').value.trim();
+            var node = {};
+            if (!enabledChecked) node.enabled = false;
+            if (temp !== '') { var t = parseFloat(temp); if (!isNaN(t)) node.temperature = t; }
+            if (tokens !== '') { var m = parseInt(tokens, 10); if (!isNaN(m)) node.maxTokens = m; }
+            return Object.keys(node).length ? node : undefined;
+          }
+          var out = {};
+          if (overlay.querySelector('#tf-llm-enabled').checked) out.enabled = false;
+          var dlg = nodeOf('dialogue');
+          if (dlg) out.dialogue = dlg;
+          var ext = nodeOf('extract');
+          if (ext) out.extract = ext;
+          var prompts = {};
+          ['dialogue-system','dialogue-user','extract-system','extract-user'].forEach(function(id) {
+            var key = id.split('-').map(function(w, i) { return i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join('');
+            var v = overlay.querySelector('#tf-llm-' + id).value.trim();
+            // 与全局一致 = 没定制 → 不存（继续用全局）；改了才存；清空 = 用全局默认
+            if (v && v !== globalPrompts[id]) prompts[key] = v;
+          });
+          if (Object.keys(prompts).length) out.prompts = prompts;
+          return Object.keys(out).length ? out : undefined;
+        })(),
         completion_message: overlay.querySelector('#tf-action-msg').value.trim() || overlay.querySelector('#tf-complete').value.trim(),
         on_complete: onCompleteVal,
         api_action: apiAction,
@@ -2867,150 +2598,26 @@
     return slots.map(function(s) { return buildOneSlotRow(s); }).join('');
   }
 
-  // NER 类型选项
-  var NER_TYPES = [
-    { value: '', label: '不使用 NER' },
-    { value: 'address', label: '地址' },
-    { value: 'name', label: '人名' },
-    { value: 'company', label: '公司' },
-    { value: 'organization', label: '组织' },
-    { value: 'government', label: '政府机构' },
-    { value: 'position', label: '职位' },
-    { value: 'phone', label: '电话（NER）' },
-    { value: 'email', label: '邮箱（NER）' },
-    { value: 'date', label: '日期' },
-    { value: 'time', label: '时间' }
-  ];
-
   function buildOneSlotRow(s) {
-    s = s || {};
-    // 兼容旧数据：extract_type -> extract.method
-    var extractMethod = s.extract?.method || s.extract_type || 'text';
-    var extractRule = s.extract?.rule || s.extract_rule || '';
-    var nerType = s.extract?.ner_type || '';
-    var validateRule = s.validate?.rule || '';
-    var reask = s.validate?.reask || '';
-    var aliases = s.aliases || [];
-    var defaultVal = s.default || '';
-    var key = s.key || '';
-    var label = s.label || '';
-    
-    // NER 类型下拉
-    var nerTypeOptions = NER_TYPES.map(function(t) {
-      return '<option value="' + t.value + '"' + (nerType === t.value ? ' selected' : '') + '>' + t.label + '</option>';
-    }).join('');
-    
-    // 别名标签
-    var aliasTagsHtml = aliases.map(function(a) {
-      return '<span class="alias-tag">' + esc(a) + '<span class="remove" data-alias="' + esc(a) + '">&times;</span></span>';
-    }).join('');
-    
-    return '<div class="slot-card" data-key="' + esc(key) + '">' +
-      '<div class="slot-card-header">' +
-        '<span class="slot-toggle">▼</span>' +
-        '<span class="slot-title">' + (label || '未命名槽位') + (key ? ' <span class="slot-key-tag">(' + esc(key) + ')</span>' : '') + '</span>' +
-        '<button class="slot-del" title="删除槽位">&times;</button>' +
-      '</div>' +
-      '<div class="slot-card-body">' +
-        // 第一行：基本信息
-        '<div class="slot-card-row">' +
-          '<label>字段名</label><input class="slot-key" value="' + esc(key) + '" placeholder="如：phone">' +
-          '<label>显示名</label><input class="slot-label" value="' + esc(label) + '" placeholder="如：电话">' +
-          '<label class="slot-required"><input type="checkbox" class="slot-required-check"' + (s.required !== false ? ' checked' : '') + '> 必填</label>' +
-        '</div>' +
-        // 第二行：提取配置
-        '<div class="slot-card-row">' +
-          '<label>提取类型</label>' +
-          '<select class="slot-type">' +
-            '<option value="text"' + (extractMethod === 'text' ? ' selected' : '') + '>文本</option>' +
-            '<option value="regex"' + (extractMethod === 'regex' ? ' selected' : '') + '>正则</option>' +
-            '<option value="number"' + (extractMethod === 'number' ? ' selected' : '') + '>数字</option>' +
-            '<option value="enum"' + (extractMethod === 'enum' ? ' selected' : '') + '>枚举</option>' +
-          '</select>' +
-          '<label>NER 类型</label>' +
-          '<select class="slot-ner-type">' + nerTypeOptions + '</select>' +
-        '</div>' +
-        // 第三行：提取规则
-        '<div class="slot-card-row">' +
-          '<label>提取规则</label>' +
-          '<input class="slot-rule" value="' + esc(extractRule) + '" placeholder="正则表达式或枚举值（逗号分隔）">' +
-        '</div>' +
-        // 第四行：别名
-        '<div class="slot-card-row">' +
-          '<label>别名</label>' +
-          '<div class="alias-tags">' + aliasTagsHtml + '</div>' +
-          '<input class="alias-input" placeholder="回车添加别名">' +
-        '</div>' +
-        // 第五行：提问话术
-        '<div class="slot-card-row">' +
-          '<label>提问话术</label>' +
-          '<input class="slot-prompt" value="' + esc(s.prompt || '') + '" placeholder="如：请留下您的联系电话">' +
-        '</div>' +
-        // 第六行：校验规则
-        '<div class="slot-card-row">' +
-          '<label>校验规则</label>' +
-          '<input class="slot-validate-rule" value="' + esc(validateRule) + '" placeholder="正则表达式（可选）">' +
-          '<label>失败话术</label>' +
-          '<input class="slot-reask" value="' + esc(reask) + '" placeholder="校验失败时的提示">' +
-        '</div>' +
-        // 第七行：默认值
-        '<div class="slot-card-row">' +
-          '<label>默认值</label>' +
-          '<input class="slot-default" value="' + esc(defaultVal) + '" placeholder="预填值（可选）">' +
-        '</div>' +
-      '</div>' +
+    return '<div class="slot-row">' +
+      '<input class="slot-key" value="' + esc(s.key||'') + '" placeholder="字段名">' +
+      '<input class="slot-label" value="' + esc(s.label||'') + '" placeholder="显示名">' +
+      '<input class="slot-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
+      '<select class="slot-type">' +
+        '<option value="text"' + (s.extract_type==='text'?' selected':'') + '>文本</option>' +
+        '<option value="regex"' + (s.extract_type==='regex'?' selected':'') + '>正则</option>' +
+        '<option value="number"' + (s.extract_type==='number'?' selected':'') + '>数字</option>' +
+        '<option value="enum"' + (s.extract_type==='enum'?' selected':'') + '>枚举</option>' +
+      '</select>' +
+      '<input class="slot-rule" value="' + esc(s.extract_rule||'') + '" placeholder="提取规则" style="width:120px">' +
+      '<label class="slot-required"><input type="checkbox"' + (s.required!==false?' checked':'') + '>必填</label>' +
+      '<button class="slot-del">&times;</button>' +
     '</div>';
   }
 
-  function bindSlotDel(card) {
-    var del = card.querySelector('.slot-del');
-    if (del) del.onclick = function(e) { e.stopPropagation(); card.remove(); };
-    // 折叠/展开
-    var header = card.querySelector('.slot-card-header');
-    var toggle = card.querySelector('.slot-toggle');
-    var body = card.querySelector('.slot-card-body');
-    if (header && toggle && body) {
-      header.onclick = function(e) {
-        if (e.target.classList.contains('slot-del')) return;
-        body.classList.toggle('collapsed');
-        toggle.classList.toggle('collapsed');
-      };
-    }
-    // 别名输入
-    var aliasInput = card.querySelector('.alias-input');
-    var aliasTags = card.querySelector('.alias-tags');
-    if (aliasInput && aliasTags) {
-      aliasInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && aliasInput.value.trim()) {
-          e.preventDefault();
-          var alias = aliasInput.value.trim();
-          var tag = document.createElement('span');
-          tag.className = 'alias-tag';
-          tag.innerHTML = esc(alias) + '<span class="remove" data-alias="' + esc(alias) + '">&times;</span>';
-          tag.querySelector('.remove').onclick = function() { tag.remove(); };
-          aliasTags.appendChild(tag);
-          aliasInput.value = '';
-        }
-      });
-      // 删除别名
-      aliasTags.addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove')) {
-          e.target.parentElement.remove();
-        }
-      });
-    }
-    // 更新标题
-    var keyInput = card.querySelector('.slot-key');
-    var labelInput = card.querySelector('.slot-label');
-    var titleEl = card.querySelector('.slot-title');
-    function updateTitle() {
-      var k = keyInput.value.trim();
-      var l = labelInput.value.trim();
-      card.setAttribute('data-key', k);
-      titleEl.innerHTML = (l || '未命名槽位') + (k ? ' <span class="slot-key-tag">(' + esc(k) + ')</span>' : '');
-    }
-    if (keyInput) keyInput.addEventListener('input', updateTitle);
-    if (labelInput) labelInput.addEventListener('input', updateTitle);
+  function bindSlotDel(row) {
+    var del = row.querySelector('.slot-del');
+    if (del) del.onclick = function() { row.remove(); };
   }
 
   // ===== v2 步骤 DSL 编辑器 =====
@@ -3032,18 +2639,18 @@
   // 当前表单里的步骤 key（重建行/加行时取最新）
   function currentStepKeys() {
     var keys = [];
-    document.querySelectorAll('#tf-steps .step-card .step-key').forEach(function(el) {
+    document.querySelectorAll('#tf-steps .step-row .step-key').forEach(function(el) {
       var v = el.value.trim(); if (v) keys.push(v);
     });
     return keys;
   }
-  // 当前表单里的槽位 key（槽位卡片 + 收集步骤的 slot_key）
+  // 当前表单里的槽位 key（槽位行 + 收集步骤的 slot_key）
   function currentSlotKeys() {
     var keys = [];
-    document.querySelectorAll('#tf-slots .slot-card .slot-key').forEach(function(el) {
+    document.querySelectorAll('#tf-slots .slot-row .slot-key').forEach(function(el) {
       var v = el.value.trim(); if (v) keys.push(v);
     });
-    document.querySelectorAll('#tf-steps .step-card .step-slot').forEach(function(el) {
+    document.querySelectorAll('#tf-steps .step-row .step-slot').forEach(function(el) {
       var v = el.value.trim(); if (v) keys.push(v);
     });
     return [...new Set(keys)];
@@ -3091,165 +2698,76 @@
     if (!steps || !steps.length) return '<div style="color:#999;font-size:12px;padding:8px">暂无步骤，点击"从槽位自动生成"一键生成</div>';
     var stepKeys = steps.map(function(s) { return s.key; }).filter(Boolean);
     var slotKeys = currentSlotKeys();
-    return steps.map(function(s, i) { return buildOneStepRow(s, stepKeys, slotKeys, i); }).join('');
+    return steps.map(function(s) { return buildOneStepRow(s, stepKeys, slotKeys); }).join('');
   }
 
-  // 步骤类型标签
-  var STEP_TYPE_LABELS = {
-    collect: '收集', confirm: '确认', action: '动作', api: '调用接口',
-    subtask: '子任务', branch: '分支', message: '回复', end: '结束'
-  };
-
-  function buildOneStepRow(s, stepKeys, slotKeys, index) {
+  function buildOneStepRow(s, stepKeys, slotKeys) {
     s = s || {};
-    index = index || 0;
-    var typeLabel = STEP_TYPE_LABELS[s.type] || s.type || '未配置';
-    var stepTitle = s.slot_key ? ('收集: ' + (s.label || s.slot_key)) : (s.key || '步骤' + (index + 1));
-    
-    // 不同类型的内容
-    var bodyContent = '';
-    if (s.type === 'collect') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>槽位</label><select class="step-slot">' + buildSlotOptions(s.slot_key, slotKeys) + '</select>' +
-          '<label>提问话术</label><input class="step-prompt" value="' + esc(s.prompt || '') + '" placeholder="留空使用槽位定义的提问话术">' +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
-        '</div>';
-    } else if (s.type === 'confirm') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>确认话术</label><input class="step-prompt" value="' + esc(s.prompt || '') + '" placeholder="如：确认以上信息是否正确？">' +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>确认后</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
-          '<label>取消后</label><select class="step-cancel-next">' + buildStepKeyOptions(s.cancel_next, stepKeys, '取消操作') + '</select>' +
-        '</div>';
-    } else if (s.type === 'api') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>接口地址</label><input class="step-api-url" value="' + esc(s.url || '') + '" placeholder="https://api.example.com/...">' +
-          '<select class="step-api-method"><option value="POST"' + ((s.method || 'POST') === 'POST' ? ' selected' : '') + '>POST</option><option value="GET"' + (s.method === 'GET' ? ' selected' : '') + '>GET</option></select>' +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>请求入参</label>' + buildMapRows(s.fieldMap, 'fm', '槽位key', '接口字段') +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>固定入参</label>' + buildMapRows(s.fixedParams, 'fp', '接口字段', '固定值') +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>结果映射</label>' + (function() {
-            var merged = Object.assign({}, s.resultMap || {});
-            if (s.resultSlot && !merged[s.resultSlot]) merged[s.resultSlot] = s.resultField || '';
-            return buildMapRows(merged, 'rm', '槽位key', '字段路径如 data.orderNo');
-          })() +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>回复话术</label><input class="step-api-msg" value="' + esc(s.done_message || '') + '" placeholder="支持 {结果槽位} 占位符">' +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
-        '</div>';
-    } else if (s.type === 'branch') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>分支条件</label>' +
-          '<div class="branch-cases" style="flex:1">' +
-            (s.cases || []).map(function(c) { return buildCaseRow(c, stepKeys, slotKeys); }).join('') +
-          '</div>' +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label></label>' +
-          '<button type="button" class="btn-sm branch-add-case">+ 添加条件</button>' +
-          '<label style="margin-left:20px">默认</label><select class="step-default">' + buildStepKeyOptions(s.default_next, stepKeys, '默认下一步') + '</select>' +
-        '</div>';
-    } else if (s.type === 'message') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>回复内容</label><input class="step-text" value="' + esc(s.text || '') + '" placeholder="要回复的内容">' +
-        '</div>' +
-        '<div class="step-card-row">' +
-          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
-        '</div>';
-    } else if (s.type === 'action') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>动作名</label><input class="step-action" value="' + esc(s.action || '') + '" placeholder="如：complete_message">' +
-          '<label>完成话术</label><input class="step-msg" value="' + esc(s.done_message || '') + '" placeholder="动作完成后的回复">' +
-        '</div>';
-    } else if (s.type === 'subtask') {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>子任务</label><input class="step-task" value="' + esc(s.task || '') + '" placeholder="子任务code">' +
-          '<label>返回步骤</label><select class="step-return">' + buildStepKeyOptions(s.on_return, stepKeys, '返回步骤') + '</select>' +
-        '</div>';
-    } else {
-      bodyContent = 
-        '<div class="step-card-row">' +
-          '<label>下一步</label><select class="step-next">' + buildStepKeyOptions(s.next, stepKeys, '下一步') + '</select>' +
-        '</div>';
-    }
-    
-    return '<div class="step-card" data-key="' + esc(s.key || '') + '">' +
-      '<div class="step-card-header">' +
-        '<span class="step-index">' + (index + 1) + '</span>' +
-        '<span class="step-title">' + esc(stepTitle) + '</span>' +
-        '<span class="step-type-badge">' + typeLabel + '</span>' +
-        '<span class="step-toggle">▼</span>' +
-        '<div class="step-card-controls">' +
-          '<button class="step-up" title="上移">↑</button>' +
-          '<button class="step-down" title="下移">↓</button>' +
-          '<button class="step-del" title="删除">&times;</button>' +
-        '</div>' +
+    var collectExtra = s.type === 'collect' ?
+      '<input class="step-slot" value="' + esc(s.slot_key||'') + '" placeholder="槽位key" style="width:90px">' +
+      '<input class="step-prompt" value="' + esc(s.prompt||'') + '" placeholder="提问话术">' +
+      '<input class="step-extract" value="' + esc((s.extract&&s.extract.method)||'') + '" placeholder="提取:text/regex/number/enum" style="width:120px">' +
+      '<input class="step-rule" value="' + esc((s.extract&&s.extract.rule)||'') + '" placeholder="提取规则/枚举" style="width:110px">' +
+      '<input class="step-validate" value="' + esc((s.validate&&s.validate.rule)||'') + '" placeholder="校验规则" style="width:100px">' +
+      '<input class="step-reask" value="' + esc((s.validate&&s.validate.reask)||'') + '" placeholder="重问话术" style="width:130px">' : '';
+    var actionExtra = s.type === 'action' ?
+      '<input class="step-action" value="' + esc(s.action||'') + '" placeholder="动作名" style="width:130px">' +
+      '<input class="step-msg" value="' + esc(s.done_message||'') + '" placeholder="完成话术">' : '';
+    var apiExtra = s.type === 'api' ?
+      '<input class="step-api-url" value="' + esc(s.url||'') + '" placeholder="接口地址" style="width:190px">' +
+      '<select class="step-api-method"><option value="POST"' + ((s.method||'POST')==='POST'?' selected':'') + '>POST</option><option value="GET"' + (s.method==='GET'?' selected':'') + '>GET</option></select>' +
+      '<div style="font-size:11px;color:#888">请求入参（槽位key = 接口字段）</div>' + buildMapRows(s.fieldMap, 'fm', '槽位key', '接口字段') +
+      '<div style="font-size:11px;color:#888">固定入参（接口字段 = 固定值）</div>' + buildMapRows(s.fixedParams, 'fp', '接口字段', '固定值') +
+      '<div style="font-size:11px;color:#888">结果映射（槽位key = 接口字段路径，接口返回写入对应槽位）</div>' + (function() {
+        var merged = Object.assign({}, s.resultMap || {});
+        // 旧版单字段（resultSlot/resultField）自动迁移进结果映射
+        if (s.resultSlot && !merged[s.resultSlot]) merged[s.resultSlot] = s.resultField || '';
+        return buildMapRows(merged, 'rm', '槽位key', '字段路径如 data.orderNo');
+      })() +
+      '<input class="step-api-msg" value="' + esc(s.done_message||'') + '" placeholder="回复话术(支持 {结果槽位})" style="width:200px">' : '';
+    var subtaskExtra = s.type === 'subtask' ?
+      '<input class="step-task" value="' + esc(s.task||'') + '" placeholder="子任务code">' +
+      '<select class="step-return" style="width:110px">' + buildStepKeyOptions(s.on_return, stepKeys, '返回步骤') + '</select>' : '';
+    var messageExtra = s.type === 'message' ?
+      '<input class="step-text" value="' + esc(s.text||'') + '" placeholder="回复内容">' : '';
+    var branchExtra = s.type === 'branch' ?
+      '<div class="branch-cases" style="margin:2px 0">' +
+        (s.cases || []).map(function(c) { return buildCaseRow(c, stepKeys, slotKeys); }).join('') +
       '</div>' +
-      '<div class="step-card-body">' +
-        '<div class="step-card-row">' +
-          '<label>步骤类型</label>' +
-          '<select class="step-type">' +
-            '<option value="collect"' + (s.type === 'collect' ? ' selected' : '') + '>收集</option>' +
-            '<option value="confirm"' + (s.type === 'confirm' ? ' selected' : '') + '>确认</option>' +
-            '<option value="api"' + (s.type === 'api' ? ' selected' : '') + '>调用接口</option>' +
-            '<option value="branch"' + (s.type === 'branch' ? ' selected' : '') + '>分支判断</option>' +
-            '<option value="message"' + (s.type === 'message' ? ' selected' : '') + '>回复消息</option>' +
-            '<option value="action"' + (s.type === 'action' ? ' selected' : '') + '>动作</option>' +
-            '<option value="subtask"' + (s.type === 'subtask' ? ' selected' : '') + '>子任务</option>' +
-          '</select>' +
-          '<label>步骤key</label><input class="step-key" value="' + esc(s.key || '') + '" placeholder="如：collect_phone">' +
-        '</div>' +
-        bodyContent +
-      '</div>' +
+      '<button type="button" class="btn-sm branch-add-case" style="margin:2px 4px 2px 0">+ 添加条件</button>' +
+      '<select class="step-default" style="width:130px">' + buildStepKeyOptions(s.default_next, stepKeys, '默认下一步') + '</select>' : '';
+    return '<div class="step-row">' +
+      '<input class="step-key" value="' + esc(s.key||'') + '" placeholder="步骤key" style="width:100px">' +
+      '<select class="step-type">' +
+        '<option value="collect"' + (s.type==='collect'?' selected':'') + '>收集</option>' +
+        '<option value="confirm"' + (s.type==='confirm'?' selected':'') + '>确认</option>' +
+        '<option value="action"' + (s.type==='action'?' selected':'') + '>动作</option>' +
+        '<option value="api"' + (s.type==='api'?' selected':'') + '>调用接口</option>' +
+        '<option value="subtask"' + (s.type==='subtask'?' selected':'') + '>子任务</option>' +
+        '<option value="branch"' + (s.type==='branch'?' selected':'') + '>分支</option>' +
+        '<option value="message"' + (s.type==='message'?' selected':'') + '>回复</option>' +
+      '</select>' +
+      '<input class="step-next" value="' + esc(s.next||'') + '" placeholder="下一步" style="width:90px">' +
+      collectExtra + actionExtra + apiExtra + subtaskExtra + messageExtra + branchExtra +
+      '<button class="step-up" title="上移">↑</button><button class="step-down" title="下移">↓</button><button class="step-del" title="删除">&times;</button>' +
     '</div>';
   }
 
-  function bindStepRowEvents(card) {
-    var del = card.querySelector('.step-del');
-    if (del) del.onclick = function(e) { e.stopPropagation(); card.remove(); };
-    var up = card.querySelector('.step-up');
-    if (up) up.onclick = function(e) {
-      e.stopPropagation();
-      var prev = card.previousElementSibling;
-      if (prev && prev.classList.contains('step-card')) card.parentNode.insertBefore(card, prev);
+  function bindStepRowEvents(row) {
+    var del = row.querySelector('.step-del');
+    if (del) del.onclick = function() { row.remove(); };
+    var up = row.querySelector('.step-up');
+    if (up) up.onclick = function() {
+      var prev = row.previousElementSibling;
+      if (prev && prev.classList.contains('step-row')) row.parentNode.insertBefore(row, prev);
     };
-    var down = card.querySelector('.step-down');
-    if (down) down.onclick = function(e) {
-      e.stopPropagation();
-      var next = card.nextElementSibling;
-      if (next && next.classList.contains('step-card')) card.parentNode.insertBefore(next, card);
+    var down = row.querySelector('.step-down');
+    if (down) down.onclick = function() {
+      var next = row.nextElementSibling;
+      if (next && next.classList.contains('step-row')) row.parentNode.insertBefore(next, row);
     };
-    // 折叠/展开
-    var header = card.querySelector('.step-card-header');
-    var toggle = card.querySelector('.step-toggle');
-    var body = card.querySelector('.step-card-body');
-    if (header && toggle && body) {
-      header.onclick = function(e) {
-        if (e.target.closest('.step-card-controls')) return;
-        body.classList.toggle('collapsed');
-        toggle.classList.toggle('collapsed');
-      };
-    }
     // 行内动态子元素事件（分支条件行 / 映射行的增删）——事件委托
-    card.addEventListener('click', function(e) {
+    row.addEventListener('click', function(e) {
       var t = e.target;
       if (t.classList.contains('case-del')) {
         var cr = t.closest('.case-row');
@@ -3258,7 +2776,7 @@
         var mr = t.closest('.map-row');
         if (mr) mr.remove();
       } else if (t.classList.contains('branch-add-case')) {
-        var wrap = card.querySelector('.branch-cases');
+        var wrap = row.querySelector('.branch-cases');
         if (wrap) wrap.insertAdjacentHTML('beforeend', buildCaseRow(null, currentStepKeys(), currentSlotKeys()));
       } else if (t.classList.contains('map-add')) {
         var mw = t.closest('.map-rows');
@@ -3274,59 +2792,59 @@
       }
     });
     // 类型切换：重读全部步骤、更新该行类型后整体重渲染
-    var typeSel = card.querySelector('.step-type');
+    var typeSel = row.querySelector('.step-type');
     if (typeSel) typeSel.onchange = function() {
       var steps = collectStepRows();
-      var idx = Array.prototype.indexOf.call(card.parentNode.children, card);
+      var idx = Array.prototype.indexOf.call(row.parentNode.children, row);
       if (idx >= 0 && steps[idx]) steps[idx].type = typeSel.value;
       var container = document.getElementById('tf-steps');
       container.innerHTML = buildStepRows(steps);
-      container.querySelectorAll('.step-card').forEach(bindStepRowEvents);
+      container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
     };
   }
 
   function collectStepRows() {
     // 安全读取：类型切换瞬间 DOM 可能还是旧类型表单（如 collect 行切到 branch），
     // 元素不存在时按空处理，避免 null.value 崩溃
-    function q(card, cls) { var el = card.querySelector(cls); return el ? el.value.trim() : ''; }
-    function qr(card, cls) { var el = card.querySelector(cls); return el ? el.value : ''; }
+    function q(row, cls) { var el = row.querySelector(cls); return el ? el.value.trim() : ''; }
+    function qr(row, cls) { var el = row.querySelector(cls); return el ? el.value : ''; }
     var steps = [];
-    document.querySelectorAll('#tf-steps .step-card').forEach(function(card) {
-      var key = q(card, '.step-key');
-      var type = qr(card, '.step-type');
+    document.querySelectorAll('#tf-steps .step-row').forEach(function(row) {
+      var key = q(row, '.step-key');
+      var type = qr(row, '.step-type');
       if (!key) return;
-      var step = { key: key, type: type, next: q(card, '.step-next') || undefined };
+      var step = { key: key, type: type, next: q(row, '.step-next') || undefined };
       if (type === 'collect') {
-        step.slot_key = (q(card, '.step-slot') || key).trim();
-        step.prompt = q(card, '.step-prompt');
-        // 提取配置从槽位定义读取，步骤不再重复定义
+        step.slot_key = (q(row, '.step-slot') || key).trim();
+        step.prompt = q(row, '.step-prompt');
+        step.extract = { method: q(row, '.step-extract') || 'text', rule: q(row, '.step-rule') };
+        var vr = q(row, '.step-validate');
+        var vk = q(row, '.step-reask');
+        if (vr) step.validate = { rule: vr, reask: vk };
       } else if (type === 'action') {
-        step.action = q(card, '.step-action') || 'complete_message';
-        var dm = q(card, '.step-msg');
+        step.action = q(row, '.step-action') || 'complete_message';
+        var dm = q(row, '.step-msg');
         if (dm) step.done_message = dm;
       } else if (type === 'api') {
-        step.url = q(card, '.step-api-url');
-        step.method = qr(card, '.step-api-method') || 'POST';
-        var fm = readMapRows(card, 'fm');
+        step.url = q(row, '.step-api-url');
+        step.method = qr(row, '.step-api-method') || 'POST';
+        var fm = readMapRows(row, 'fm');
         if (Object.keys(fm).length) step.fieldMap = fm;
-        var fp = readMapRows(card, 'fp');
+        var fp = readMapRows(row, 'fp');
         if (Object.keys(fp).length) step.fixedParams = fp;
         // 回复话术：允许存空字符串（空 = 调用接口后不向用户回显结果）
-        step.done_message = q(card, '.step-api-msg');
+        step.done_message = q(row, '.step-api-msg');
         // 结果映射：槽位key=接口字段路径（旧版单字段 resultSlot/resultField 已并入此表）
-        var rm = readMapRows(card, 'rm');
+        var rm = readMapRows(row, 'rm');
         if (Object.keys(rm).length) step.resultMap = rm;
       } else if (type === 'subtask') {
-        step.task = q(card, '.step-task');
-        step.on_return = q(card, '.step-return') || undefined;
+        step.task = q(row, '.step-task');
+        step.on_return = q(row, '.step-return') || undefined;
       } else if (type === 'message') {
-        step.text = q(card, '.step-text');
-      } else if (type === 'confirm') {
-        step.prompt = q(card, '.step-prompt');
-        step.cancel_next = q(card, '.step-cancel-next') || undefined;
+        step.text = q(row, '.step-text');
       } else if (type === 'branch') {
         var cases = [];
-        card.querySelectorAll('.case-row').forEach(function(crow) {
+        row.querySelectorAll('.case-row').forEach(function(crow) {
           var source = qr(crow, '.case-source') || 'slot';
           var ref = q(crow, '.case-ref');
           var op = qr(crow, '.case-op');
@@ -3341,7 +2859,7 @@
           cases.push({ when: when, next: next });
         });
         if (cases.length) step.cases = cases;
-        var dflt = q(card, '.step-default');
+        var dflt = q(row, '.step-default');
         if (dflt) step.default_next = dflt;
       }
       steps.push(step);
@@ -3401,19 +2919,16 @@
   // 从槽位自动生成：收集 → 确认 → 动作
   function autoGenerateSteps() {
     var slots = [];
-    document.querySelectorAll('#tf-slots .slot-card').forEach(function(card) {
-      var key = card.querySelector('.slot-key').value.trim();
-      var label = card.querySelector('.slot-label').value.trim();
+    document.querySelectorAll('#tf-slots .slot-row').forEach(function(row) {
+      var key = row.querySelector('.slot-key').value.trim();
+      var label = row.querySelector('.slot-label').value.trim();
       if (!key || !label) return;
       slots.push({
         key: key, label: label,
-        prompt: card.querySelector('.slot-prompt').value.trim(),
-        extract: {
-          method: card.querySelector('.slot-type').value,
-          rule: card.querySelector('.slot-rule').value.trim(),
-          ner_type: card.querySelector('.slot-ner-type').value || null
-        },
-        required: card.querySelector('.slot-required-check').checked,
+        prompt: row.querySelector('.slot-prompt').value.trim(),
+        extract_type: row.querySelector('.slot-type').value,
+        extract_rule: row.querySelector('.slot-rule').value.trim(),
+        required: row.querySelector('.slot-required').checked,
       });
     });
     var action = document.getElementById('tf-action').value || 'complete_message';
@@ -3421,8 +2936,9 @@
     var steps = [];
     slots.forEach(function(s, i) {
       steps.push({
-        key: 'collect_' + s.key, type: 'collect', slot_key: s.key,
+        key: 'collect_' + s.key, type: 'collect', slot_key: s.key, label: s.label, required: s.required !== false,
         prompt: s.prompt || ('请提供' + s.label),
+        extract: { method: s.extract_type || 'text', rule: s.extract_rule || '' },
         next: i < slots.length - 1 ? 'collect_' + slots[i+1].key : 'confirm_step',
       });
     });
@@ -3430,7 +2946,7 @@
     steps.push({ key: 'submit', type: 'action', action: action, done_message: msg });
     var container = document.getElementById('tf-steps');
     container.innerHTML = buildStepRows(steps);
-    container.querySelectorAll('.step-card').forEach(bindStepRowEvents);
+    container.querySelectorAll('.step-row').forEach(bindStepRowEvents);
   }
 
   // 流程链预览：从起点按 next 渲染步骤链（分支显示条件出口）
@@ -3521,6 +3037,520 @@
     if (!s) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
+
+  // ===== 任务管理页面注入（右侧页签模式） =====
+  var tiMenuInjected = false;
+  var tiPageActive = false;
+  var tiMenuObs = new MutationObserver(function(){
+    if (tiMenuInjected) return;
+    var menu = document.querySelector('.el-menu');
+    if (!menu) return;
+    if (menu.querySelector('[data-ti-menu]')) { tiMenuInjected = true; return; }
+    var items = menu.querySelectorAll('.el-menu-item');
+    var ref = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].textContent.indexOf('规则引擎') >= 0) { ref = items[i]; break; }
+    }
+    var el = document.createElement('li');
+    el.className = 'el-menu-item';
+    el.setAttribute('data-ti-menu', '1');
+    el.setAttribute('style', 'cursor:pointer');
+    el.innerHTML = '<i class="el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M512 64a448 448 0 1 0 0 896 448 448 0 0 0 0-896zm-64 256h128v64H448zm0 128h128v64H448zm0 128h128v64H448zM256 320h128v64H256zm0 128h128v64H256zm0 128h128v64H256z"/></svg></i><span>任务管理</span>';
+    el.onclick = function() {
+      menu.querySelectorAll('.el-menu-item').forEach(function(m){ m.classList.remove('is-active'); });
+      el.classList.add('is-active');
+      tiShowPage();
+    };
+    if (ref) menu.insertBefore(el, ref); else menu.appendChild(el);
+    tiMenuInjected = true;
+  });
+  tiMenuObs.observe(document.getElementById('app'), { childList: true, subtree: true });
+
+  // 监听路由变化，当 Vue 切换页面时自动关闭任务管理页签
+  var tiLastHref = location.href;
+  setInterval(function(){
+    if (location.href !== tiLastHref && tiPageActive) {
+      tiLastHref = location.href;
+      tiHidePage();
+    } else {
+      tiLastHref = location.href;
+    }
+  }, 200);
+
+  // 监听所有菜单项点击，点击非任务管理项时自动关闭任务页签
+  document.addEventListener('click', function(e) {
+    var menuItem = e.target.closest('.el-menu-item');
+    if (!menuItem || menuItem.hasAttribute('data-ti-menu')) return;
+    // 点击了其他菜单项，关闭任务管理页签
+    if (tiPageActive) {
+      tiHidePage();
+    }
+  }, true);
+
+  function tiShowPage() {
+    tiPageActive = true;
+    var main = document.querySelector('.el-main.content');
+    if (!main) return;
+    // 隐藏 Vue router-view
+    var rv = main.querySelector('[data-v-]') || main.firstElementChild;
+    if (rv) rv.style.display = 'none';
+    // 创建或显示任务管理页
+    var old = document.getElementById('ti-page');
+    if (old) old.remove();
+    var page = document.createElement('div');
+    page.id = 'ti-page';
+    page.style.cssText = 'height:100%;overflow-y:auto';
+    page.innerHTML =
+      '<div id="ti-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px"></div>' +
+      '<div id="ti-toolbar" style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap"></div>' +
+      '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden">' +
+        '<div id="ti-table-wrap"></div>' +
+        '<div id="ti-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:13px;color:#666"></div>' +
+      '</div>';
+    main.appendChild(page);
+    // 更新顶栏标题
+    var h2 = document.querySelector('.topbar h2');
+    if (h2) h2.textContent = '任务管理';
+    // 加载数据
+    tiLoadTasks(function(){ tiBuildToolbar(); tiLoadStats(); tiLoadData(); });
+  }
+
+  function tiHidePage() {
+    tiPageActive = false;
+    var page = document.getElementById('ti-page');
+    if (page) page.remove();
+    // 恢复 Vue router-view
+    var main = document.querySelector('.el-main.content');
+    if (main) {
+      var rv = main.querySelector('[data-v-]') || main.firstElementChild;
+      if (rv) rv.style.display = '';
+    }
+  }
+
+  // 任务实例状态映射
+  var TI_STATUS = {
+    collecting: { label: '收集中', color: '#4361ee' },
+    confirming: { label: '确认中', color: '#e67e22' },
+    executing:  { label: '执行中', color: '#333' },
+    suspended:  { label: '挂起', color: '#999' },
+    done:       { label: '已完成', color: '#2ecc71' },
+    cancelled:  { label: '已取消', color: '#e74c3c' },
+    transferred:{ label: '已转人工', color: '#e67e22' }
+  };
+  function tiStatusTag(s) {
+    var m = TI_STATUS[s] || { label: s, color: '#999' };
+    return '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;background:' + m.color + '18;color:' + m.color + '">' + m.label + '</span>';
+  }
+
+  var tiState = { page: 1, total: 0, totalPages: 1, items: [], stats: {}, filter: { status: '', taskCode: '', date: '', keyword: '' }, tasks: [] };
+
+  function tiLoadTasks(cb) {
+    api('GET', '/api/tasks', null, function(res) {
+      tiState.tasks = (res.success ? res.data : []) || [];
+      if (cb) cb();
+    });
+  }
+
+  function tiLoadStats() {
+    api('GET', '/api/task-instances/stats', null, function(res) {
+      if (res.success) {
+        tiState.stats = res.data || {};
+        tiRenderStats();
+      }
+    });
+  }
+
+  function tiRenderStats() {
+    var s = tiState.stats;
+    var cards = [
+      { label: '进行中', value: s.active || 0, sub: '收集中/确认中/执行中/挂起', color: '#4361ee' },
+      { label: '已完成', value: s.done || 0, sub: '', color: '#2ecc71' },
+      { label: '已取消', value: s.cancelled || 0, sub: '', color: '#e74c3c' },
+      { label: '今日触发', value: s.todayTotal || 0, sub: '', color: '#f39c12' }
+    ];
+    var html = '';
+    cards.forEach(function(c) {
+      html += '<div style="background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.06);border-left:4px solid ' + c.color + '">' +
+        '<div style="font-size:13px;color:#666">' + c.label + '</div>' +
+        '<div style="font-size:28px;font-weight:700;color:' + c.color + ';margin:4px 0">' + c.value + '</div>' +
+        (c.sub ? '<div style="font-size:11px;color:#aaa">' + c.sub + '</div>' : '') +
+      '</div>';
+    });
+    var el = document.getElementById('ti-stats');
+    if (el) el.innerHTML = html;
+  }
+
+  function tiBuildToolbar() {
+    var el = document.getElementById('ti-toolbar');
+    if (!el) return;
+    var statusOpts = [['','全部状态'],['collecting','收集中'],['confirming','确认中'],['executing','执行中'],['suspended','挂起'],['done','已完成'],['cancelled','已取消'],['transferred','已转人工']];
+    var taskOpts = '<option value="">全部任务</option>';
+    tiState.tasks.forEach(function(t){ taskOpts += '<option value="' + esc(t.code) + '">' + esc(t.name) + '</option>'; });
+    el.innerHTML =
+      '<select id="ti-f-status" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+        statusOpts.map(function(o){ return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join('') +
+      '</select>' +
+      '<select id="ti-f-task" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:160px">' + taskOpts + '</select>' +
+      '<input id="ti-f-date" type="date" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:150px">' +
+      '<input id="ti-f-keyword" placeholder="搜索触发原文/任务名/会话ID..." style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;width:240px">' +
+      '<button class="btn-sm" id="ti-search-btn">搜索</button>' +
+      '<div style="flex:1"></div>' +
+      '<span id="ti-total-label" style="font-size:12px;color:#888"></span>';
+    el.querySelector('#ti-search-btn').onclick = function(){ tiReadFilter(); tiState.page = 1; tiLoadData(); tiLoadStats(); };
+  }
+
+  function tiReadFilter() {
+    var el = document.getElementById('ti-toolbar');
+    if (!el) return;
+    tiState.filter.status = el.querySelector('#ti-f-status').value;
+    tiState.filter.taskCode = el.querySelector('#ti-f-task').value;
+    tiState.filter.date = el.querySelector('#ti-f-date').value;
+    tiState.filter.keyword = el.querySelector('#ti-f-keyword').value;
+  }
+
+  function tiLoadData() {
+    var f = tiState.filter;
+    var qs = '?page=' + tiState.page + '&pageSize=20';
+    if (f.status) qs += '&status=' + f.status;
+    if (f.taskCode) qs += '&taskCode=' + f.taskCode;
+    if (f.date) qs += '&date=' + f.date;
+    if (f.keyword) qs += '&keyword=' + encodeURIComponent(f.keyword);
+    api('GET', '/api/task-instances' + qs, null, function(res) {
+      if (res.success) {
+        tiState.items = res.data.items || [];
+        tiState.total = res.data.total || 0;
+        tiState.totalPages = res.data.totalPages || 1;
+        tiState.page = res.data.page || tiState.page;
+        tiRenderTable();
+        tiRenderPagination();
+        var lbl = document.getElementById('ti-total-label');
+        if (lbl) lbl.textContent = '共 ' + tiState.total + ' 条记录';
+      }
+    });
+  }
+
+  function tiRenderTable() {
+    var el = document.getElementById('ti-table-wrap');
+    if (!el) return;
+    if (!tiState.items.length) {
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:#aaa">暂无数据</div>';
+      return;
+    }
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:#fafbfc;border-bottom:2px solid #eee;text-align:left">' +
+      '<th style="padding:10px 8px;width:40px">#</th>' +
+      '<th style="padding:10px 8px;width:100px">用户名</th>' +
+      '<th style="padding:10px 8px;min-width:150px">会话ID</th>' +
+      '<th style="padding:10px 8px;min-width:140px">任务名称</th>' +
+      '<th style="padding:10px 8px;min-width:160px">触发原文</th>' +
+      '<th style="padding:10px 8px;width:90px;text-align:center">状态</th>' +
+      '<th style="padding:10px 8px;min-width:100px">当前步骤</th>' +
+      '<th style="padding:10px 8px;width:60px;text-align:center">轮次</th>' +
+      '<th style="padding:10px 8px;width:160px">开始时间</th>' +
+      '<th style="padding:10px 8px;width:200px;text-align:center">操作</th>' +
+      '</tr></thead><tbody>';
+    tiState.items.forEach(function(row, idx) {
+      var bg = idx % 2 === 0 ? '#fff' : '#fafbfc';
+      var isActive = ['collecting','confirming','executing','suspended'].indexOf(row.status) >= 0;
+      html += '<tr style="background:' + bg + ';border-bottom:1px solid #f0f0f0">' +
+        '<td style="padding:10px 8px">' + ((tiState.page - 1) * 20 + idx + 1) + '</td>' +
+        '<td style="padding:10px 8px">' + esc(row.user_id || '-') + '</td>' +
+        '<td style="padding:10px 8px;font-family:monospace;font-size:12px;color:#888;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(row.session_id) + '">' + esc(row.session_id) + '</td>' +
+        '<td style="padding:10px 8px"><span style="font-weight:500">' + esc(row.task_name) + '</span><div style="font-size:11px;color:#999;margin-top:2px">' + esc(row.task_code) + '</div></td>' +
+        '<td style="padding:10px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(row.trigger_text) + '">' + esc(row.trigger_text || '-') + '</td>' +
+        '<td style="padding:10px 8px;text-align:center">' + tiStatusTag(row.status) + '</td>' +
+        '<td style="padding:10px 8px">' + esc(row.current_step || '-') + '</td>' +
+        '<td style="padding:10px 8px;text-align:center">' + (row.turn_count || 0) + '</td>' +
+        '<td style="padding:10px 8px">' + esc(row.started_at || '') + '</td>' +
+        '<td style="padding:10px 8px;text-align:center">' +
+          '<button class="btn-sm" onclick="tiShowDetail(' + row.id + ')" style="margin:0 2px">详情</button>' +
+          '<button class="btn-sm" onclick="tiShowRemark(' + row.id + ')" style="margin:0 2px">标注</button>' +
+          (isActive ? '<button class="btn-sm" onclick="tiCancel(' + row.id + ')" style="margin:0 2px;color:#e74c3c">取消</button>' : '') +
+          '<button class="btn-sm" onclick="tiDelete(' + row.id + ')" style="margin:0 2px;color:#e74c3c">删除</button>' +
+        '</td></tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  }
+
+  function tiRenderPagination() {
+    var el = document.getElementById('ti-pagination');
+    if (!el) return;
+    el.innerHTML = '<span>第 ' + tiState.page + '/' + tiState.totalPages + ' 页，共 ' + tiState.total + ' 条</span>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button class="btn-sm" id="ti-prev" ' + (tiState.page <= 1 ? 'disabled' : '') + '>上一页</button>' +
+        '<button class="btn-sm" id="ti-next" ' + (tiState.page >= tiState.totalPages ? 'disabled' : '') + '>下一页</button>' +
+      '</div>';
+    var prev = el.querySelector('#ti-prev');
+    var next = el.querySelector('#ti-next');
+    if (prev) prev.onclick = function(){ tiState.page--; tiReadFilter(); tiLoadData(); };
+    if (next) next.onclick = function(){ tiState.page++; tiReadFilter(); tiLoadData(); };
+  }
+
+  window.tiShowDetail = function(id) {
+    api('GET', '/api/task-instances/' + id, null, function(res) {
+      if (!res.success) { alert('加载失败'); return; }
+      var d = res.data;
+      var slotHtml = '';
+      if (d.slots && typeof d.slots === 'object' && Object.keys(d.slots).length) {
+        slotHtml = '<div style="margin-top:16px"><h4 style="font-size:14px;margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">槽位信息</h4><table style="width:100%;font-size:13px;border-collapse:collapse">' +
+          '<tr style="background:#fafbfc"><th style="padding:6px 8px;text-align:left">字段</th><th style="padding:6px 8px;text-align:left">标签</th><th style="padding:6px 8px;text-align:left">值</th><th style="padding:6px 8px;text-align:center">状态</th></tr>';
+        Object.keys(d.slots).forEach(function(k) {
+          var s = d.slots[k];
+          slotHtml += '<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:6px 8px">' + esc(k) + '</td><td style="padding:6px 8px">' + esc(s.label || k) + '</td><td style="padding:6px 8px">' + (s.filled ? esc(s.value) : '<span style="color:#ccc;font-style:italic">(未填写)</span>') + '</td><td style="padding:6px 8px;text-align:center">' + (s.filled ? '<span style="color:#2ecc71">已填</span>' : '<span style="color:#999">待填</span>') + '</td></tr>';
+        });
+        slotHtml += '</table></div>';
+      }
+      var detail = document.createElement('div');
+      detail.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999999;display:flex;align-items:center;justify-content:center';
+      detail.innerHTML = '<div style="background:#fff;border-radius:12px;width:640px;max-height:80vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h3 style="margin:0;font-size:16px">任务实例详情</h3><button class="btn-sm" id="ti-det-close">&times;</button></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">' +
+          '<div><span style="color:#999;font-size:12px">任务名称</span><div>' + esc(d.task_name) + ' (' + esc(d.task_code) + ')</div></div>' +
+          '<div><span style="color:#999;font-size:12px">状态</span><div>' + tiStatusTag(d.status) + '</div></div>' +
+          '<div><span style="color:#999;font-size:12px">会话ID</span><div style="font-family:monospace;font-size:12px">' + esc(d.session_id) + '</div></div>' +
+          '<div><span style="color:#999;font-size:12px">触发原文</span><div>' + esc(d.trigger_text || '-') + '</div></div>' +
+          '<div><span style="color:#999;font-size:12px">当前步骤</span><div>' + esc(d.current_step || '-') + '</div></div>' +
+          '<div><span style="color:#999;font-size:12px">对话轮次</span><div>' + (d.turn_count || 0) + '</div></div>' +
+          '<div><span style="color:#999;font-size:12px">开始时间</span><div>' + esc(d.started_at || '') + '</div></div>' +
+          '<div><span style="color:#999;font-size:12px">最后更新</span><div>' + esc(d.updated_at || '') + '</div></div>' +
+        '</div>' +
+        slotHtml +
+        '<div style="margin-top:16px"><h4 style="font-size:14px;margin:0 0 8px;border-bottom:1px solid #eee;padding-bottom:6px">管理员标注</h4>' +
+          '<textarea id="ti-det-remark" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical">' + esc(d.remark || '') + '</textarea>' +
+          '<button class="btn-sm" id="ti-det-save" style="margin-top:8px">保存标注</button>' +
+        '</div>' +
+      '</div>';
+      document.body.appendChild(detail);
+      detail.querySelector('#ti-det-close').onclick = function(){ detail.remove(); };
+      detail.querySelector('#ti-det-save').onclick = function() {
+        var rm = detail.querySelector('#ti-det-remark').value;
+        api('PUT', '/api/task-instances/' + id, { remark: rm }, function(r) {
+          if (r.success) { alert('标注已保存'); detail.remove(); } else { alert('保存失败'); }
+        });
+      };
+    });
+  };
+
+  window.tiShowRemark = function(id) {
+    var rm = prompt('输入标注内容:');
+    if (rm === null) return;
+    api('PUT', '/api/task-instances/' + id, { remark: rm }, function(res) {
+      if (res.success) { alert('标注已保存'); tiLoadData(); } else { alert('保存失败'); }
+    });
+  };
+
+  window.tiCancel = function(id) {
+    if (!confirm('确认取消该任务实例？')) return;
+    api('POST', '/api/task-instances/' + id + '/cancel', {}, function(res) {
+      if (res.success) { tiLoadData(); tiLoadStats(); } else { alert(res.message || '取消失败'); }
+    });
+  };
+
+  window.tiDelete = function(id) {
+    if (!confirm('确认删除该任务实例记录？')) return;
+    api('DELETE', '/api/task-instances/' + id, null, function(res) {
+      if (res.success) { tiLoadData(); tiLoadStats(); } else { alert(res.message || '删除失败'); }
+    });
+  };
+})();
+
+// ===== 最近咨询记录：覆盖为会话维度表格 =====
+(function(){
+  var recentState = { page: 1, total: 0, totalPages: 1, items: [], sort: { field: 'time', order: 'desc' }, date: '', keyword: '', loading: false };
+  var recentDates = [];
+
+  // API helper
+  function recentApi(path, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', path, true);
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 400) {
+        try { cb(JSON.parse(xhr.responseText)); } catch(e) { console.error('[recentApi] parse error', e); cb({}); }
+      } else { console.error('[recentApi] status', xhr.status, path); cb({}); }
+    };
+    xhr.onerror = function() { console.error('[recentApi] network error', path); cb({}); };
+    xhr.send();
+  }
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function escJs(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+
+  function loadDates() {
+    recentApi('/api/chat-log/recent-dates', function(data) {
+      recentDates = Array.isArray(data) ? data : [];
+    });
+  }
+
+  function loadRecent() {
+    recentState.loading = true;
+    var params = 'page=' + recentState.page + '&pageSize=20';
+    if (recentState.date) params += '&date=' + encodeURIComponent(recentState.date);
+    if (recentState.keyword) params += '&keyword=' + encodeURIComponent(recentState.keyword);
+    params += '&sortBy=' + recentState.sort.field + '&sortOrder=' + recentState.sort.order;
+    recentApi('/api/chat-log/recent?' + params, function(data) {
+      recentState.loading = false;
+      recentState.items = data.items || [];
+      recentState.total = data.total || 0;
+      recentState.totalPages = data.totalPages || 1;
+      renderRecentTable();
+    });
+  }
+
+  // Build the session table HTML
+  function buildTableHtml() {
+    var items = recentState.items;
+    var html = '';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px">';
+    html += '<thead><tr style="background:#fafafa;border-bottom:2px solid #eee">';
+    html += '<th style="padding:10px 8px;text-align:left;width:4%">#</th>';
+    html += '<th style="padding:10px 8px;text-align:left;width:10%">用户</th>';
+    html += '<th style="padding:10px 8px;text-align:left;width:6%">消息数</th>';
+    html += '<th style="padding:10px 8px;text-align:left;width:22%">首次提问</th>';
+    html += '<th style="padding:10px 8px;text-align:left;width:24%">最后回答</th>';
+    html += '<th style="padding:10px 8px;text-align:left;width:12%">开始时间</th>';
+    html += '<th style="padding:10px 8px;text-align:left;width:12%">最后时间</th>';
+    html += '<th style="padding:10px 8px;text-align:center;width:10%">操作</th>';
+    html += '</tr></thead><tbody>';
+    if (!items.length) {
+      html += '<tr><td colspan="8" style="text-align:center;padding:30px;color:#ccc">暂无数据</td></tr>';
+    } else {
+      items.forEach(function(item, i) {
+        var idx = (recentState.page - 1) * 20 + i + 1;
+        html += '<tr style="border-bottom:1px solid #f0f0f0">';
+        html += '<td style="padding:8px">' + idx + '</td>';
+        html += '<td style="padding:8px">' + esc(item.userId || '-') + '</td>';
+        html += '<td style="padding:8px;text-align:center"><span style="background:#eef2ff;color:#4361ee;padding:2px 8px;border-radius:10px;font-size:12px">' + item.msgCount + '</span></td>';
+        html += '<td style="padding:8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(item.firstQuestion) + '">' + esc(item.firstQuestion) + '</td>';
+        html += '<td style="padding:8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#666" title="' + esc(item.lastAnswer) + '">' + esc(item.lastAnswer || '-') + '</td>';
+        html += '<td style="padding:8px;font-size:12px;color:#888">' + esc(item.startTime) + '</td>';
+        html += '<td style="padding:8px;font-size:12px;color:#888">' + esc(item.lastTime) + '</td>';
+        html += '<td style="padding:8px;text-align:center"><button onclick="recentShowDetail(\'' + escJs(item.sessionId) + '\')" style="color:#4361ee;border:1px solid #4361ee;background:transparent;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px">查看对话</button></td>';
+        html += '</tr>';
+      });
+    }
+    html += '</tbody></table>';
+    // Pagination
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:13px;color:#666">';
+    html += '<span>共 ' + recentState.total + ' 个会话</span>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<button onclick="recentPage(1)" ' + (recentState.page<=1?'disabled':'') + ' style="padding:4px 10px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer">首页</button>';
+    html += '<button onclick="recentPage(' + (recentState.page-1) + ')" ' + (recentState.page<=1?'disabled':'') + ' style="padding:4px 10px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer">上一页</button>';
+    html += '<span style="padding:4px 10px">第 ' + recentState.page + ' / ' + recentState.totalPages + ' 页</span>';
+    html += '<button onclick="recentPage(' + (recentState.page+1) + ')" ' + (recentState.page>=recentState.totalPages?'disabled':'') + ' style="padding:4px 10px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer">下一页</button>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function renderRecentTable() {
+    var overlay = document.getElementById('recent-session-overlay');
+    if (!overlay) return;
+    overlay.innerHTML = buildTableHtml();
+  }
+
+  // Global page handler
+  window.recentPage = function(p) {
+    recentState.page = p;
+    loadRecent();
+  };
+
+  // Show session detail
+  window.recentShowDetail = function(sessionId) {
+    recentApi('/api/chat-log/session/' + encodeURIComponent(sessionId), function(res) {
+      if (!res.success || !res.data) { alert('加载失败'); return; }
+      var d = res.data;
+      var html = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999999;display:flex;align-items:center;justify-content:center" id="recent-detail-overlay">';
+      html += '<div style="background:#fff;border-radius:12px;width:700px;max-height:80vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h3 style="margin:0;font-size:16px">会话详情</h3><button onclick="document.getElementById(\'recent-detail-overlay\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer">&times;</button></div>';
+      html += '<div style="font-size:13px;color:#666;margin-bottom:12px">会话ID: <span style="font-family:monospace">' + esc(d.sessionId) + '</span> | 用户: ' + esc(d.userId || '-') + ' | 共 ' + d.msgCount + ' 条消息</div>';
+      html += '<div style="border:1px solid #eee;border-radius:8px;overflow:hidden">';
+      d.messages.forEach(function(msg, i) {
+        html += '<div style="padding:12px;border-bottom:1px solid #f0f0f0;background:' + (i%2?'#fafafa':'#fff') + '">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        html += '<span style="font-size:12px;color:#999">' + esc(msg.time) + '</span>';
+        if (msg.intent) html += '<span style="font-size:11px;background:#eef2ff;color:#4361ee;padding:1px 6px;border-radius:8px">' + esc(msg.intent) + ' (' + (msg.confidence*100).toFixed(0) + '%)</span>';
+        html += '</div>';
+        html += '<div style="font-size:13px"><b style="color:#333">Q:</b> ' + esc(msg.question) + '</div>';
+        html += '<div style="font-size:13px;color:#555;margin-top:4px"><b>A:</b> ' + esc(msg.answer || '-') + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div></div>';
+      var container = document.createElement('div');
+      container.innerHTML = html;
+      document.body.appendChild(container.firstChild);
+    });
+  };
+
+  // Create overlay at body level (outside Vue app entirely)
+  var overlayContainer = document.createElement('div');
+  overlayContainer.id = 'recent-session-overlay';
+  overlayContainer.style.cssText = 'display:none;position:absolute;z-index:100;background:#fff;overflow:auto';
+  document.body.appendChild(overlayContainer);
+
+  // MutationObserver: detect when "最近咨询记录" tab is active
+  var recentObs = new MutationObserver(function() {
+    var tabs = document.querySelectorAll('.sub-tab');
+    var isRecent = false;
+    tabs.forEach(function(t) { if (t.textContent.indexOf('最近咨询') >= 0 && t.classList.contains('active')) isRecent = true; });
+
+    if (!isRecent) {
+      overlayContainer.style.display = 'none';
+      // Restore Vue elements visibility
+      var tableWraps = document.querySelectorAll('.table-wrap');
+      tableWraps.forEach(function(tw) { tw.style.display = ''; });
+      var toolbars = document.querySelectorAll('.toolbar');
+      toolbars.forEach(function(t) { t.style.display = ''; });
+      var pags = document.querySelectorAll('.pagination');
+      pags.forEach(function(p) { p.style.display = ''; });
+      return;
+    }
+
+    // Find the .table-wrap
+    var tableWrap = document.querySelector('.table-wrap');
+    if (!tableWrap) return;
+
+    // Measure position BEFORE hiding
+    requestAnimationFrame(function() {
+      var rect = tableWrap.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        // Layout not ready, retry
+        setTimeout(function() {
+          var rect2 = tableWrap.getBoundingClientRect();
+          if (rect2.width > 0) applyOverlay(rect2);
+        }, 100);
+        return;
+      }
+      applyOverlay(rect);
+    });
+
+    function applyOverlay(rect) {
+      // Now hide Vue's elements
+      tableWrap.style.display = 'none';
+      var toolbar = tableWrap.previousElementSibling;
+      if (toolbar && toolbar.className && toolbar.className.indexOf('toolbar') >= 0) {
+        toolbar.style.display = 'none';
+      }
+      var pagination = tableWrap.nextElementSibling;
+      if (pagination && pagination.className && pagination.className.indexOf('pagination') >= 0) {
+        pagination.style.display = 'none';
+      }
+      // Position and show overlay - extend height to fill available space
+      overlayContainer.style.top = rect.top + 'px';
+      overlayContainer.style.left = rect.left + 'px';
+      overlayContainer.style.width = rect.width + 'px';
+      // Use remaining viewport height (from overlay top to bottom of screen, minus small margin)
+      var availableHeight = window.innerHeight - rect.top - 20;
+      overlayContainer.style.height = Math.max(availableHeight, 400) + 'px';
+      overlayContainer.style.display = 'block';
+    }
+
+    // If we haven't loaded data yet, do it now
+    if (!recentState.items.length && !recentState.loading) {
+      loadDates();
+      loadRecent();
+    }
+  });
+  recentObs.observe(document.getElementById('app'), { childList: true, subtree: true });
 })();
 </script>
 </body>

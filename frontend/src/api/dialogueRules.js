@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const http = axios.create({ baseURL: '', timeout: 15000 })
+import http from '@/utils/http'
 
 export const getDialogueRules = () => http.get('/api/dialogue-rules').then(r => r.data)
 export const saveDialogueRules = (data) => http.post('/api/dialogue-rules', data).then(r => r.data)

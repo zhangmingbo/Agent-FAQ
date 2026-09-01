@@ -1,6 +1,13 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { isLoggedIn } from '@/utils/auth'
 
 const routes = [
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login.vue'),
+    meta: { title: '登录', public: true },
+  },
   {
     path: '/',
     name: 'Dashboard',
@@ -54,6 +61,15 @@ const routes = [
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
+})
+
+// 路由守卫：未登录跳转登录页
+router.beforeEach((to, from, next) => {
+  if (!to.meta.public && !isLoggedIn()) {
+    next('/login')
+  } else {
+    next()
+  }
 })
 
 export default router

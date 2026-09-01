@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const http = axios.create({ baseURL: '', timeout: 30000 })
+import http from '@/utils/http'
 
 export const getAnalysis = () => http.get('/api/analysis').then(r => r.data)
 export const getSuggest = (text) => http.post('/api/analysis/suggest', { text }).then(r => r.data)

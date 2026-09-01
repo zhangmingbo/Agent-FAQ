@@ -19,25 +19,25 @@
     <!-- FAQ 总览表格 -->
     <div class="faq-table">
       <el-table :data="store.faqList" stripe style="width: 100%">
-        <el-table-column prop="code" label="编码" width="18%">
+        <el-table-column prop="code" label="编码" min-width="160">
           <template #default="{ row }">
             <code>{{ row.code }}</code>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" width="30%" />
-        <el-table-column label="分类" width="14%" align="center">
+        <el-table-column prop="name" label="名称" min-width="200" />
+        <el-table-column label="分类" width="120" align="center">
           <template #default="{ row }">
             <el-tag size="small" type="primary">{{ store.getCategoryName(row.categoryId) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="questionCount" label="相似问数" width="10%" align="center" />
-        <el-table-column label="答案" width="8%" align="center">
+        <el-table-column prop="questionCount" label="相似问数" width="100" align="center" />
+        <el-table-column label="答案" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.hasAnswer" size="small" type="success">有</el-tag>
             <el-tag v-else size="small" type="danger">无</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="富内容" width="8%" align="center">
+        <el-table-column label="富内容" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.hasRichContent" size="small" type="primary">有</el-tag>
             <span v-else>-</span>

@@ -27,17 +27,17 @@
       <div class="faq-table-wrap">
         <el-table :data="displayList" stripe style="width:100%" @sort-change="handleSortChange">
           <el-table-column type="index" label="#" width="50" />
-          <el-table-column prop="code" label="编码" sortable="custom" width="12%">
+          <el-table-column prop="code" label="编码" sortable="custom" min-width="120">
             <template #default="{ row }"><code>{{ row.code }}</code></template>
           </el-table-column>
-          <el-table-column prop="name" label="名称" sortable="custom" width="18%" />
-          <el-table-column label="分类" sortable="custom" prop="category" width="12%">
+          <el-table-column prop="name" label="名称" sortable="custom" min-width="160" />
+          <el-table-column label="分类" sortable="custom" prop="category" width="120">
             <template #default="{ row }">
               <el-tag size="small" type="primary">{{ store.getCategoryName(row.categoryId) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="questionCount" label="相似问数" sortable="custom" width="10%" align="center" />
-          <el-table-column label="答案预览" min-width="20%">
+          <el-table-column prop="questionCount" label="相似问数" sortable="custom" width="90" align="center" />
+          <el-table-column label="答案预览" min-width="200">
             <template #default="{ row }">
               <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">{{ row.answerPreview || '-' }}</span>
             </template>

@@ -153,7 +153,7 @@ export async function getDates(type, maxConfidence = 0.7) {
 }
 
 /**
- * 最近咨询记录（分页/日期/搜索/排序）
+ * 最近咨询记录（按会话聚合，分页/日期/搜索/排序）
  */
 export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'desc', page = 1, pageSize = 20 }) {
   let where = 'WHERE meaningful = 1'
@@ -168,21 +168,25 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
     params.push(`%${keyword}%`)
   }
 
+  // 按会话聚合计数
   const [countRows] = await pool.execute(
-    `SELECT COUNT(*) as total FROM chat_log ${where}`, params
+    `SELECT COUNT(DISTINCT session_id) as total FROM chat_log ${where}`, params
   )
   const total = countRows[0].total
 
-  const orderMap = { time: 'created_at', text: 'user_text', userId: 'user_id', confidence: 'confidence', intent: 'intent_code', source: 'source' }
-  const orderField = orderMap[sortBy] || 'created_at'
+  const orderMap = { time: 'last_time', msgCount: 'msg_count', userId: 'user_id' }
+  const orderField = orderMap[sortBy] || 'last_time'
   const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC'
 
   const offset = (parseInt(page) - 1) * parseInt(pageSize)
   const [rows] = await pool.execute(
-    `SELECT user_id, user_text, intent_code, confidence, source,
-            DATE_FORMAT(created_at, '%Y/%c/%e %H:%i:%s') as created_at,
-            answer
+    `SELECT session_id, ANY_VALUE(user_id) as user_id, COUNT(*) as msg_count,
+            DATE_FORMAT(MIN(created_at), '%Y/%c/%e %H:%i:%s') as start_time,
+            DATE_FORMAT(MAX(created_at), '%Y/%c/%e %H:%i:%s') as last_time,
+            SUBSTRING_INDEX(GROUP_CONCAT(user_text ORDER BY created_at ASC SEPARATOR '|||'), '|||', 1) as first_question,
+            SUBSTRING_INDEX(GROUP_CONCAT(answer ORDER BY created_at DESC SEPARATOR '|||'), '|||', 1) as last_answer
      FROM chat_log ${where}
+     GROUP BY session_id
      ORDER BY ${orderField} ${orderDir}
      LIMIT ${parseInt(pageSize)} OFFSET ${offset}`,
     params
@@ -194,13 +198,13 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
     pageSize: parseInt(pageSize),
     totalPages: Math.ceil(total / parseInt(pageSize)),
     items: rows.map(r => ({
+      sessionId: r.session_id,
       userId: r.user_id,
-      text: r.user_text,
-      intent: r.intent_code,
-      confidence: parseFloat(r.confidence),
-      source: r.source,
-      time: r.created_at,
-      answer: r.answer,
+      msgCount: r.msg_count,
+      startTime: r.start_time,
+      lastTime: r.last_time,
+      firstQuestion: r.first_question,
+      lastAnswer: r.last_answer,
     })),
   }
 }
@@ -217,6 +221,33 @@ export async function getRecentDates() {
      LIMIT 30`
   )
   return rows.map(r => ({ date: r.date, count: r.cnt }))
+}
+
+/**
+ * 获取某个会话的完整对话记录
+ */
+export async function getSessionDetail(sessionId) {
+  const [rows] = await pool.execute(
+    `SELECT user_id, user_text, intent_code, confidence, source, answer,
+            DATE_FORMAT(created_at, '%H:%i:%s') as time
+     FROM chat_log WHERE session_id = ? AND meaningful = 1
+     ORDER BY created_at ASC`,
+    [sessionId]
+  )
+  if (!rows.length) return null
+  return {
+    sessionId,
+    userId: rows[0].user_id,
+    msgCount: rows.length,
+    messages: rows.map(r => ({
+      question: r.user_text,
+      answer: r.answer,
+      intent: r.intent_code,
+      confidence: parseFloat(r.confidence || 0),
+      source: r.source,
+      time: r.time,
+    })),
+  }
 }
 
 /**

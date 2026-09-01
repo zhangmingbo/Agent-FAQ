@@ -23,6 +23,7 @@ import traceService from '../traceService.js'
 import { ensureActionLogTable } from './actionRegistry.js'
 import { TaskState, validateTransitions } from './stateMachine.js'
 import * as configRepo from '../../repositories/configRepo.js'
+import instanceStore from './instanceStore.js'
 
 const SESSION_TTL = 30 * 60 * 1000 // 30 分钟（默认；运营可通过 sys_config.task_session_ttl_minutes 覆盖）
 
@@ -91,6 +92,9 @@ class TaskFlowEngine {
 
     // 1.5) 动作输出审计表（action_log）
     await ensureActionLogTable()
+
+    // 1.6) 任务实例表（task_instance）
+    await instanceStore.ensureTable()
 
     // 2) 加载任务定义（含 v1 → v2 迁移）
     const count = await TaskDefs.loadTasks()
@@ -174,11 +178,12 @@ class TaskFlowEngine {
    * @param {Array|null} trace - 轨迹步骤数组（调试用，可选）
    * @returns {Object} taskState
    */
-  startTask(sessionId, taskDef, trace = null) {
+  startTask(sessionId, taskDef, trace = null, triggerText = '', userId = null) {
     const state = {
       sessionId,
       taskCode: taskDef.code,
       taskName: taskDef.name,
+      userId,
       status: TaskState.COLLECTING,
       currentStep: taskDef.steps[0]?.key || null,
       slots: this.dialog.initSlots(taskDef),
@@ -192,6 +197,20 @@ class TaskFlowEngine {
     this._persist(sessionId, state)
     traceService.traceStep(trace, '任务开始', { taskCode: taskDef.code, taskName: taskDef.name }, 'task')
     console.log(`[TaskFlow] 任务开始: ${taskDef.code} (${taskDef.name}) @ session ${sessionId}`)
+
+    // 写入任务实例记录
+    instanceStore.create({
+      sessionId,
+      taskCode: taskDef.code,
+      taskName: taskDef.name,
+      triggerText,
+      userId,
+    }).then(id => {
+      state._instanceId = id
+    }).catch(e => {
+      console.warn('[TaskFlow] 写入任务实例失败:', e.message)
+    })
+
     return state
   }
 
@@ -224,6 +243,9 @@ class TaskFlowEngine {
       mode: 'rule',
     }, 'info')
     const result = await this.dialog.processTurn(state, text, trace)
+
+    // 更新任务实例
+    this._updateInstance(state, result)
 
     if (result.isComplete || result.cancelled) {
       this.activeTasks.delete(sessionId)
@@ -370,6 +392,44 @@ class TaskFlowEngine {
         required: !!s.required,
       })),
     }
+  }
+
+  // ========== 任务实例跟踪 ==========
+
+  /**
+   * 更新任务实例记录（每轮对话后调用）
+   */
+  _updateInstance(state, result) {
+    if (!state._instanceId) return
+    const fields = {
+      currentStep: state.currentStep,
+      turnCount: state.turnCount,
+    }
+    // 槽位快照（只取已填值）
+    const slotSnapshot = {}
+    if (state.slots) {
+      for (const [k, s] of Object.entries(state.slots)) {
+        slotSnapshot[k] = { label: s.label, value: s.value, filled: !!s.filled }
+      }
+    }
+    fields.slots = slotSnapshot
+
+    // 状态同步
+    if (result.isComplete) {
+      fields.status = state.status === TaskState.TRANSFERRED ? 'transferred' : 'done'
+      fields.finishedAt = new Date()
+    } else if (result.cancelled) {
+      fields.status = 'cancelled'
+      fields.finishedAt = new Date()
+    } else if (state.suspended) {
+      fields.status = 'suspended'
+    } else {
+      fields.status = state.status
+    }
+
+    instanceStore.update(state._instanceId, fields).catch(e => {
+      console.warn('[TaskFlow] 更新任务实例失败:', e.message)
+    })
   }
 
   // ========== 持久化 ==========

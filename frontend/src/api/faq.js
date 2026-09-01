@@ -1,9 +1,4 @@
-import axios from 'axios'
-
-const http = axios.create({
-  baseURL: '',
-  timeout: 30000,
-})
+import http from '@/utils/http'
 
 // FAQ 管理
 export const getFaqList = () => http.get('/api/faq').then(r => r.data)

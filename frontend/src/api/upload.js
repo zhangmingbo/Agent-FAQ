@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const http = axios.create({ baseURL: '', timeout: 60000 })
+import http from '@/utils/http'
 
 export const uploadFile = (filename, data, type) =>
   http.post('/api/upload', { filename, data, type }).then(r => r.data)

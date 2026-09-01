@@ -71,6 +71,16 @@ export function createRouter(engine) {
     res.json(rows)
   }))
 
+  // 会话详情（查看某个 session 的完整对话记录）
+  router.get('/chat-log/session/:sessionId', asyncHandler(async (req, res) => {
+    const data = await chatLogRepo.getSessionDetail(req.params.sessionId)
+    if (!data) {
+      res.status(404).json({ success: false, message: '会话不存在' })
+      return
+    }
+    res.json({ success: true, data })
+  }))
+
   // 实时问答日志（调试用）
   router.get('/chat-log/live', asyncHandler(async (req, res) => {
     const logs = await chatLogRepo.getLive(req.query)
