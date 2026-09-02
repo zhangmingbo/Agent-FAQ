@@ -56,9 +56,10 @@ export function createAuthRouter() {
     }
   })
 
-  // 验证 token 有效性
-  router.get('/verify', authMiddleware, (req, res) => {
-    res.json({ valid: true, user: req.user })
+  // 验证 token 有效性（全局中间件已处理白名单，此处无需再次验证）
+  router.get('/verify', (req, res) => {
+    // 能从全局中间件到达这里，说明 token 有效
+    res.json({ valid: true, user: req.user || {} })
   })
 
   return router

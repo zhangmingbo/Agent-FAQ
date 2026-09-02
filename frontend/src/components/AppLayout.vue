@@ -1,11 +1,8 @@
 <template>
-  <!-- 登录页：只显示 router-view，无侧边栏 -->
-  <router-view v-if="isLogin" />
-  <!-- 其他页面：带侧边栏的布局 -->
-  <el-container v-else style="height: 100vh">
+  <el-container style="height: 100vh">
     <!-- 侧边栏 -->
     <el-aside width="200px" class="sidebar">
-      <div class="logo"> Argos-智能体平台</div>
+      <div class="logo"> 智能体管理平台</div>
       <el-menu
         :default-active="activeMenu"
         router
@@ -61,10 +58,9 @@ const menuItems = [
 ]
 
 const activeMenu = computed(() => route.path)
-const isLogin = computed(() => route.path === '/login')
 const currentTitle = computed(() => {
   const item = menuItems.find(m => m.path === route.path)
-  return item?.title || 'Argos-智能体平台'
+  return item?.title || '智能体管理平台'
 })
 
 function refresh() {
