@@ -380,13 +380,14 @@
 
     // ===== 启动检查 =====
     if (getToken()) {
-      // 验证 token 是否仍然有效
+      // 验证 token 是否仍然有效（添加时间戳防止缓存）
       var verifyXhr = new OrigXHR();
       verifyXhr._isLoginReq = true;
-      verifyXhr.open('GET', '/api/auth/verify', true);
+      verifyXhr.open('GET', '/api/auth/verify?t=' + Date.now(), true);
       verifyXhr.setRequestHeader('Authorization', 'Bearer ' + getToken());
       verifyXhr.onload = function() {
-        if (verifyXhr.status === 200) {
+        // 接受 200 和 304 状态码
+        if (verifyXhr.status === 200 || verifyXhr.status === 304) {
           try {
             var res = JSON.parse(verifyXhr.responseText);
             if (res.valid) { hideLogin(); return; }
