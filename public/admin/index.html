@@ -292,11 +292,11 @@
       xhr.send(JSON.stringify({ username: username, password: password }));
     });
 
-    // ===== Monkey-patch XMLHttpRequest 注入 Authorization =====
+    // ===== 不再 monkey-patch XHR 注入 Authorization（axios 已自带）=====
+    // 仅保留 401 响应监听，用于 token 过期时显示登录框
     var OrigXHR = XMLHttpRequest;
     var origOpen = OrigXHR.prototype.open;
     var origSend = OrigXHR.prototype.send;
-    var origSetRequestHeader = OrigXHR.prototype.setRequestHeader;
 
     OrigXHR.prototype.open = function(method, url) {
       this._authUrl = url;
@@ -304,18 +304,7 @@
     };
 
     OrigXHR.prototype.send = function() {
-      var token = getToken();
       var self = this;
-
-      // 如果是登录请求，不注入 token
-      if (this._isLoginReq) {
-        return origSend.apply(this, arguments);
-      }
-
-      // 如果有 token 且是 API 请求，注入 Authorization
-      if (token && this._authUrl && this._authUrl.indexOf('/api/') === 0) {
-        try { origSetRequestHeader.call(this, 'Authorization', 'Bearer ' + token); } catch(e) {}
-      }
 
       // 监听 401 响应
       var origOnload = this.onload;
