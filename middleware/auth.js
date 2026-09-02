@@ -56,10 +56,19 @@ export function createAuthRouter() {
     }
   })
 
-  // 验证 token 有效性（全局中间件已处理白名单，此处无需再次验证）
+  // 验证 token 有效性（需要真正验证 token，不能依赖全局白名单）
   router.get('/verify', (req, res) => {
-    // 能从全局中间件到达这里，说明 token 有效
-    res.json({ valid: true, user: req.user || {} })
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ valid: false, message: '未提供认证令牌' })
+    }
+    const token = authHeader.substring(7)
+    try {
+      const decoded = jwt.verify(token, config.auth.secret)
+      res.json({ valid: true, user: decoded })
+    } catch (e) {
+      res.status(401).json({ valid: false, message: '认证令牌无效或已过期' })
+    }
   })
 
   return router
