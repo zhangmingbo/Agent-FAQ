@@ -46,11 +46,11 @@ export function createRouter(engine) {
     const id = parseInt(req.params.id)
 
     if (await categoryRepo.hasChildren(id)) {
-      res.status(400).json({ message: '请先删除子分类' })
+      res.status(400).json({ message: '目录下有子目录，无法删除' })
       return
     }
     if (await categoryRepo.hasFAQs(id)) {
-      res.status(400).json({ message: '请先移除该分类下的 FAQ' })
+      res.status(400).json({ message: '目录下有知识，无法删除' })
       return
     }
 

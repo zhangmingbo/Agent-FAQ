@@ -48,6 +48,37 @@ import { initMatchVocab, getAllMatchVocab, DEFAULT_MATCH_VOCAB } from './service
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
+// ========== 启动时配置验证 ==========
+function validateConfig() {
+  const errors = []
+  
+  // 数据库密码必须设置
+  if (!config.db.password) {
+    errors.push('DB_PASSWORD 环境变量未设置')
+  }
+  
+  // JWT Secret 必须设置
+  if (!config.auth.secret) {
+    errors.push('JWT_SECRET 环境变量未设置')
+  }
+  
+  // 管理员密码必须设置
+  if (!config.auth.defaultAdmin.password) {
+    errors.push('ADMIN_PASS 环境变量未设置')
+  }
+  
+  if (errors.length > 0) {
+    console.error('\n❌ 配置错误:')
+    errors.forEach(err => console.error(`   - ${err}`))
+    console.error('\n请参考 .env.example 文件配置环境变量\n')
+    process.exit(1)
+  }
+  
+  console.log('✅ 配置验证通过')
+}
+
+validateConfig()
+
 // ========== 创建 Express 应用 ==========
 
 const app = express()

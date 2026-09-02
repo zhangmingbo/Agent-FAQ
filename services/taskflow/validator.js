@@ -63,6 +63,14 @@ function _checkRule(rule, value) {
           return { ok: true }
         }
       }
-      return { ok: true }
+      // 兼容前端直接输入的裸正则（如 ^1[3-9]\d{9}$ 或 (维修|安装|其他)）
+      // 特征：含正则元字符，且不匹配任何已知关键字/前缀
+      try {
+        const re = new RegExp(rule, 'i')
+        return re.test(v) ? { ok: true } : { ok: false, message: getReply('validate_format') }
+      } catch {
+        // 无法编译为正则 → 忽略（容错）
+        return { ok: true }
+      }
   }
 }

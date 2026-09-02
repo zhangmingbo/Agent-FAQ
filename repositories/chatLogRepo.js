@@ -19,7 +19,7 @@ export async function log({ sessionId, userId, userText, intentCode, confidence,
  * 未匹配问题列表（分页/日期/搜索/排序）
  */
 export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder = 'desc', page = 1, pageSize = 20, ignored = [] }) {
-  let where = "WHERE intent_code IS NULL AND source IN ('fallback', 'clarify') AND meaningful = 1"
+  let where = "WHERE intent_code IS NULL AND source IN ('fallback', 'clarify') AND meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)"
   const params = []
 
   if (date) {
@@ -35,19 +35,31 @@ export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder 
     params.push(...ignored)
   }
 
+  console.log('[ChatLogRepo] getUnmatched WHERE:', where)
+  console.log('[ChatLogRepo] getUnmatched params:', params)
+
   // 总数
   const [countRows] = await pool.execute(
     `SELECT COUNT(DISTINCT user_text) as total FROM chat_log ${where}`, params
   )
   const total = countRows[0].total
 
-  // 排序
+  // 排序 - 使用白名单验证防止SQL注入
   const orderMap = { count: 'cnt', lastTime: 'last_time', text: 'user_text' }
   const orderField = orderMap[sortBy] || 'cnt'
   const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC'
+  // 白名单验证，只允许预定义的字段
+  const allowedFields = ['cnt', 'last_time', 'user_text']
+  const safeOrderField = allowedFields.includes(orderField) ? orderField : 'cnt'
+  const safeOrderDir = orderDir === 'ASC' ? 'ASC' : 'DESC'
 
   // 分页查询
   const offset = (parseInt(page) - 1) * parseInt(pageSize)
+  const limit = parseInt(pageSize)
+  console.log('[ChatLogRepo] getUnmatched WHERE:', where)
+  console.log('[ChatLogRepo] getUnmatched params:', params)
+  console.log('[ChatLogRepo] getUnmatched limit:', limit, 'offset:', offset)
+    
   const [rows] = await pool.execute(
     `SELECT user_text, COUNT(*) as cnt,
             DATE_FORMAT(MAX(created_at), '%Y/%c/%e %H:%i:%s') as last_time,
@@ -55,8 +67,8 @@ export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder 
             SUBSTRING_INDEX(GROUP_CONCAT(answer ORDER BY created_at DESC SEPARATOR '|||'), '|||', 1) as last_answer
      FROM chat_log ${where}
      GROUP BY user_text
-     ORDER BY ${orderField} ${orderDir}
-     LIMIT ${parseInt(pageSize)} OFFSET ${offset}`,
+     ORDER BY ${safeOrderField} ${safeOrderDir}
+     LIMIT ${limit} OFFSET ${offset}`,
     params
   )
 
@@ -79,7 +91,7 @@ export async function getUnmatched({ date, keyword, sortBy = 'count', sortOrder 
  * 低置信度列表（分页/日期/搜索/排序）
  */
 export async function getLowConfidence({ date, keyword, sortBy = 'confidence', sortOrder = 'asc', page = 1, pageSize = 20, maxConfidence = 0.7, ignored = [] }) {
-  let where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1`
+  let where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)`
   const params = []
 
   if (date) {
@@ -103,15 +115,20 @@ export async function getLowConfidence({ date, keyword, sortBy = 'confidence', s
   const orderMap = { confidence: 'confidence', time: 'created_at', text: 'user_text', intent: 'intent_code' }
   const orderField = orderMap[sortBy] || 'confidence'
   const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC'
+  // 白名单验证
+  const allowedFields = ['confidence', 'created_at', 'user_text', 'intent_code']
+  const safeOrderField = allowedFields.includes(orderField) ? orderField : 'confidence'
+  const safeOrderDir = orderDir === 'ASC' ? 'ASC' : 'DESC'
 
   const offset = (parseInt(page) - 1) * parseInt(pageSize)
+  const limit = parseInt(pageSize)
   const [rows] = await pool.execute(
     `SELECT user_text, intent_code, confidence,
             DATE_FORMAT(created_at, '%Y/%c/%e %H:%i:%s') as created_at,
             answer
      FROM chat_log ${where}
-     ORDER BY ${orderField} ${orderDir}
-     LIMIT ${parseInt(pageSize)} OFFSET ${offset}`,
+     ORDER BY ${safeOrderField} ${safeOrderDir}
+     LIMIT ${limit} OFFSET ${offset}`,
     params
   )
 
@@ -136,11 +153,11 @@ export async function getLowConfidence({ date, keyword, sortBy = 'confidence', s
 export async function getDates(type, maxConfidence = 0.7) {
   let where = ''
   if (type === 'unmatched') {
-    where = "WHERE intent_code IS NULL AND source IN ('fallback', 'clarify') AND meaningful = 1"
+    where = "WHERE intent_code IS NULL AND source IN ('fallback', 'clarify') AND meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)"
   } else if (type === 'low-confidence') {
-    where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1`
+    where = `WHERE confidence > 0 AND confidence < ${parseFloat(maxConfidence)} AND intent_code IS NOT NULL AND meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)`
   } else if (type === 'recent') {
-    where = 'WHERE meaningful = 1'
+    where = 'WHERE meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)'
   }
   const [rows] = await pool.execute(
     `SELECT DISTINCT DATE(created_at) as date, COUNT(*) as cnt
@@ -156,7 +173,7 @@ export async function getDates(type, maxConfidence = 0.7) {
  * 最近咨询记录（按会话聚合，分页/日期/搜索/排序）
  */
 export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'desc', page = 1, pageSize = 20 }) {
-  let where = 'WHERE meaningful = 1'
+  let where = 'WHERE meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)'
   const params = []
 
   if (date) {
@@ -177,8 +194,13 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
   const orderMap = { time: 'last_time', msgCount: 'msg_count', userId: 'user_id' }
   const orderField = orderMap[sortBy] || 'last_time'
   const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC'
+  // 白名单验证
+  const allowedFields = ['last_time', 'msg_count', 'user_id']
+  const safeOrderField = allowedFields.includes(orderField) ? orderField : 'last_time'
+  const safeOrderDir = orderDir === 'ASC' ? 'ASC' : 'DESC'
 
   const offset = (parseInt(page) - 1) * parseInt(pageSize)
+  const limit = parseInt(pageSize)
   const [rows] = await pool.execute(
     `SELECT session_id, ANY_VALUE(user_id) as user_id, COUNT(*) as msg_count,
             DATE_FORMAT(MIN(created_at), '%Y/%c/%e %H:%i:%s') as start_time,
@@ -187,8 +209,8 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
             SUBSTRING_INDEX(GROUP_CONCAT(answer ORDER BY created_at DESC SEPARATOR '|||'), '|||', 1) as last_answer
      FROM chat_log ${where}
      GROUP BY session_id
-     ORDER BY ${orderField} ${orderDir}
-     LIMIT ${parseInt(pageSize)} OFFSET ${offset}`,
+     ORDER BY ${safeOrderField} ${safeOrderDir}
+     LIMIT ${limit} OFFSET ${offset}`,
     params
   )
 
@@ -415,4 +437,29 @@ export async function getFallbackStats() {
      GROUP BY user_text ORDER BY cnt DESC LIMIT 20`
   )
   return rows.map(r => ({ text: r.user_text, count: r.cnt }))
+}
+
+/**
+ * 单条隐藏：根据问题文本隐藏所有相关记录
+ */
+export async function hideByText(text) {
+  const [result] = await pool.execute(
+    'UPDATE chat_log SET is_hidden = 1 WHERE user_text = ?',
+    [text]
+  )
+  return result.affectedRows
+}
+
+/**
+ * 批量隐藏：根据问题文本列表隐藏
+ */
+export async function batchHideByTexts(texts) {
+  if (texts.length === 0) return 0
+  
+  const placeholders = texts.map(() => '?').join(',')
+  const [result] = await pool.execute(
+    `UPDATE chat_log SET is_hidden = 1 WHERE user_text IN (${placeholders})`,
+    texts
+  )
+  return result.affectedRows
 }

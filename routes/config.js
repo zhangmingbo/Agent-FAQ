@@ -11,6 +11,8 @@ import taskSuggestService from '../services/taskSuggestService.js'
 import autoExpandService from '../services/autoExpandService.js'
 import { getAllReplyTexts, setReplyTexts } from '../services/replyTexts.js'
 import { getAllMatchVocab, setMatchVocab } from '../services/matchVocab.js'
+import { getAllCancelWords, setCancelWords } from '../services/cancelWords.js'
+import { getAllNegationWords, setNegationWords } from '../services/negationWords.js'
 import llmClient from '../services/llmClient.js'
 import nerClient from '../services/taskflow/nerClient.js'
 
@@ -117,6 +119,8 @@ export function createRouter(engine) {
       // 固定话术 / 匹配词表（运营可配，sys_config 存储）
       replyTexts: getAllReplyTexts(),
       matchVocab: getAllMatchVocab(),
+      cancelWords: getAllCancelWords(),
+      negationWords: getAllNegationWords(),
       // LLM 调用节点（可视化编辑，sys_config.llm_nodes 存储）
       llmNodes: llmClient.getNodes(),
     })
@@ -234,6 +238,16 @@ export function createRouter(engine) {
     if (body.matchVocab !== undefined) {
       await save('match_vocab', JSON.stringify(body.matchVocab))
       setMatchVocab(body.matchVocab)
+    }
+
+    // ===== 取消关键词 / 否定句防护词表 =====
+    if (body.cancelWords !== undefined) {
+      await save('cancel_words', JSON.stringify(body.cancelWords))
+      setCancelWords(body.cancelWords)
+    }
+    if (body.negationWords !== undefined) {
+      await save('negation_words', JSON.stringify(body.negationWords))
+      setNegationWords(body.negationWords)
     }
 
     // ===== LLM 配置（直接用 body 值构建，无需重新读 DB）=====

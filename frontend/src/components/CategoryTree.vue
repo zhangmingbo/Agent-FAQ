@@ -15,9 +15,12 @@
       <template #default="{ node, data }">
         <div class="tree-node">
           <span>{{ data.name }}</span>
-          <el-tag size="small" :type="data.id === modelValue ? '' : 'info'" round>
-            {{ data.faqCount || 0 }}
-          </el-tag>
+          <div class="tree-node-actions">
+            <el-tag size="small" :type="data.id === modelValue ? '' : 'info'" round>
+              {{ data.faqCount || 0 }}
+            </el-tag>
+            <el-button size="small" text type="danger" @click.stop="handleDelete(data)" class="delete-btn">×</el-button>
+          </div>
         </div>
       </template>
     </el-tree>
@@ -30,10 +33,14 @@ const props = defineProps({
   modelValue: { type: [Number, null], default: null },
 })
 
-const emit = defineEmits(['update:modelValue', 'addCategory'])
+const emit = defineEmits(['update:modelValue', 'addCategory', 'deleteCategory'])
 
 function handleNodeClick(data) {
   emit('update:modelValue', data.id)
+}
+
+function handleDelete(data) {
+  emit('deleteCategory', data)
 }
 </script>
 
@@ -66,5 +73,19 @@ function handleNodeClick(data) {
   align-items: center;
   width: 100%;
   font-size: 13px;
+}
+.tree-node-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.delete-btn {
+  display: none;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+.tree-node:hover .delete-btn {
+  display: inline-flex;
 }
 </style>

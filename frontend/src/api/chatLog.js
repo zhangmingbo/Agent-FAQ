@@ -13,3 +13,9 @@ export const getRecentDates = () =>
   http.get('/api/chat-log/dates', { params: { type: 'recent' } }).then(r => r.data)
 export const getLiveLogs = (params) =>
   http.get('/api/chat-log/live', { params }).then(r => r.data)
+
+// 隐藏功能
+export const hideChatLogByText = (text) =>
+  http.post('/api/chat-log/hide', { text }).then(r => r.data)
+export const batchHideChatLogs = (texts) =>
+  http.post('/api/chat-log/batch-hide', { texts }).then(r => r.data)

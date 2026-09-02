@@ -35,7 +35,8 @@ export function createRouter(engine) {
   // 低置信度列表（已处理的不再展示，原始记录保留）
   router.get('/chat-log/low-confidence', asyncHandler(async (req, res) => {
     const ignored = await getIgnored()
-    const result = await chatLogRepo.getLowConfidence({ ...req.query, maxConfidence: engine.analysisMaxConfidence ?? 0.7, ignored })
+    const maxConf = parseFloat(engine.analysisMaxConfidence) || 0.7
+    const result = await chatLogRepo.getLowConfidence({ ...req.query, maxConfidence: maxConf, ignored })
     res.json(result)
   }))
 
@@ -55,7 +56,8 @@ export function createRouter(engine) {
 
   // 可用日期列表
   router.get('/chat-log/dates', asyncHandler(async (req, res) => {
-    const rows = await chatLogRepo.getDates(req.query.type, engine.analysisMaxConfidence ?? 0.7)
+    const maxConf = parseFloat(engine.analysisMaxConfidence) || 0.7
+    const rows = await chatLogRepo.getDates(req.query.type, maxConf)
     res.json(rows)
   }))
 
@@ -85,6 +87,44 @@ export function createRouter(engine) {
   router.get('/chat-log/live', asyncHandler(async (req, res) => {
     const logs = await chatLogRepo.getLive(req.query)
     res.json({ success: true, count: logs.length, logs })
+  }))
+
+  // 单条隐藏：根据问题文本隐藏所有相关记录
+  router.post('/chat-log/hide', asyncHandler(async (req, res) => {
+    const { text } = req.body || {}
+    if (!text) {
+      res.status(400).json({ success: false, message: '缺少问题文本' })
+      return
+    }
+    
+    const hiddenCount = await chatLogRepo.hideByText(text)
+    res.json({ 
+      success: true, 
+      message: `已隐藏 ${hiddenCount} 条记录`,
+      count: hiddenCount 
+    })
+  }))
+
+  // 批量隐藏：根据问题文本列表隐藏
+  router.post('/chat-log/batch-hide', asyncHandler(async (req, res) => {
+    const { texts } = req.body || {}
+    if (!texts || !Array.isArray(texts) || texts.length === 0) {
+      res.status(400).json({ success: false, message: '缺少问题文本列表' })
+      return
+    }
+    
+    // 限制单次批量隐藏数量，防止误操作
+    if (texts.length > 100) {
+      res.status(400).json({ success: false, message: '单次最多隐藏100条记录' })
+      return
+    }
+    
+    const hiddenCount = await chatLogRepo.batchHideByTexts(texts)
+    res.json({ 
+      success: true, 
+      message: `已隐藏 ${hiddenCount} 条记录`,
+      count: hiddenCount 
+    })
   }))
 
   return router

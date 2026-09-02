@@ -1,0 +1,1 @@
+import{h as s}from"./http-DMR7uJq2.js";const k=()=>s.get("/api/tasks").then(t=>t.data),n=t=>s.get(`/api/tasks/${t}`).then(a=>a.data),p=t=>s.post("/api/tasks",t).then(a=>a.data),g=t=>s.delete(`/api/tasks/${t}`).then(a=>a.data),d=(t,a)=>s.post(`/api/tasks/${t}/toggle`,{status:a}).then(e=>e.data);export{n as a,g as d,k as g,p as s,d as t};

@@ -1,1 +1,0 @@
-import{h as t}from"./http-OM8mdLlX.js";const i=()=>t.get("/api/analysis").then(s=>s.data),o=s=>t.post("/api/analysis/suggest",{text:s}).then(a=>a.data),p=(s,a)=>t.post("/api/analysis/add-question",{faqCode:s,question:a}).then(n=>n.data),c=s=>t.post("/api/analysis/check-questions",{texts:s}).then(a=>a.data);export{o as a,p as b,c,i as g};

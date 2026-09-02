@@ -14,7 +14,7 @@
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.title }}</span>
         </el-menu-item>
-        <el-menu-item index="/admin-legacy" @click.prevent="openChatPreview">
+        <el-menu-item @click="openChatPreview">
           <el-icon><ChatDotSquare /></el-icon>
           <span>聊天预览</span>
         </el-menu-item>
@@ -49,11 +49,13 @@ const router = useRouter()
 const menuItems = [
   { path: '/', title: '概览', icon: 'DataLine' },
   { path: '/monitor', title: '服务监控', icon: 'Monitor' },
-  { path: '/analysis', title: '智能分析', icon: 'TrendCharts' },
   { path: '/issues', title: '问题追踪', icon: 'Search' },
   { path: '/task-tracking', title: '任务管理', icon: 'List' },
   { path: '/faq', title: 'FAQ 管理', icon: 'Document' },
-  { path: '/rules', title: '流程设计', icon: 'SetUp' },
+  { path: '/task-flow', title: '任务流程', icon: 'Connection' },
+  { path: '/rules', title: '对话规则', icon: 'SetUp' },
+  { path: '/ner-manage', title: 'NER 管理', icon: 'Search' },
+  { path: '/llm-config', title: 'LLM 智能层', icon: 'Cpu' },
   { path: '/config', title: '系统配置', icon: 'Setting' },
 ]
 
@@ -99,6 +101,13 @@ function handleLogout() {
 }
 .sidebar :deep(.el-menu-item) {
   transition: .2s;
+}
+.sidebar :deep(.el-icon) {
+  font-size: 18px;
+}
+.sidebar :deep(.el-icon svg) {
+  width: 1em;
+  height: 1em;
 }
 .sidebar :deep(.el-menu-item:hover),
 .sidebar :deep(.el-menu-item.is-active) {

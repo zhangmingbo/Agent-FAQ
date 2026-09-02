@@ -22,6 +22,7 @@ export const DEFAULT_REPLY_TEXTS = {
   progress_all_filled: '信息已齐全，请确认',
   ask_business: '好的，请问您需要办理什么业务呢？',
   stashed_hint: '（您之前正在进行「{taskName}」，回复"继续"可接着办理）\n\n',
+  stashed_resume_hint: '\n\n———\n● 您还有一个未完成的「{taskName}」，回复"继续"可恢复办理。',
   suspended_hint: '\n\n———\n● 您正在进行「{taskName}」，回复"继续"可接着办理。',
   // 挂起任务提醒（用户中断任务后再次来消息，先给提醒而不是直接继续任务话术）
   suspended_remind: '您好，您之前正在进行「{taskName}」，还没有办完～\n\n回复"继续"可接着办理；如果是其他问题，也可以直接告诉我。',

@@ -634,6 +634,19 @@ class FAQEngine {
       }
     }
 
+    // ===== 任务完成后检查暂存栈：有被中断的任务时附加恢复提示 =====
+    if (response && (response.source === 'task_complete' || response.source === 'task_cancelled') && this.taskEngine) {
+      try {
+        const stashed = await this.taskEngine.getStashed(sessionId)
+        if (stashed) {
+          response.answer += getReply('stashed_resume_hint', { taskName: stashed.taskName })
+          _t('任务完成·暂存恢复提示', { stashedTask: stashed.taskCode, stashedName: stashed.taskName }, 'task')
+        }
+      } catch (e) {
+        console.warn('[FAQEngine] 检查暂存任务失败:', e.message)
+      }
+    }
+
     // ===== 轨迹收尾 =====
     // 任务产生的事件（如转人工）随响应返回给前端
     if (context.pendingEvents && context.pendingEvents.length) {
@@ -1268,6 +1281,30 @@ class FAQEngine {
   async _handleNoActiveTask(text, context, traceSteps, userId = null) {
     const _t = (step, detail = {}, level = 'info') => traceService.traceStep(traceSteps, step, detail, level)
     const sessionId = context.sessionId
+
+    // 无活跃任务时，先检查暂存栈是否有被中断的任务可恢复
+    // 用户说"继续"等恢复词 → 自动恢复暂存任务
+    if (await this.taskEngine.hasStashed(sessionId)) {
+      const resumeR = dialogueRules.isResume(text)
+      const isResume = typeof resumeR === 'object' ? resumeR.matched : resumeR
+      if (isResume) {
+        const stashed = await this.taskEngine.popStashed(sessionId, traceSteps)
+        if (stashed) {
+          const unfilled = Object.entries(stashed.slots).filter(([_, s]) => s.required && !s.filled)
+          const progressHint = unfilled.length
+            ? getReply('progress_needed', { labels: unfilled.map(([_, s]) => s.label).join('、') })
+            : getReply('progress_all_filled')
+          _t('暂存任务恢复', { taskCode: stashed.taskCode }, 'task')
+          return {
+            intent_code: `task:${stashed.taskCode}`,
+            confidence: 1,
+            source: 'task_resumed',
+            answer: getReply('continue_task', { taskName: stashed.taskName, hint: progressHint }),
+          }
+        }
+      }
+    }
+
     // 无任务上下文时 route 判定：命中触发词且无咨询疑云 → task_new；
     // 咨询疑云（"上门换滤芯收费吗"）→ faq；两者混杂拿不准 → clarify 追问
     const route = await this.taskEngine.nlu.route(text, {

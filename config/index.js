@@ -16,10 +16,10 @@ const config = {
 
   // ========== 数据库配置 ==========
   db: {
-    host: process.env.DB_HOST || 'rm-bp11ucz7dz696m6w5zo.mysql.rds.aliyuncs.com',
+    host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT) || 3306,
     user: process.env.DB_USER || 'aibot',
-    password: process.env.DB_PASSWORD || 'myegoo@3466',
+    password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'faqdb',
     connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
   },
@@ -68,11 +68,11 @@ const config = {
 
   // ========== JWT 认证配置 ==========
   auth: {
-    secret: process.env.JWT_SECRET || 'faq-bot-secret-key-change-in-production',
+    secret: process.env.JWT_SECRET || '',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
     defaultAdmin: {
       username: process.env.ADMIN_USER || 'admin',
-      password: process.env.ADMIN_PASS || 'admin123',
+      password: process.env.ADMIN_PASS || '',
     },
   },
 }

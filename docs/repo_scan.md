@@ -72,8 +72,7 @@ d:\New AI\                    # 项目根目录（后端）
 d:\New AI\
 ├── AGENTS.md                          # AI 助手架构指南
 ├── Dockerfile                         # Docker 构建文件
-├── deploy-cloud.sh                    # 云端增量部署脚本
-├── deploy.ps1 / deploy.sh             # 本地部署脚本
+├── deploy.sh                          # 本地部署脚本
 ├── ecosystem.config.js                # PM2 进程配置
 ├── package.json                       # 后端依赖
 ├── server.js                          # Express 应用入口
@@ -574,11 +573,22 @@ docker build -t faq-bot .
 docker run -p 3001:3001 faq-bot
 ```
 
-#### 云端增量部署
+#### 云端部署
+使用 Docker 构建镜像后推送到私有仓库,在云服务器上拉取并运行。
 ```bash
-./deploy-cloud.sh v3.1.1
+# 本地构建
+docker build -t faq-bot:v3.1.1 .
+
+# 推送到私有仓库
+docker push <registry>/faq-bot:v3.1.1
+
+# 云服务器拉取并运行
+docker pull <registry>/faq-bot:v3.1.1
+docker run -d --name faq-bot -p 3001:3001 \
+  --env-file .env \
+  faq-bot:v3.1.1
 ```
-基于已有镜像的 COPY 覆盖式部署，只传输变更文件。
+**注意**: 通过 `.env` 文件或环境变量注入敏感配置,不要硬编码。
 
 ### 5.4 关键陷阱
 

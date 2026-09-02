@@ -17,6 +17,7 @@ export async function listAll() {
 
   return faqs.map(faq => ({
     ...faq,
+    categoryId: faq.category_id || null,
     questionCount: countMap.get(faq.code) || 0,
     hasAnswer: !!faq.answer,
     answerPreview: faq.answer ? faq.answer.substring(0, 50) + (faq.answer.length > 50 ? '...' : '') : '',

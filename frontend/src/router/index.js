@@ -48,7 +48,25 @@ const routes = [
     path: '/rules',
     name: 'Rules',
     component: () => import('@/views/Rules.vue'),
-    meta: { title: '规则引擎', icon: 'SetUp' },
+    meta: { title: '对话规则', icon: 'SetUp' },
+  },
+  {
+    path: '/task-flow',
+    name: 'TaskFlowEditor',
+    component: () => import('@/views/TaskFlowEditor.vue'),
+    meta: { title: '任务流程', icon: 'Connection' },
+  },
+  {
+    path: '/ner-manage',
+    name: 'NerManage',
+    component: () => import('@/views/NerManage.vue'),
+    meta: { title: 'NER 管理', icon: 'Search' },
+  },
+  {
+    path: '/llm-config',
+    name: 'LlmConfig',
+    component: () => import('@/views/LlmConfig.vue'),
+    meta: { title: 'LLM 智能层', icon: 'Cpu' },
   },
   {
     path: '/config',

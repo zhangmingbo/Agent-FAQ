@@ -307,7 +307,8 @@ class TaskFlowEngine {
   }
 
   /**
-   * 中断当前任务（用户换办另一件事）：把进度暂存到 store，从 activeTasks 移除。
+   * 中断当前任务（用户换办另一件事）：把进度压入暂存栈，从 activeTasks 移除。
+   * 暂存栈支持多级暂存（LIFO）：最近被中断的优先恢复。
    * 新任务结束后可 popStashed() 恢复继续。
    */
   async stash(sessionId, trace = null) {
@@ -317,7 +318,11 @@ class TaskFlowEngine {
     state.suspendedAt = Date.now()
     if (this.store) {
       try {
-        await this.store.set(`taskflow:stash:${sessionId}`, state, this.sessionTtl)
+        // 读取现有栈（数组），push 当前状态
+        let stack = await this.store.get(`taskflow:stash:${sessionId}`) || []
+        if (!Array.isArray(stack)) stack = [stack] // 兼容旧版单条存储
+        stack.push(state)
+        await this.store.set(`taskflow:stash:${sessionId}`, stack, this.sessionTtl)
       } catch (e) {
         console.error('[TaskFlow] 任务暂存失败:', e.message)
       }
@@ -333,33 +338,45 @@ class TaskFlowEngine {
     return !!(await this.getStashed(sessionId))
   }
 
-  /** 读取暂存的任务状态（不弹出） */
+  /** 读取暂存栈顶的任务状态（不弹出） */
   async getStashed(sessionId) {
     if (!this.store) return null
     try {
-      return await this.store.get(`taskflow:stash:${sessionId}`) || null
+      const stack = await this.store.get(`taskflow:stash:${sessionId}`)
+      if (!stack) return null
+      if (Array.isArray(stack)) return stack.length > 0 ? stack[stack.length - 1] : null
+      return stack // 兼容旧版单条存储
     } catch (e) {
       return null
     }
   }
 
-  /** 恢复暂存的任务（回到 activeTasks） */
+  /** 恢复暂存栈顶的任务（回到 activeTasks） */
   async popStashed(sessionId, trace = null) {
-    let state = null
+    let stack = null
     if (this.store) {
       try {
-        state = await this.store.get(`taskflow:stash:${sessionId}`)
+        stack = await this.store.get(`taskflow:stash:${sessionId}`)
       } catch (e) {
         console.error('[TaskFlow] 暂存任务读取失败:', e.message)
       }
     }
-    if (!state) return null
+    if (!stack) return null
+    if (!Array.isArray(stack)) stack = [stack] // 兼容旧版单条存储
+    if (stack.length === 0) return null
+    const state = stack.pop() // LIFO：弹出栈顶（最近暂存的）
     state.suspended = false
     state.suspendedAt = null
     this.activeTasks.set(sessionId, state)
-    try { await this.store.del(`taskflow:stash:${sessionId}`) } catch { /* ignore */ }
+    try {
+      if (stack.length > 0) {
+        await this.store.set(`taskflow:stash:${sessionId}`, stack, this.sessionTtl)
+      } else {
+        await this.store.del(`taskflow:stash:${sessionId}`)
+      }
+    } catch { /* ignore */ }
     traceService.traceStep(trace, '任务恢复暂存', { taskCode: state.taskCode }, 'task')
-    console.log(`[TaskFlow] 恢复暂存任务: ${state.taskCode} @ session ${sessionId}`)
+    console.log(`[TaskFlow] 恢复暂存任务: ${state.taskCode} @ session ${sessionId}（栈剩余 ${stack.length} 个）`)
     return state
   }
 

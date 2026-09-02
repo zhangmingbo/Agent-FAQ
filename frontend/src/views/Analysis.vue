@@ -20,7 +20,7 @@
     <div class="card">
       <h4 style="font-size:14px;margin-bottom:12px">📅 近 7 天趋势</h4>
       <div v-if="data?.trend?.length" class="trend-chart">
-        <div v-for="t in data.trend" :key="t.date" class="trend-item">
+        <div v-for="t in data.trend.slice(0, 7)" :key="t.date" class="trend-item">
           <div style="font-size:11px;color:#666">{{ getMatchRate(t) }}%</div>
           <div class="trend-bar" :style="{ height: getBarHeight(t) + 'px' }"></div>
           <div style="font-size:11px;color:#999">{{ t.total }}</div>
