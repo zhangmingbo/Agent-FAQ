@@ -1,1 +1,0 @@
-import{a as s,c as a,d as c,t,k as l}from"./index-D334h4Ji.js";const o={class:"stat-card"},n={class:"label"},r={class:"value"},i={key:0,class:"sub"},b={__name:"StatCard",props:{label:String,value:[String,Number],sub:String},setup(e){return(d,u)=>(s(),a("div",o,[c("div",n,t(e.label),1),c("div",r,t(e.value),1),e.sub?(s(),a("div",i,t(e.sub),1)):l("",!0)]))}};export{b as _};

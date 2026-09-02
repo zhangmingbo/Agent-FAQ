@@ -31,7 +31,7 @@
         </div>
       </el-header>
       <el-main class="content">
-        <router-view @refresh="onRefresh" />
+        <router-view :key="route.fullPath" @refresh="onRefresh" />
       </el-main>
     </el-container>
   </el-container>

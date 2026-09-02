@@ -1,1 +1,0 @@
-import{a as n}from"./index-CzApALvg.js";const t=n.create({baseURL:"",timeout:3e4}),i=()=>t.get("/api/analysis").then(s=>s.data),c=s=>t.post("/api/analysis/suggest",{text:s}).then(a=>a.data),p=(s,a)=>t.post("/api/analysis/add-question",{faqCode:s,question:a}).then(e=>e.data),d=s=>t.post("/api/analysis/check-questions",{texts:s}).then(a=>a.data);export{c as a,p as b,d as c,i as g};
