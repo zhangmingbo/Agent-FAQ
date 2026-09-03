@@ -17,6 +17,7 @@ scripts/
 # ===== 部署辅助（不进镜像）=====
 deploy.sh
 deploy-linux
+deploy/
 *.tar
 *.log
 
