@@ -165,6 +165,7 @@ app.use(errorHandler)
 async function start() {
   console.log('\n🤖 FAQ 问答机器人正在启动...')
 
+  let taskSessionTtl = 30 // 任务会话超时（分钟），在配置加载块中赋值，后续使用
   // 从数据库加载配置
   try {
     const configRepo = await import('./repositories/configRepo.js')
@@ -203,7 +204,6 @@ async function start() {
     if (dbConfig.expand_min_count === undefined) await configRepo.set('expand_min_count', '2')
     if (dbConfig.expand_enabled === undefined) await configRepo.set('expand_enabled', 'true')
     // 任务会话超时（分钟；运营可配，默认 30 分钟——任务被挂起/中断后超过此时间失效）
-    let taskSessionTtl = 30
     if (dbConfig.task_session_ttl_minutes === undefined) {
       await configRepo.set('task_session_ttl_minutes', '30')
     } else {
