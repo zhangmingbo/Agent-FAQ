@@ -7,3 +7,5 @@ deploy-linux
 docs/
 deploy.sh
 .gitignore
+.env
+node_modules/
