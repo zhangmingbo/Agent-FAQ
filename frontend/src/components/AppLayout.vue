@@ -10,10 +10,37 @@
         text-color="rgba(255,255,255,0.7)"
         active-text-color="#fff"
       >
-        <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
+        <!-- 一级菜单 -->
+        <el-menu-item v-for="item in mainMenuItems" :key="item.path" :index="item.path">
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.title }}</span>
         </el-menu-item>
+
+        <!-- 系统配置子菜单 -->
+        <el-sub-menu index="/config-group">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>系统配置</span>
+          </template>
+          <el-menu-item index="/config">
+            <el-icon><Setting /></el-icon>
+            <span>参数配置</span>
+          </el-menu-item>
+          <el-menu-item index="/rules">
+            <el-icon><SetUp /></el-icon>
+            <span>对话规则</span>
+          </el-menu-item>
+          <el-menu-item index="/ner-manage">
+            <el-icon><Search /></el-icon>
+            <span>NER 管理</span>
+          </el-menu-item>
+          <el-menu-item index="/session-debug">
+            <el-icon><Tools /></el-icon>
+            <span>会话调试</span>
+          </el-menu-item>
+        </el-sub-menu>
+
+        <!-- 聊天预览 -->
         <el-menu-item @click="openChatPreview">
           <el-icon><ChatDotSquare /></el-icon>
           <span>聊天预览</span>
@@ -40,7 +67,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, ChatDotSquare } from '@element-plus/icons-vue'
+import { Refresh, ChatDotSquare, Tools } from '@element-plus/icons-vue'
 import { logout } from '@/utils/auth'
 
 const route = useRoute()
@@ -49,15 +76,23 @@ const router = useRouter()
 const menuItems = [
   { path: '/', title: '概览', icon: 'DataLine' },
   { path: '/monitor', title: '服务监控', icon: 'Monitor' },
+  { path: '/analysis', title: '智能分析', icon: 'TrendCharts' },
   { path: '/issues', title: '问题追踪', icon: 'Search' },
   { path: '/task-tracking', title: '任务管理', icon: 'List' },
   { path: '/faq', title: 'FAQ 管理', icon: 'Document' },
   { path: '/task-flow', title: '任务流程', icon: 'Connection' },
-  { path: '/rules', title: '对话规则', icon: 'SetUp' },
-  { path: '/ner-manage', title: 'NER 管理', icon: 'Search' },
-  { path: '/llm-config', title: 'LLM 智能层', icon: 'Cpu' },
-  { path: '/config', title: '系统配置', icon: 'Setting' },
+  // 以下菜单已移至"系统配置"子菜单，不在一级菜单显示
+  // { path: '/rules', title: '对话规则', icon: 'SetUp' },
+  // { path: '/ner-manage', title: 'NER 管理', icon: 'Search' },
+  // { path: '/llm-config', title: 'LLM 智能层', icon: 'Cpu' },
+  // { path: '/config', title: '系统配置', icon: 'Setting' },
 ]
+
+// 一级菜单项（排除已移至子菜单的项目）
+const mainMenuItems = computed(() => {
+  const hiddenPaths = ['/rules', '/ner-manage', '/llm-config']
+  return menuItems.filter(item => !hiddenPaths.includes(item.path))
+})
 
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => {

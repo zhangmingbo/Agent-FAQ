@@ -74,6 +74,12 @@ const routes = [
     component: () => import('@/views/SysConfig.vue'),
     meta: { title: '系统配置', icon: 'Setting' },
   },
+  {
+    path: '/session-debug',
+    name: 'SessionDebug',
+    component: () => import('@/views/SessionDebug.vue'),
+    meta: { title: '会话调试', icon: 'Tools' },
+  },
 ]
 
 const router = createRouter({

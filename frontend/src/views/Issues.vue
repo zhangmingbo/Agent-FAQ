@@ -15,16 +15,12 @@
         <el-input v-model="unmatchedKeyword" placeholder="搜索问题关键词..." clearable style="width:200px" @keyup.enter="loadUnmatched" />
         <el-button size="small" @click="loadUnmatched">🔍 搜索</el-button>
         <div style="flex:1"></div>
-        <span style="font-size:12px;color:#888">共 {{ unmatchedTotal }} 个未匹配问题</span>
-      </div>
-
-      <!-- 批量操作工具栏 -->
-      <div class="batch-toolbar">
-        <span v-if="selectedRows.length > 0" style="margin-left:12px;color:#4361ee">已选 {{ selectedRows.length }} 项</span>
-        <div style="flex:1"></div>
+        <!-- 批量操作区域 -->
+        <span v-if="selectedRows.length > 0" style="margin-right:12px;color:#4361ee;font-size:13px">已选 {{ selectedRows.length }} 项</span>
         <el-button size="small" type="success" :disabled="selectedRows.length === 0" @click="handleBatchIgnore">
           <el-icon><Check /></el-icon> 批量忽略
         </el-button>
+        <span style="font-size:12px;color:#888;margin-left:12px">共 {{ unmatchedTotal }} 个未匹配问题</span>
       </div>
 
       <div class="table-wrap">
@@ -88,16 +84,12 @@
         <el-input v-model="lowConfKeyword" placeholder="搜索问题关键词..." clearable style="width:200px" @keyup.enter="loadLowConf" />
         <el-button size="small" @click="loadLowConf">🔍 搜索</el-button>
         <div style="flex:1"></div>
-        <span style="font-size:12px;color:#888">共 {{ lowConfTotal }} 条低置信度记录</span>
-      </div>
-
-      <!-- 批量操作工具栏 -->
-      <div class="batch-toolbar">
-        <span v-if="selectedRows.length > 0" style="margin-left:12px;color:#4361ee">已选 {{ selectedRows.length }} 项</span>
-        <div style="flex:1"></div>
+        <!-- 批量操作区域 -->
+        <span v-if="selectedRows.length > 0" style="margin-right:12px;color:#4361ee;font-size:13px">已选 {{ selectedRows.length }} 项</span>
         <el-button size="small" type="success" :disabled="selectedRows.length === 0" @click="handleBatchIgnore">
           <el-icon><Check /></el-icon> 批量忽略
         </el-button>
+        <span style="font-size:12px;color:#888;margin-left:12px">共 {{ lowConfTotal }} 条低置信度记录</span>
       </div>
 
       <div class="table-wrap">
@@ -442,15 +434,6 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 16px;
   flex-wrap: wrap;
-}
-.batch-toolbar {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  margin-bottom: 16px;
 }
 .table-wrap {
   background: #fff;
