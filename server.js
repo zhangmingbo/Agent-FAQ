@@ -109,9 +109,6 @@ app.use('/admin', express.static(join(PUBLIC_DIR, 'admin')))
 app.use(express.static(PUBLIC_DIR))
 app.use('/uploads', express.static(UPLOADS_DIR))
 
-// 兼容旧路径 /admin.html → admin-legacy.html
-app.get('/admin.html', (req, res) => res.sendFile(join(PUBLIC_DIR, 'admin-legacy.html')))
-
 // ========== 创建 FAQ 引擎 ==========
 
 // 知识库领域服务（持有识别器与答案缓存，供引擎与路由共享）
@@ -135,21 +132,6 @@ app.use(authMiddleware)
 app.use('/api/', adminLimiter)
 
 // ========== 注册路由 ==========
-
-// 假接口（联调测试用）：任务"调用接口"步骤可直接指向 /api/mock/xxx
-// 返回 OrderNo（兼容 orderNo/orrder_num/order_num 字段名，含 data.* 层级），并回显请求体
-app.use('/api/mock', (req, res) => {
-  const orderNo = 'QY' + new Date().toISOString().replace(/\D/g, '').slice(0, 14) + String(Math.floor(Math.random() * 900) + 100)
-  const received = (req.body && typeof req.body === 'object') ? req.body : {}
-  res.json({
-    code: 0,
-    message: 'success',
-    orderNo,
-    orrder_num: orderNo,
-    order_num: orderNo,
-    data: { orderNo, orrder_num: orderNo, order_num: orderNo, status: '已受理', received },
-  })
-})
 
 // 健康检查
 app.use('/api', createHealthRouter(engine))
@@ -220,8 +202,11 @@ async function start() {
     if (dbConfig.expand_min_count === undefined) await configRepo.set('expand_min_count', '2')
     if (dbConfig.expand_enabled === undefined) await configRepo.set('expand_enabled', 'true')
     // 任务会话超时（分钟；运营可配，默认 30 分钟——任务被挂起/中断后超过此时间失效）
+    let taskSessionTtl = 30
     if (dbConfig.task_session_ttl_minutes === undefined) {
       await configRepo.set('task_session_ttl_minutes', '30')
+    } else {
+      taskSessionTtl = parseInt(dbConfig.task_session_ttl_minutes, 10)
     }
     // 答案反馈信号词（运营可配，默认仅首次落库）
     if (!dbConfig.feedback_trigger_words) {
@@ -265,13 +250,8 @@ async function start() {
   // 初始化任务引擎
   console.log('   📋 正在加载任务流程...')
   await taskEngine.initialize()
-  // 任务会话超时（运营配置，默认 30 分钟）
-  {
-    const dbConfig = await (await import('./repositories/configRepo.js')).getAll()
-    if (dbConfig.task_session_ttl_minutes) {
-      taskEngine.setSessionTtl(parseInt(dbConfig.task_session_ttl_minutes, 10))
-    }
-  }
+  // 任务会话超时（已在上方配置加载时读取，避免重复查库）
+  taskEngine.setSessionTtl(taskSessionTtl || 30)
   // 接入共享 NLP 引擎（复用 FAQ 识别器已加载的向量模型，支持语义触发）
   await taskEngine.setNlpEngine(engine.recognizer.nlpEngine)
   // 注入 FAQ 例句向量源（同一模型编码，任务 vs FAQ 统一语义仲裁用）

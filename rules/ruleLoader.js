@@ -4,7 +4,7 @@
  * 解耦点：不依赖业务引擎，可独立测试
  */
 
-import pool from '../db.js'
+import pool from '../db/pool.js'
 import dialogueRules from './dialogueRules.js'
 
 class RuleLoader {
