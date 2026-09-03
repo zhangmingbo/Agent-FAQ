@@ -9,9 +9,10 @@ import pool from '../db/pool.js'
 /**
  * 记录聊天日志
  */
-export async function log({ sessionId, userId, userText, intentCode, confidence, source, answer, meaningful }) {
+export async function log({ sessionId, userId, userText, intentCode, confidence, source, answer, meaningful, channelType }) {
   await pool.execute(
-    'INSERT INTO chat_log (session_id, user_id, user_text, intent_code, confidence, source, answer, meaningful) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',    [sessionId, userId, userText, intentCode || null, confidence || 0, source || null, answer, meaningful]
+    'INSERT INTO chat_log (session_id, user_id, channel_type, user_text, intent_code, confidence, source, answer, meaningful) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [sessionId, userId, channelType || 'web', userText, intentCode || null, confidence || 0, source || null, answer, meaningful]
   )
 }
 
@@ -172,7 +173,7 @@ export async function getDates(type, maxConfidence = 0.7) {
 /**
  * 最近咨询记录（按会话聚合，分页/日期/搜索/排序）
  */
-export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'desc', page = 1, pageSize = 20 }) {
+export async function getRecent({ date, keyword, channelType, sortBy = 'time', sortOrder = 'desc', page = 1, pageSize = 20 }) {
   let where = 'WHERE meaningful = 1 AND (is_hidden IS NULL OR is_hidden = 0)'
   const params = []
 
@@ -183,6 +184,10 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
   if (keyword) {
     where += ' AND user_text LIKE ?'
     params.push(`%${keyword}%`)
+  }
+  if (channelType && channelType !== 'all') {
+    where += ' AND channel_type = ?'
+    params.push(channelType)
   }
 
   // 按会话聚合计数
@@ -202,7 +207,7 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
   const offset = (parseInt(page) - 1) * parseInt(pageSize)
   const limit = parseInt(pageSize)
   const [rows] = await pool.execute(
-    `SELECT session_id, ANY_VALUE(user_id) as user_id, COUNT(*) as msg_count,
+    `SELECT session_id, ANY_VALUE(user_id) as user_id, ANY_VALUE(channel_type) as channel_type, COUNT(*) as msg_count,
             DATE_FORMAT(MIN(created_at), '%Y/%c/%e %H:%i:%s') as start_time,
             DATE_FORMAT(MAX(created_at), '%Y/%c/%e %H:%i:%s') as last_time,
             SUBSTRING_INDEX(GROUP_CONCAT(user_text ORDER BY created_at ASC SEPARATOR '|||'), '|||', 1) as first_question,
@@ -222,6 +227,7 @@ export async function getRecent({ date, keyword, sortBy = 'time', sortOrder = 'd
     items: rows.map(r => ({
       sessionId: r.session_id,
       userId: r.user_id,
+      channelType: r.channel_type || 'web',
       msgCount: r.msg_count,
       startTime: r.start_time,
       lastTime: r.last_time,

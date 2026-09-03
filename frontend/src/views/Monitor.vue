@@ -66,6 +66,9 @@
         <el-select v-model="recentDate" placeholder="全部日期" clearable @change="loadRecent" style="width:180px">
           <el-option v-for="d in recentDates" :key="d.date" :label="formatDateLabel(d)" :value="formatDateValue(d)" />
         </el-select>
+        <el-select v-model="recentChannel" placeholder="全部渠道" clearable @change="loadRecent" style="width:140px">
+          <el-option v-for="ch in channelOptions" :key="ch.value" :label="ch.label" :value="ch.value" />
+        </el-select>
         <el-input v-model="recentKeyword" placeholder="搜索问题关键词..." clearable style="width:200px" @keyup.enter="loadRecent" />
         <el-button size="small" @click="loadRecent">🔍 搜索</el-button>
         <div style="flex:1"></div>
@@ -78,6 +81,13 @@
             <template #default="{ row }">
               <span v-if="row.userId" style="font-size:12px;color:#666">{{ row.userId }}</span>
               <span v-else style="color:#ccc">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="渠道" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="getChannelTagType(row.channelType)">
+                {{ getChannelLabel(row.channelType) }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="用户问题" min-width="200">
@@ -185,6 +195,7 @@ const autoRefresh = useAutoRefresh(loadMonitorData, 5000)
 // ===== 最近咨询记录 =====
 const recentDate = ref('')
 const recentKeyword = ref('')
+const recentChannel = ref('')
 const recentItems = ref([])
 const recentPage = ref(1)
 const recentTotal = ref(0)
@@ -209,6 +220,7 @@ async function loadRecent() {
       pageSize: 20,
       date: recentDate.value || undefined,
       keyword: recentKeyword.value || undefined,
+      channelType: recentChannel.value || undefined,
       sortBy: recentSort.value.field,
       sortOrder: recentSort.value.order,
     })
@@ -231,6 +243,24 @@ function handleRecentSort({ prop, order }) {
 
 function getSourceLabel(source) {
   return sourceLabels[source] || source || '-'
+}
+
+// 渠道标签映射
+const channelOptions = [
+  { value: 'web', label: '网页' },
+  { value: 'wechat', label: '微信公众号' },
+  { value: 'mp', label: '小程序' },
+  { value: 'app', label: 'APP' },
+  { value: 'api', label: 'API' },
+]
+const channelMap = Object.fromEntries(channelOptions.map(c => [c.value, c.label]))
+const channelTagTypes = { web: '', wechat: 'success', mp: 'warning', app: 'danger', api: 'info' }
+
+function getChannelLabel(ch) {
+  return channelMap[ch] || ch || '网页'
+}
+function getChannelTagType(ch) {
+  return channelTagTypes[ch] || ''
 }
 
 function formatDateLabel(d) {

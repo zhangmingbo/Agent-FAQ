@@ -182,7 +182,7 @@ class FAQEngine {
    * @param {Object} opts - 选项；opts.debug=true 时响应附加 _debug 调试信息
    * @returns {Promise<ChatResponse>}
    */
-  async chat(text, sessionId = 'default', userId = null, opts = {}) {
+  async chat(text, sessionId = 'default', userId = null, opts = {}, channelType = 'web') {
     const startTime = Date.now()
     const timestamp = new Date().toISOString()
     
@@ -225,7 +225,7 @@ class FAQEngine {
         console.log(`[OUTPUT] Source: ${response.source} | Answer: "${response.answer.substring(0, 50)}..."`)
         
         // 记录日志
-        await this._logChat(sessionId, text, response, userId, Date.now() - startTime)
+        await this._logChat(sessionId, text, response, userId, Date.now() - startTime, channelType)
         
         if (opts.debug) this._attachDebug(response, sessionId)
         traceService.endTurn(sessionId, traceSteps, { input: text, output: response.answer, duration: Date.now() - startTime })
@@ -677,7 +677,7 @@ class FAQEngine {
     console.log(`${'='.repeat(80)}\n`)
 
     // 记录聊天日志到数据库（异步，不阻塞响应）
-    this._logChat(sessionId, text, response, userId, duration).catch(e => {
+    this._logChat(sessionId, text, response, userId, duration, channelType).catch(e => {
       console.error('[聊天日志] 记录失败:', e.message)
     })
 
@@ -898,7 +898,7 @@ class FAQEngine {
    * 记录聊天日志到数据库
    * 根据 meaninglessDetectionMode 选择规则或大模型判断输入是否有意义
    */
-  async _logChat(sessionId, userText, response, userId, latency) {
+  async _logChat(sessionId, userText, response, userId, latency, channelType = 'web') {
     let meaningful = 1
 
     if (this.meaninglessDetectionMode === 'llm') {
@@ -920,6 +920,7 @@ class FAQEngine {
       source: response.source || null,
       answer: response.answer,
       meaningful,
+      channelType,
     })
   }
 
