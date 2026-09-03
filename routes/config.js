@@ -13,6 +13,7 @@ import { getAllReplyTexts, setReplyTexts } from '../services/replyTexts.js'
 import { getAllMatchVocab, setMatchVocab } from '../services/matchVocab.js'
 import { getAllCancelWords, setCancelWords } from '../services/cancelWords.js'
 import { getAllNegationWords, setNegationWords } from '../services/negationWords.js'
+import { getAllChannelTypes, setChannelTypes } from '../services/channelTypes.js'
 import llmClient from '../services/llmClient.js'
 import nerClient from '../services/taskflow/nerClient.js'
 
@@ -121,6 +122,7 @@ export function createRouter(engine) {
       matchVocab: getAllMatchVocab(),
       cancelWords: getAllCancelWords(),
       negationWords: getAllNegationWords(),
+      channelTypes: getAllChannelTypes(),
       // LLM 调用节点（可视化编辑，sys_config.llm_nodes 存储）
       llmNodes: llmClient.getNodes(),
     })
@@ -248,6 +250,12 @@ export function createRouter(engine) {
     if (body.negationWords !== undefined) {
       await save('negation_words', JSON.stringify(body.negationWords))
       setNegationWords(body.negationWords)
+    }
+
+    // ===== 渠道类型 =====
+    if (body.channelTypes !== undefined) {
+      await save('channel_types', JSON.stringify(body.channelTypes))
+      setChannelTypes(body.channelTypes)
     }
 
     // ===== LLM 配置（直接用 body 值构建，无需重新读 DB）=====

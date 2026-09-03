@@ -126,6 +126,7 @@ import { getStats } from '@/api/stats'
 import { getRecentRecords, getRecentDates } from '@/api/chatLog'
 import { getTasks } from '@/api/task'
 import { getAnalysis } from '@/api/analysis'
+import { getConfig } from '@/api/config'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 import StatCard from '@/components/StatCard.vue'
 import ExpandCell from '@/components/ExpandCell.vue'
@@ -163,9 +164,13 @@ const sourceBars = computed(() => {
 
 async function loadMonitorData() {
   try {
-    const [statsData, tasksRes, analysisRes] = await Promise.all([getStats(), getTasks(), getAnalysis()])
+    const [statsData, tasksRes, analysisRes, config] = await Promise.all([getStats(), getTasks(), getAnalysis(), getConfig()])
     stats.value = statsData
     analysisData.value = analysisRes
+    // 加载渠道配置
+    if (Array.isArray(config.channelTypes)) {
+      channelOptions.value = config.channelTypes
+    }
     // 构建任务名称映射
     const tMap = new Map()
     for (const t of (tasksRes.data || [])) tMap.set(t.code, t.name)
@@ -245,19 +250,13 @@ function getSourceLabel(source) {
   return sourceLabels[source] || source || '-'
 }
 
-// 渠道标签映射
-const channelOptions = [
-  { value: 'web', label: '网页' },
-  { value: 'wechat', label: '微信公众号' },
-  { value: 'mp', label: '小程序' },
-  { value: 'app', label: 'APP' },
-  { value: 'api', label: 'API' },
-]
-const channelMap = Object.fromEntries(channelOptions.map(c => [c.value, c.label]))
+// 渠道标签映射（从配置动态加载）
+const channelOptions = ref([])
+const channelMap = computed(() => Object.fromEntries(channelOptions.value.map(c => [c.value, c.label])))
 const channelTagTypes = { web: '', wechat: 'success', mp: 'warning', app: 'danger', api: 'info' }
 
 function getChannelLabel(ch) {
-  return channelMap[ch] || ch || '网页'
+  return channelMap.value[ch] || ch || '网页'
 }
 function getChannelTagType(ch) {
   return channelTagTypes[ch] || ''

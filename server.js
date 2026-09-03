@@ -44,6 +44,7 @@ import taskSuggestService from './services/taskSuggestService.js'
 import autoExpandService from './services/autoExpandService.js'
 import { initReplyTexts, getAllReplyTexts, DEFAULT_REPLY_TEXTS } from './services/replyTexts.js'
 import { initMatchVocab, getAllMatchVocab, DEFAULT_MATCH_VOCAB } from './services/matchVocab.js'
+import { initChannelTypes, getAllChannelTypes, DEFAULT_CHANNEL_TYPES } from './services/channelTypes.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -229,6 +230,11 @@ async function start() {
     }
     initReplyTexts(dbConfig)
     initMatchVocab(dbConfig)
+    // 渠道类型（首次启动自动落库，之后以库为准）
+    if (!dbConfig.channel_types) {
+      await configRepo.set('channel_types', JSON.stringify(DEFAULT_CHANNEL_TYPES))
+    }
+    initChannelTypes(dbConfig)
     console.log('   ✅ 系统配置已加载')
   } catch (e) {
     console.log('   ⚠️ 使用默认配置')

@@ -6,13 +6,12 @@
 import { Router } from 'express'
 import { asyncHandler } from '../middleware/errorHandler.js'
 import { chatLimiter } from '../middleware/rateLimit.js'
+import { getChannelValues } from '../services/channelTypes.js'
 
-// 渠道白名单（安全校验，防止客户端伪造）
-const VALID_CHANNELS = ['web', 'wechat', 'mp', 'app', 'api']
-
-/** 校验并规范化渠道标识 */
+/** 校验并规范化渠道标识（动态读取配置） */
 function normalizeChannel(raw) {
-  return VALID_CHANNELS.includes(raw) ? raw : 'web'
+  const valid = getChannelValues()
+  return valid.includes(raw) ? raw : 'web'
 }
 
 export function createRouter(engine) {

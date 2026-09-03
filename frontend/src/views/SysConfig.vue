@@ -60,6 +60,33 @@
         <div class="desc">防止"我没说要换表 / 不用换滤芯"误触发任务。回车添加，点击标签删除</div>
       </el-form-item>
 
+      <el-form-item label="接入渠道管理">
+        <div class="desc" style="margin-bottom:8px">配置系统支持的接入渠道，用于区分不同客户来源</div>
+        <el-table :data="channelTypes" size="small" style="width:100%" max-height="250">
+          <el-table-column label="渠道编码" width="140">
+            <template #default="{ row }">
+              <el-input v-model="row.value" size="small" placeholder="如: web" />
+            </template>
+          </el-table-column>
+          <el-table-column label="渠道名称" width="160">
+            <template #default="{ row }">
+              <el-input v-model="row.label" size="small" placeholder="如: 网页" />
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="80" align="center">
+            <template #default="{ $index }">
+              <el-button type="danger" link size="small" @click="channelTypes.splice($index, 1)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <el-input v-model="newChannelValue" size="small" placeholder="编码" style="width:120px" />
+          <el-input v-model="newChannelLabel" size="small" placeholder="名称" style="width:120px" />
+          <el-button size="small" @click="addChannel">添加渠道</el-button>
+        </div>
+        <div class="desc">编码用于接口传参（如 web/wechat/mp/app），名称用于后台显示</div>
+      </el-form-item>
+
       <el-form-item>
         <el-button type="primary" @click="handleSave" :loading="saving">保存配置</el-button>
       </el-form-item>
@@ -89,6 +116,9 @@ const verbWords = ref([])
 const newNegWord = ref('')
 const newSymWord = ref('')
 const newVerbWord = ref('')
+const channelTypes = ref([])
+const newChannelValue = ref('')
+const newChannelLabel = ref('')
 
 function addCancelWord() {
   const w = newCancelWord.value.trim()
@@ -106,6 +136,22 @@ function addWord(list, input, inputRef) {
   input.value = ''
 }
 
+function addChannel() {
+  const value = newChannelValue.value.trim()
+  const label = newChannelLabel.value.trim()
+  if (!value) {
+    ElMessage.warning('请输入渠道编码')
+    return
+  }
+  if (channelTypes.value.some(c => c.value === value)) {
+    ElMessage.warning('该渠道编码已存在')
+    return
+  }
+  channelTypes.value.push({ value, label: label || value })
+  newChannelValue.value = ''
+  newChannelLabel.value = ''
+}
+
 async function loadConfig() {
   try {
     const config = await getConfig()
@@ -120,6 +166,7 @@ async function loadConfig() {
       if (Array.isArray(config.negationWords.symptomWords)) symWords.value = [...config.negationWords.symptomWords]
       if (Array.isArray(config.negationWords.intentVerbs)) verbWords.value = [...config.negationWords.intentVerbs]
     }
+    if (Array.isArray(config.channelTypes)) channelTypes.value = config.channelTypes.map(c => ({ ...c }))
   } catch (e) {
     console.error('加载配置失败:', e)
   }
@@ -136,6 +183,7 @@ async function handleSave() {
       sessionTimeout: form.sessionTimeoutMinutes * 60000,
       cancelWords: cancelWords.value,
       negationWords: { negWords: negWords.value, symptomWords: symWords.value, intentVerbs: verbWords.value },
+      channelTypes: channelTypes.value,
     })
     if (res.success) {
       ElMessage.success('配置已保存')
