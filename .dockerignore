@@ -1,11 +1,41 @@
-deploy-linux
-*.log
-.DS_Store
+# ===== Git & 版本控制 =====
 .git
-*.tar
-*.png
-docs/
-deploy.sh
 .gitignore
+
+# ===== 文档 =====
+docs/
+*.md
+AGENTS.md
+
+# ===== 测试 =====
+tests/
+scripts/
+*.test.mjs
+*.test.js
+*.eval.mjs
+
+# ===== 部署辅助（不进镜像）=====
+deploy.sh
+deploy-linux
+*.tar
+*.log
+
+# ===== 开发环境 =====
 .env
+.env.*
+!.env.example
+.DS_Store
+*.png
+frontend/
+backups/
+uploads/
+
+# ===== 本地依赖（容器内安装）=====
 node_modules/
+
+# ===== 遗留文件 =====
+db.js
+intent-recognizer.js
+intents-library.js
+faq-library.js
+*.tar

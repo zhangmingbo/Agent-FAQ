@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 // 默认模型名称
-const DEFAULT_MODEL = 'paraphrase-multilingual-MiniLM-L12-v2'
+const DEFAULT_MODEL = 'bge-base-zh-v1.5'
 
 // 本地模型缓存目录（与 SDK 同级的 model_cache 目录）
 const LOCAL_MODEL_DIR = join(__dirname, '..', 'model_cache')

@@ -26,7 +26,7 @@ class IntentRecognizer {
   /**
    * 创建意图识别器实例
    * @param {Object} options - 配置选项
-   * @param {string} [options.modelName] - 模型名称，默认 'paraphrase-multilingual-MiniLM-L12-v2'
+   * @param {string} [options.modelName] - 模型名称，默认 'bge-base-zh-v1.5'
    * @param {number} [options.minConfidence=0.5] - 最小置信度阈值
    * @param {number} [options.topK=3] - 返回的Top K结果数量
    * @param {number} [options.shortTextLen=4] - 短句防护：长度低于此值不走向量匹配
@@ -34,7 +34,7 @@ class IntentRecognizer {
    * @param {number} [options.shortContainsHit=0.9] - 短句例句包含原词给的相似度
    */
   constructor(options = {}) {
-    this.modelName = options.modelName || 'paraphrase-multilingual-MiniLM-L12-v2'
+    this.modelName = options.modelName || 'bge-base-zh-v1.5'
     this.minConfidence = options.minConfidence ?? 0.5
     this.topK = options.topK ?? 3
     this.shortTextLen = options.shortTextLen ?? 4
