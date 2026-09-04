@@ -1,0 +1,5 @@
+# 增量构建：基于已有 v5.0 镜像，仅更新前端产物
+FROM faq-bot:v5.0
+
+# 仅覆盖变更的前端文件
+COPY public/admin/ ./public/admin/
