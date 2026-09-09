@@ -133,7 +133,8 @@ watch(() => localData.value, (newVal) => {
   if (props.visible && newVal && Object.keys(newVal).length > 0) {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
-      emit('apply', { ...newVal })
+      // 深拷贝确保数据完整性
+      emit('apply', JSON.parse(JSON.stringify(newVal)))
     }, 300)
   }
 }, { deep: true })

@@ -203,8 +203,8 @@ const selectedNodeData = ref({})
 const selectedNodeType = ref('message')
 const vueFlowRef = ref(null)
 
-// Vue Flow 实例（用于视图控制）
-const { fitView } = useVueFlow()
+// Vue Flow 实例（用于视图控制和节点更新）
+const { fitView, updateNodeData } = useVueFlow()
 
 const currentTask = ref(null)
 
@@ -377,9 +377,17 @@ function onConnect(connection) {
   if (targetNode?.data?._nodeType === 'start') return
 
   // 限制连线方向：只能从底部(source)连到顶部(target)
-  // source 的 handle 必须在 bottom，target 的 handle 必须在 top
-  if (connection.sourcePosition && connection.sourcePosition !== 'bottom') return
-  if (connection.targetPosition && connection.targetPosition !== 'top') return
+  // 检查 source 的 handle 类型必须是 source，target 的 handle 类型必须是 target
+  if (connection.sourceHandle && !connection.sourceHandle.includes('case')) {
+    // 普通节点的 source handle 没有 id，分支节点的 case_0, case_1 等是 source
+  }
+  
+  // 确保连接是从 source handle 到 target handle
+  // Vue Flow 会自动设置 sourcePosition 和 targetPosition
+  // 我们只需要确保不是同类型 handle 相连即可
+  if (connection.sourcePosition === 'top' || connection.targetPosition === 'bottom') {
+    return // 禁止上连上或下连下
+  }
 
   edges.value.push({
     id: `edge_${connection.source}_${connection.target}`,
@@ -454,6 +462,10 @@ function onNodeApply(updatedData) {
   // 找到选中的节点并更新
   const nodeId = nodes.value.find(n => n.data?.key === selectedNodeData.value.key)?.id
   if (nodeId) {
+    // 使用 Vue Flow 的 updateNodeData API 确保数据同步
+    updateNodeData(nodeId, updatedData)
+    
+    // 同时更新本地 nodes 数组保持一致性
     const idx = nodes.value.findIndex(n => n.id === nodeId)
     if (idx !== -1) {
       nodes.value[idx] = {
@@ -504,6 +516,11 @@ async function handleSave() {
 
   // Canvas → DSL
   const { steps, flowCanvas } = canvasToDSL(nodes.value, edges.value)
+  
+  console.log('[DEBUG handleSave] nodes count:', nodes.value.length)
+  console.log('[DEBUG handleSave] edges count:', edges.value.length)
+  console.log('[DEBUG handleSave] steps count:', steps.length)
+  console.log('[DEBUG handleSave] steps:', JSON.stringify(steps, null, 2))
 
   saving.value = true
   try {
@@ -520,6 +537,8 @@ async function handleSave() {
       flow_canvas: flowCanvas,
       status: 1,
     }
+    
+    console.log('[DEBUG handleSave] sending data:', JSON.stringify(data, null, 2))
 
     const res = await saveTask(data)
     if (res.success) {
@@ -714,10 +733,11 @@ onMounted(() => { loadTasks() })
 .panel-wrapper {
   position: absolute;
   right: 8px;
-  top: 8px;
+  top: 56px; /* 从工具栏下方开始 */
   bottom: 8px;
   width: 320px;
   z-index: 100;
+  pointer-events: auto;
 }
 
 /* Vue Flow 样式覆盖 */
