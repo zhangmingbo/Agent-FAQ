@@ -115,7 +115,6 @@
             fit-view-on-init
             @connect="onConnect"
             @node-click="onNodeClick"
-            @node-double-click="onNodeDblClick"
             @edge-click="onEdgeClick"
             @delete="onDelete"
             ref="vueFlowRef"
@@ -391,10 +390,7 @@ function onConnect(connection) {
 
 // ========== 节点交互 ==========
 function onNodeClick({ node }) {
-  // 单击选中（Vue Flow 自动处理高亮）
-}
-
-function onNodeDblClick({ node }) {
+  // 单击打开属性面板
   selectedNodeData.value = { ...node.data }
   selectedNodeType.value = node.type
   panelVisible.value = true

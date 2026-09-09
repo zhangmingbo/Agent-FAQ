@@ -2,7 +2,10 @@
   <div class="node-panel" v-if="visible">
     <div class="node-panel__header">
       <span class="node-panel__title">{{ panelTitle }}</span>
-      <el-button text size="small" @click="visible = false">✕</el-button>
+      <div class="node-panel__header-actions">
+        <el-button size="small" @click="handleCancel">取消</el-button>
+        <el-button size="small" type="primary" @click="handleApply">保存</el-button>
+      </div>
     </div>
 
     <div class="node-panel__body">
@@ -93,11 +96,6 @@
         </div>
       </template>
     </div>
-
-    <div class="node-panel__footer">
-      <el-button size="small" @click="visible = false">取消</el-button>
-      <el-button size="small" type="primary" @click="handleApply">应用</el-button>
-    </div>
   </div>
 </template>
 
@@ -146,7 +144,12 @@ const panelTitle = computed(() => {
 
 function handleApply() {
   emit('apply', { ...localData.value })
-  visible.value = false
+}
+
+function handleCancel() {
+  // 恢复原始数据
+  localData.value = JSON.parse(JSON.stringify(props.nodeData || {}))
+  emit('close')
 }
 </script>
 
@@ -178,18 +181,15 @@ function handleApply() {
   font-weight: 600;
 }
 
+.node-panel__header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .node-panel__body {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-}
-
-.node-panel__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid #f0f0f0;
 }
 
 .panel-field {
