@@ -4,7 +4,7 @@
     <Handle
       v-if="nodeType !== 'start'"
       type="target"
-      position="left"
+      position="top"
       class="flow-handle flow-handle--target"
     />
 
@@ -21,16 +21,16 @@
         v-for="(c, i) in branchCases"
         :key="i"
         type="source"
-        position="right"
+        position="bottom"
         :id="`case_${i}`"
         class="flow-handle flow-handle--source flow-handle--branch"
-        :style="{ top: `${20 + i * 28}px` }"
+        :style="{ left: `${50 / (branchCases.length + 1) * (i + 1)}%` }"
       />
     </template>
     <Handle
       v-else-if="nodeType !== 'end'"
       type="source"
-      position="right"
+      position="bottom"
       class="flow-handle flow-handle--source"
     />
   </div>
@@ -202,11 +202,11 @@ const branchCases = computed(() => {
 }
 
 .flow-handle--target {
-  left: -6px !important;
+  top: -6px !important;
 }
 
 .flow-handle--source {
-  right: -6px !important;
+  bottom: -6px !important;
 }
 
 .flow-handle--branch {

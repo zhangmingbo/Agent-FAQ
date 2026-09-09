@@ -61,7 +61,7 @@ export function dslToCanvas(steps, flowCanvas) {
 function dagreLayout(steps) {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'LR', nodesep: 80, ranksep: 160, marginx: 60, marginy: 60 })
+  g.setGraph({ rankdir: 'TB', nodesep: 120, ranksep: 100, marginx: 60, marginy: 60 })
 
   const nodeWidth = 140
   const nodeHeight = 44
