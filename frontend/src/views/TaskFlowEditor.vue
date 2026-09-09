@@ -401,7 +401,8 @@ function onConnect(connection) {
 // ========== 节点交互 ==========
 function onNodeClick({ node }) {
   // 单击打开属性面板
-  selectedNodeData.value = { ...node.data }
+  // 使用深拷贝确保获取最新数据，避免引用问题
+  selectedNodeData.value = JSON.parse(JSON.stringify(node.data || {}))
   selectedNodeType.value = node.type
   panelVisible.value = true
 }
@@ -646,6 +647,7 @@ onMounted(() => { loadTasks() })
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative; /* 为属性面板提供定位上下文 */
 }
 
 /* ===== 节点库 ===== */
@@ -732,12 +734,15 @@ onMounted(() => { loadTasks() })
 /* 属性面板容器 */
 .panel-wrapper {
   position: absolute;
-  right: 8px;
-  top: 56px; /* 从工具栏下方开始 */
-  bottom: 8px;
+  right: 0;
+  top: 0;
+  bottom: 0;
   width: 320px;
   z-index: 100;
   pointer-events: auto;
+  background: #fff;
+  border-left: 1px solid #e8e8e8;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.06);
 }
 
 /* Vue Flow 样式覆盖 */
