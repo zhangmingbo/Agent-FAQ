@@ -36,7 +36,8 @@
       <template v-if="nodeType === 'message'">
         <div class="panel-field">
           <label>回复内容</label>
-          <el-input v-model="localData.text" size="small" type="textarea" :rows="4" placeholder="发送给用户的消息" />
+          <el-input v-model="localData.text" size="small" type="textarea" :rows="4" placeholder="发送给用户的消息，支持变量替换：${user_name}" />
+          <span class="field-hint">支持变量替换语法：${variable_name}，如：您好，${user_name}，您的年龄是 ${age} 岁</span>
         </div>
       </template>
 

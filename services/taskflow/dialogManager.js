@@ -149,7 +149,10 @@ class DialogManager {
 
       switch (step.type) {
         case 'message': {
-          reply += step.text || ''
+          // 【核心改造】支持变量替换：${user_name} → 张三
+          let text = step.text || ''
+          text = this._replaceVariables(text, state)
+          reply += text
           state.currentStep = step.next
           extracted = true
           alreadyExtracted = true
@@ -296,12 +299,6 @@ class DialogManager {
       return { extracted: true, note: '' }
     }
 
-    // 纯文本提取在两种情况下受限：首轮（避免触发句误填）、本轮已用过文本提取
-    // 受限时仍允许显式标签提取（"地址是X"）
-    const method = slotDef.extract?.method || 'text'
-    const isFirstTurn = state.turnCount <= 1
-    const textBlocked = method === 'text' && (isFirstTurn || !canText)
-
     // 控制词（确认/提交等）不作为槽位值：还有必填未填时提示缺什么
     if (/^(确认|提交|是的|就是)$/.test(text.trim())) {
       const missing = Object.entries(state.slots).filter(([_, s]) => s.required && !s.filled)
@@ -310,33 +307,41 @@ class DialogManager {
       }
     }
 
-    const task = this.defs.get(state.taskCode)
-    const { value } = await this.nlu.extractSlotValue(
-      text, slotDef,
-      { taskCode: state.taskCode, task, state },
-      { labelOnly: textBlocked }
-    )
-
-    // LLM 提取的值必须满足槽位约束（枚举/正则），防止 LLM 乱填/回显整句
-    let finalValue = (value !== null && this.nlu.valueMatchesSlot(slotDef, value)) ? value : null
-
-    // NER+规则引擎优先策略：LLM 批量提取已禁用，纯规则引擎
-    // 原 LLM 批量兜底逻辑已移除（2024-08 改造）
-
-    if (finalValue === null) {
-      // 结构化槽位（regex/number/enum）：输入非空且不像闲聊 → 视为格式错误，直接重问
-      // 探测模式下不重问（避免"地址X，电话Y"场景下地址被问成电话）
-      if (!probing && method !== 'text' && text.trim().length > 0 && !extractor.isQuestion(text)) {
-        return { extracted: false, reask: slotDef.validate?.reask || getReply('slot_reask_invalid', { label: slotDef.label || '' }) }
+    // 【核心改造】直接赋值模式：用户输入什么就用什么，不做智能提取
+    let finalValue = text.trim()
+    
+    // 【仅格式校验】根据槽位类型进行基础验证
+    const method = slotDef.extract?.method || 'text'
+    
+    if (method === 'regex' && slotDef.extract?.rule) {
+      // 正则校验
+      const regex = new RegExp(slotDef.extract.rule)
+      if (!regex.test(finalValue)) {
+        return { extracted: false, reask: slotDef.validate?.reask || `格式不正确，请重新输入${slotDef.label}` }
       }
-      return { extracted: false, reask: '' }
+    } else if (method === 'number') {
+      // 数字校验
+      if (isNaN(Number(finalValue))) {
+        return { extracted: false, reask: `请输入有效的数字` }
+      }
+      finalValue = Number(finalValue)
+      // 范围校验
+      if (slotDef.validate?.min !== undefined && finalValue < slotDef.validate.min) {
+        return { extracted: false, reask: `不能小于${slotDef.validate.min}` }
+      }
+      if (slotDef.validate?.max !== undefined && finalValue > slotDef.validate.max) {
+        return { extracted: false, reask: `不能大于${slotDef.validate.max}` }
+      }
+    } else if (method === 'enum' && slotDef.options) {
+      // 枚举校验
+      const validOptions = slotDef.options.map(opt => opt.value || opt)
+      if (!validOptions.includes(finalValue)) {
+        return { extracted: false, reask: `请选择：${validOptions.join('、')}` }
+      }
     }
+    // text 类型不做任何校验，直接使用
 
-    const check = this.nlu.validate(slotDef, finalValue)
-    if (!check.ok) {
-      return { extracted: false, reask: check.message }
-    }
-
+    // 存入槽位
     state.slots[slotDef.key] = {
       ...state.slots[slotDef.key],
       value: finalValue,
@@ -344,7 +349,7 @@ class DialogManager {
       label: slotDef.label || slotDef.key,
       required: slotDef.required !== false,
     }
-    console.log(`[TaskFlow] 已填槽位 ${slotDef.key} = "${finalValue}"`)
+    console.log(`[TaskFlow] 直接赋值 ${slotDef.key} = "${finalValue}"`)
     _t('任务对话·填入槽位', { slot: slotDef.key, value: finalValue }, 'rule')
     return { extracted: true, note: getReply('slot_recorded', { label: slotDef.label || slotDef.key }) }
   }
@@ -726,6 +731,22 @@ class DialogManager {
     const task = this.defs.get(state.taskCode)
     if (!task) return null
     return task.steps.find(s => s.key === state.currentStep) || null
+  }
+
+  /** 
+   * 【核心功能】变量替换：将文本中的 ${variable_name} 替换为实际值
+   * @param {string} text - 包含变量的模板文本，如 "您好，${user_name}"
+   * @param {object} state - 任务状态，包含 slots
+   * @returns {string} 替换后的文本
+   */
+  _replaceVariables(text, state) {
+    if (!text || !state?.slots) return text
+    
+    // 正则匹配 ${variable_name} 格式
+    return text.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+      const slot = state.slots[varName]
+      return slot?.filled ? slot.value : match  // 如果槽位已填则替换，否则保留原样
+    })
   }
 
   _slotDef(state, step) {
