@@ -155,9 +155,10 @@ export function canvasToDSL(nodes, edges) {
     // 各类型特有字段
     switch (node.type) {
       case 'collect':
-        step.slot_key = d.slotKey || ''
+        step.variable_name = d.variableName || ''
         step.prompt = d.prompt || ''
         step.label = d.label || ''
+        step.required = d.required !== false
         break
       case 'message':
         step.text = d.text || ''
@@ -269,9 +270,10 @@ function extractNodeData(step) {
   const data = {}
   switch (step.type) {
     case 'collect':
-      data.slotKey = step.slot_key
+      data.variableName = step.variable_name
       data.prompt = step.prompt
       data.label = step.label
+      data.required = step.required !== false
       break
     case 'message':
       data.text = step.text

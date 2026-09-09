@@ -18,14 +18,17 @@
       <!-- 收集节点 -->
       <template v-if="nodeType === 'collect'">
         <div class="panel-field">
-          <label>关联槽位</label>
-          <el-select v-model="localData.slotKey" size="small" style="width:100%" placeholder="选择槽位" clearable>
-            <el-option v-for="s in slots" :key="s.key" :value="s.key" :label="s.label || s.key" />
-          </el-select>
+          <label>变量名</label>
+          <el-input v-model="localData.variableName" size="small" placeholder="如 user_name, phone_number" />
+          <span class="field-hint">用于存储用户输入的变量名</span>
         </div>
         <div class="panel-field">
-          <label>提问话术</label>
-          <el-input v-model="localData.prompt" size="small" type="textarea" :rows="3" placeholder="向用户提问的内容" />
+          <label>提示话术</label>
+          <el-input v-model="localData.prompt" size="small" type="textarea" :rows="3" placeholder="向用户提问的内容，如：请输入您的姓名" />
+        </div>
+        <div class="panel-field">
+          <label>是否必填</label>
+          <el-switch v-model="localData.required" active-text="是" inactive-text="否" />
         </div>
       </template>
 
@@ -204,6 +207,13 @@ function handleCancel() {
   font-size: 12px;
   color: #666;
   margin-bottom: 6px;
+}
+
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
 }
 
 .branch-case {

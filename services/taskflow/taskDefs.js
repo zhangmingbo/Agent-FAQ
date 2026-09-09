@@ -264,11 +264,8 @@ class TaskDefs {
       if (keys.has(step.key)) errors.push(`步骤 key 重复: ${step.key}`)
       keys.add(step.key)
       if (step.type === 'collect') {
-        if (!step.slot_key) errors.push(`步骤 ${step.key}: 缺少 slot_key`)
-        collectKeys.add(step.slot_key)
-        if (step.extract?.method && !['text', 'regex', 'number', 'enum'].includes(step.extract.method)) {
-          errors.push(`步骤 ${step.key}: 不支持的提取方式 ${step.extract.method}`)
-        }
+        if (!step.variable_name) errors.push(`步骤 ${step.key}: 缺少 variable_name`)
+        collectKeys.add(step.variable_name)
       }
       if (step.type === 'action' && !step.action) errors.push(`步骤 ${step.key}: 缺少 action`)
       if (step.type === 'subtask' && !step.task) errors.push(`步骤 ${step.key}: 缺少子任务 code`)
@@ -277,10 +274,10 @@ class TaskDefs {
         errors.push(`步骤 ${step.key}: next 指向不存在的步骤 ${step.next}`)
       }
     })
-    // collect 步骤的 slot_key 应在 slots 定义中（或自动补齐）
+    // collect 步骤的 variable_name 应在 slots 定义中（或自动补齐）
     for (const key of collectKeys) {
       if (!def.slots.some(s => s.key === key)) {
-        const step = steps.find(s => s.slot_key === key)
+        const step = steps.find(s => s.variable_name === key)
         def.slots.push({ key, label: step?.label || key, required: step?.required !== false })
       }
     }
