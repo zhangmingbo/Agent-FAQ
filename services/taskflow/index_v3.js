@@ -219,9 +219,12 @@ class TaskFlowEngine {
   
   get nlu() {
     // 兼容 faq-engine.js 中的 taskEngine.nlu 访问
+    // v3引擎不使用NLU,所有方法返回null/空结果
     return {
       setFaqSamples: () => {},
-      route: async () => null // 返回null表示不匹配任何意图
+      route: async () => null,
+      detectNewTask: async () => null,
+      arbitrateTaskFaq: async () => null
     }
   }
   
