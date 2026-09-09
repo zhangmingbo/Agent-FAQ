@@ -213,6 +213,26 @@ export function canvasToDSL(nodes, edges) {
 
 /** 构建分支节点的条件出口 */
 function buildBranchCases(node, edges, nodeMap) {
+  const d = node.data || {}
+  const cases = d.cases || []
+  
+  // 优先使用节点配置的 conditions
+  if (cases.length > 0 && cases[0].when) {
+    return cases.map(c => {
+      const edge = edges.find(e => 
+        e.source === node.id && 
+        e.sourceHandle && 
+        (e.label === c.label || e.sourceHandle.includes(c.when.slot))
+      )
+      return {
+        when: c.when,
+        next: edge ? (nodeMap.get(edge.target)?.data?.key || edge.target.replace('node_', '')) : null,
+        label: c.label || '',
+      }
+    })
+  }
+  
+  // 回退：从连线中推断（兼容旧格式）
   const branchEdges = edges.filter(e => e.source === node.id && e.sourceHandle)
   return branchEdges.map(e => {
     const targetNode = nodeMap.get(e.target)

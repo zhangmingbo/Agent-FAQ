@@ -46,9 +46,28 @@
           <label>分支条件</label>
           <div v-for="(c, i) in localData.cases" :key="i" class="branch-case">
             <el-input v-model="c.label" size="small" placeholder="条件标签" style="width:100px" />
-            <el-button size="small" text type="danger" @click="localData.cases.splice(i, 1)"></el-button>
+            <el-select v-model="c.when.slot" size="small" placeholder="选择变量" style="width:120px" clearable>
+              <el-option label="user_name" value="user_name" />
+              <el-option label="phone_number" value="phone_number" />
+              <el-option label="age" value="age" />
+              <el-option label="is_vip" value="is_vip" />
+            </el-select>
+            <el-select v-model="c.when.op" size="small" placeholder="运算符" style="width:80px">
+              <el-option label="等于" value="eq" />
+              <el-option label="不等于" value="neq" />
+              <el-option label="大于" value="gt" />
+              <el-option label="小于" value="lt" />
+              <el-option label="大于等于" value="gte" />
+              <el-option label="小于等于" value="lte" />
+              <el-option label="包含" value="contains" />
+              <el-option label="为空" value="empty" />
+              <el-option label="不为空" value="not_empty" />
+            </el-select>
+            <el-input v-model="c.when.value" size="small" placeholder="值" style="width:100px" :disabled="['empty', 'not_empty'].includes(c.when.op)" />
+            <el-button size="small" text type="danger" @click="localData.cases.splice(i, 1)">✕</el-button>
           </div>
-          <el-button size="small" text type="primary" @click="localData.cases.push({ label: '', when: {} })">+ 添加条件</el-button>
+          <el-button size="small" text type="primary" @click="localData.cases.push({ label: '', when: { slot: '', op: 'eq', value: '' } })">+ 添加条件</el-button>
+          <span class="field-hint">例如：变量 age > 18，或变量 user_name 不为空</span>
         </div>
       </template>
 
