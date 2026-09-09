@@ -97,6 +97,10 @@ class TaskDefs {
     try {
       await pool.execute('ALTER TABLE task ADD COLUMN arb_strong_hit DECIMAL(4,3) NULL COMMENT \'强命中线（任务级）\' AFTER arb_faq_min')
     } catch { /* 列已存在 */ }
+    // v6.0: 画布布局数据
+    try {
+      await pool.execute('ALTER TABLE task ADD COLUMN flow_canvas JSON NULL COMMENT \'画布布局（节点位置/连线）\' AFTER api_action')
+    } catch { /* 列已存在 */ }
   }
 
   /** 全量加载任务定义（含 v1 → v2 迁移） */
@@ -145,6 +149,8 @@ class TaskDefs {
       arb_strong_hit: row.arb_strong_hit === null || row.arb_strong_hit === undefined ? null : parseFloat(row.arb_strong_hit),
       // 调用接口配置（完成动作 call_api 用）：{ url, method, fieldMap, successMessage }
       api_action: _parseJson(row.api_action, null),
+      // v6.0: 画布布局数据
+      flow_canvas: _parseJson(row.flow_canvas, null),
       // api 步骤的结果槽位（系统填充，不向用户收集，也不阻塞确认）：
       // 兼容旧式 resultSlot 与新式 resultMap（{ 槽位key: 字段路径 }）的全部槽位
       apiResultSlots: [...new Set((steps || []).filter(s => s.type === 'api').flatMap(s => {
@@ -323,7 +329,7 @@ class TaskDefs {
 
   /** 保存（创建/更新）并刷新缓存 */
   async save(def) {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, completion_message, on_complete, status } = def
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, flow_canvas, completion_message, on_complete, status } = def
     // 任务级仲裁阈值：null/undefined/'' → 存 NULL（表示用全局）
     const arbNum = (v) => {
       if (v === null || v === undefined || v === '') return null
@@ -331,9 +337,9 @@ class TaskDefs {
       return isNaN(n) ? null : n
     }
     await pool.execute(
-      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, completion_message, on_complete, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, arb_gap=?, arb_task_min=?, arb_faq_min=?, arb_strong_hit=?, llm=?, api_action=?, completion_message=?, on_complete=?, status=?`,
+      `INSERT INTO task (code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, flow_canvas, completion_message, on_complete, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name=?, description=?, trigger_keywords=?, slots=?, steps=?, intent_examples=?, clarify_question=?, clarify_options=?, arb_gap=?, arb_task_min=?, arb_faq_min=?, arb_strong_hit=?, llm=?, api_action=?, flow_canvas=?, completion_message=?, on_complete=?, status=?`,
       [
         code, name, description || null,
         JSON.stringify(trigger_keywords || []),
@@ -345,6 +351,7 @@ class TaskDefs {
         arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min), arbNum(arb_strong_hit),
         JSON.stringify(llm || null),
         JSON.stringify(api_action || null),
+        JSON.stringify(flow_canvas || null),
         completion_message || null, on_complete || '', status ?? 1,
         name, description || null,
         JSON.stringify(trigger_keywords || []),
@@ -356,6 +363,7 @@ class TaskDefs {
         arbNum(arb_gap), arbNum(arb_task_min), arbNum(arb_faq_min), arbNum(arb_strong_hit),
         JSON.stringify(llm || null),
         JSON.stringify(api_action || null),
+        JSON.stringify(flow_canvas || null),
         completion_message || null, on_complete || '', status ?? 1,
       ]
     )

@@ -208,7 +208,7 @@ export function createRouter() {
 
   // 创建/更新任务
   router.post('/tasks', asyncHandler(async (req, res) => {
-    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, completion_message, on_complete, status } = req.body
+    const { code, name, description, trigger_keywords, slots, steps, intent_examples, clarify_question, clarify_options, arb_gap, arb_task_min, arb_faq_min, arb_strong_hit, llm, api_action, flow_canvas, completion_message, on_complete, status } = req.body
 
     console.log(`[DEBUG tasks.save] 收到保存请求: code=${code}`)
     console.log(`[DEBUG tasks.save] slots 数量: ${slots?.length || 0}`)
@@ -243,7 +243,7 @@ export function createRouter() {
       code, name, description, trigger_keywords, slots, steps, intent_examples,
       clarify_question, clarify_options,
       arb_gap, arb_task_min, arb_faq_min, arb_strong_hit,
-      llm, api_action,
+      llm, api_action, flow_canvas,
       completion_message, on_complete, status,
     })
 

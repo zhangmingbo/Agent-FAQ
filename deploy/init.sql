@@ -1,5 +1,5 @@
 -- ============================================================
--- FAQ 智能问答机器人 v5.0 - 数据库初始化脚本
+-- FAQ 智能问答机器人 v6.0 - 数据库初始化脚本
 -- 
 -- 使用方法:
 --   mysql -u root -p < init.sql
@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS `task` (
   `arb_strong_hit` DECIMAL(4,3) NULL COMMENT '强命中线',
   `llm` JSON NULL COMMENT 'LLM 配置（任务级）',
   `api_action` JSON NULL COMMENT 'API 动作配置',
+  `flow_canvas` JSON NULL COMMENT '画布布局（节点位置/连线）',
   `completion_message` TEXT COMMENT '完成提示语',
   `on_complete` TEXT COMMENT '完成后动作（动作名或编排 JSON）',
   `status` TINYINT DEFAULT 1 COMMENT '1=启用 0=禁用',
