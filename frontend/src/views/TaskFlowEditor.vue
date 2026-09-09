@@ -322,9 +322,12 @@ function onDrop(event) {
   event.preventDefault()
   if (!dragType) return
 
-  const canvasRect = event.currentTarget.getBoundingClientRect()
-  const x = event.clientX - canvasRect.left
-  const y = event.clientY - canvasRect.top
+  // 使用 Vue Flow 的坐标转换（考虑缩放和平移）
+  const { screenToFlowCoordinate } = useVueFlow()
+  const position = screenToFlowCoordinate({
+    x: event.clientX,
+    y: event.clientY,
+  })
 
   const existingKeys = new Set(nodes.value.map(n => n.data?.key || ''))
   const key = generateKey(dragType, existingKeys)
@@ -332,7 +335,7 @@ function onDrop(event) {
   nodes.value.push({
     id: `node_${key}`,
     type: dragType,
-    position: { x: x - 70, y: y - 22 },
+    position: { x: position.x - 70, y: position.y - 22 },
     data: {
       key,
       label: NODE_TYPES[dragType]?.label || dragType,
