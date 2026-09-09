@@ -41,7 +41,7 @@ class TaskFlowEngine {
     console.log('[TaskFlow v3] 初始化纯解释器引擎...')
     
     // 加载任务定义
-    await TaskDefs.loadAll()
+    await TaskDefs.loadTasks()
     console.log(`[TaskFlow v3] 已加载 ${this.taskDefs.size} 个任务`)
     
     // 初始化存储
@@ -178,8 +178,6 @@ class TaskFlowEngine {
       await closeStore(this.store)
     }
   }
-
-  // ========== 兼容旧API(CRUD) ==========
   
   list() {
     return Array.from(this.taskDefs.values())
@@ -210,6 +208,20 @@ class TaskFlowEngine {
 
   setSessionTtl(minutes) {
     this.sessionTtl = minutes * 60 * 1000
+  }
+
+  // ========== 兼容旧API(空实现,避免server.js报错) ==========
+  
+  setNlpEngine() {
+    // v3 不需要 NLP 引擎,纯解释执行
+    console.log('[TaskFlow v3] setNlpEngine 被忽略(v3不使用NLP)')
+  }
+  
+  get nlu() {
+    // 兼容 faq-engine.js 中的 taskEngine.nlu 访问
+    return {
+      setFaqSamples: () => {} // 空实现
+    }
   }
 }
 

@@ -221,5 +221,5 @@ class SimpleFlowEngine {
   }
 }
 
-// 导出单例
-module.exports = new SimpleFlowEngine()
+// 导出单例 (ESM)
+export default new SimpleFlowEngine()
