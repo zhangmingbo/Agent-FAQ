@@ -118,7 +118,6 @@
             @node-double-click="onNodeDblClick"
             @edge-click="onEdgeClick"
             @delete="onDelete"
-            ref="vueFlowRef"
           >
             <template #node-start="{ data, selected }">
               <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
@@ -200,7 +199,9 @@ const edges = ref([])
 const panelVisible = ref(false)
 const selectedNodeData = ref({})
 const selectedNodeType = ref('message')
-const vueFlowRef = ref(null)
+
+// Vue Flow 实例（用于坐标转换和视图控制）
+const { screenToFlowCoordinate, fitView } = useVueFlow()
 
 const currentTask = ref(null)
 
@@ -323,7 +324,6 @@ function onDrop(event) {
   if (!dragType) return
 
   // 使用 Vue Flow 的坐标转换（考虑缩放和平移）
-  const { screenToFlowCoordinate } = useVueFlow()
   const position = screenToFlowCoordinate({
     x: event.clientX,
     y: event.clientY,
@@ -446,9 +446,7 @@ function handleAutoLayout() {
 }
 
 function handleFitView() {
-  if (vueFlowRef.value?.fitView) {
-    vueFlowRef.value.fitView({ padding: 0.2 })
-  }
+  fitView({ padding: 0.2 })
 }
 
 // ========== 小地图颜色 ==========
