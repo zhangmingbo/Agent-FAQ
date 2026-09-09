@@ -307,6 +307,11 @@ class DialogManager {
       }
     }
 
+    // 【防重填守卫】如果文本已被使用过（如触发词），且当前槽位不是显式标记的，则跳过
+    if (!canText || !text.trim()) {
+      return { extracted: false, reask: '' }
+    }
+
     // 【核心改造】直接赋值模式：用户输入什么就用什么，不做智能提取
     let finalValue = text.trim()
     
