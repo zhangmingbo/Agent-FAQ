@@ -730,7 +730,9 @@ class DialogManager {
 
   _slotDef(state, step) {
     const task = this.defs.get(state.taskCode)
-    const def = (task?.slots || []).find(s => s.key === step.slot_key)
+    // 兼容新旧字段名：variable_name（新）或 slot_key（旧）
+    const slotKey = step.variable_name || step.slot_key
+    const def = (task?.slots || []).find(s => s.key === slotKey)
     if (!def) return null
 
     // 优先使用步骤级别的 extract 配置，否则从槽位定义中继承完整配置
@@ -741,7 +743,7 @@ class DialogManager {
     }
 
     // 提问话术：枚举槽位自动追加可选值，让用户知道怎么回答（话术已含选项则跳过）
-    let prompt = step.prompt || def.prompt || getReply('slot_prompt_fallback', { label: def.label || step.slot_key })
+    let prompt = step.prompt || def.prompt || getReply('slot_prompt_fallback', { label: def.label || slotKey })
     if (extract.method === 'enum') {
       const options = Array.isArray(extract.enum)
         ? extract.enum
