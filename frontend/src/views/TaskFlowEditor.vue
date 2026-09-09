@@ -118,6 +118,7 @@
             @node-double-click="onNodeDblClick"
             @edge-click="onEdgeClick"
             @delete="onDelete"
+            ref="vueFlowRef"
           >
             <template #node-start="{ data, selected }">
               <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
@@ -199,9 +200,10 @@ const edges = ref([])
 const panelVisible = ref(false)
 const selectedNodeData = ref({})
 const selectedNodeType = ref('message')
+const vueFlowRef = ref(null)
 
-// Vue Flow 实例（用于坐标转换和视图控制）
-const { screenToFlowCoordinate, fitView } = useVueFlow()
+// Vue Flow 实例（用于视图控制）
+const { fitView } = useVueFlow()
 
 const currentTask = ref(null)
 
@@ -323,8 +325,11 @@ function onDrop(event) {
   event.preventDefault()
   if (!dragType) return
 
-  // 使用 Vue Flow 的坐标转换（考虑缩放和平移）
-  const position = screenToFlowCoordinate({
+  // 使用 Vue Flow ref 的坐标转换（考虑缩放和平移）
+  const flowInstance = vueFlowRef.value
+  if (!flowInstance) return
+  
+  const position = flowInstance.screenToFlowCoordinate({
     x: event.clientX,
     y: event.clientY,
   })
