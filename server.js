@@ -39,7 +39,12 @@ import { createRouter as createTasksRouter } from './routes/tasks.js'
 import { createRouter as createDebugRouter } from './routes/debug.js'
 import { createRouter as createActionLogRouter } from './routes/actionLogs.js'
 import { createRouter as createTaskInstanceRouter } from './routes/taskInstance.js'
-import taskEngine from './services/taskflow/index.js'
+// 【架构升级】支持切换 v2(旧) 或 v3(新纯解释器) 引擎
+const TASKFLOW_VERSION = process.env.TASKFLOW_VERSION || 'v2'
+const taskEngineModule = TASKFLOW_VERSION === 'v3' 
+  ? await import('./services/taskflow/index_v3.js')
+  : await import('./services/taskflow/index.js')
+const taskEngine = taskEngineModule.default
 import taskSuggestService from './services/taskSuggestService.js'
 import autoExpandService from './services/autoExpandService.js'
 import { initReplyTexts, getAllReplyTexts, DEFAULT_REPLY_TEXTS } from './services/replyTexts.js'
