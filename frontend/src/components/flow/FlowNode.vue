@@ -14,7 +14,7 @@
       <span class="flow-node__label">{{ displayLabel }}</span>
     </div>
 
-    <!-- 输出锚点 -->
+    <!-- 输出锚点（结束节点无输出） -->
     <template v-if="nodeType === 'branch'">
       <!-- 分支节点：每个 case 一个输出 -->
       <Handle
@@ -28,7 +28,7 @@
       />
     </template>
     <Handle
-      v-else
+      v-else-if="nodeType !== 'end'"
       type="source"
       position="right"
       class="flow-handle flow-handle--source"

@@ -114,6 +114,7 @@
               markerEnd: { type: 'arrowclosed', color: '#94a3b8' }
             }"
             fit-view-on-init
+            @connect="onConnect"
             @node-click="onNodeClick"
             @node-double-click="onNodeDblClick"
             @edge-click="onEdgeClick"
@@ -337,6 +338,31 @@ function onDrop(event) {
   })
 
   dragType = null
+}
+
+// ========== 连线处理 ==========
+function onConnect(connection) {
+  // 防止重复连线
+  const exists = edges.value.some(e =>
+    e.source === connection.source && e.target === connection.target
+  )
+  if (exists) return
+
+  // 结束节点不能作为源
+  const sourceNode = nodes.value.find(n => n.id === connection.source)
+  if (sourceNode?.data?._nodeType === 'end') return
+
+  // 开始节点不能作为目标
+  const targetNode = nodes.value.find(n => n.id === connection.target)
+  if (targetNode?.data?._nodeType === 'start') return
+
+  edges.value.push({
+    id: `edge_${connection.source}_${connection.target}`,
+    source: connection.source,
+    target: connection.target,
+    sourceHandle: connection.sourceHandle || undefined,
+    type: 'bezier',
+  })
 }
 
 // ========== 节点交互 ==========
