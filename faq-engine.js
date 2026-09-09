@@ -762,25 +762,39 @@ class FAQEngine {
 
     console.log(`[TASK] 触发任务: ${matchedTask.name} (${matchedTask.code})`)
     const taskState = this.taskEngine.startTask(sessionId, matchedTask, traceSteps, text, userId)
-    const taskResult = await this.taskEngine.processInput(sessionId, text, traceSteps)
-    if (taskResult?.events?.length && context) context.pendingEvents = taskResult.events
-    if (taskResult) {
-      let answer = taskResult.reply
-      // 有被中断的任务时，提示可恢复
-      if (fromStash) {
-        const stashed = await this.taskEngine.getStashed(sessionId)
-        if (stashed) {
-          answer = getReply('stashed_hint', { taskName: stashed.taskName }) + answer
-        }
-      }
-      return {
-        intent_code: `task:${matchedTask.code}`,
-        confidence: 1,
-        source: taskResult.isComplete ? 'task_complete' : 'task_started',
-        answer,
+    
+    // 【核心修复】启动任务后，不应该用触发词文本调用 processInput
+    // 应该直接获取第一个收集节点的提示语作为回复
+    const firstCollectStep = (matchedTask.steps || []).find(s => s.type === 'collect')
+    let answer = ''
+    let isComplete = false
+    
+    if (firstCollectStep) {
+      // 有收集节点：获取第一个收集节点的提示语
+      const slotDef = this.taskEngine.dialog._slotDef(taskState, firstCollectStep)
+      answer = slotDef?.prompt || firstCollectStep.prompt || '请提供所需信息。'
+    } else {
+      // 没有收集节点：直接执行流程
+      const taskResult = await this.taskEngine.processInput(sessionId, '', traceSteps)
+      if (taskResult?.events?.length && context) context.pendingEvents = taskResult.events
+      answer = taskResult?.reply || ''
+      isComplete = taskResult?.isComplete || false
+    }
+    
+    // 有被中断的任务时，提示可恢复
+    if (fromStash) {
+      const stashed = await this.taskEngine.getStashed(sessionId)
+      if (stashed) {
+        answer = getReply('stashed_hint', { taskName: stashed.taskName }) + answer
       }
     }
-    return null
+    
+    return {
+      intent_code: `task:${matchedTask.code}`,
+      confidence: 1,
+      source: isComplete ? 'task_complete' : 'task_started',
+      answer,
+    }
   }
 
   /** 任务已收集槽位摘要（路由 LLM 上下文用） */
