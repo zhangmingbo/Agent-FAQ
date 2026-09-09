@@ -356,7 +356,9 @@ class DialogManager {
     }
     console.log(`[TaskFlow] 直接赋值 ${slotDef.key} = "${finalValue}"`)
     _t('任务对话·填入槽位', { slot: slotDef.key, value: finalValue }, 'rule')
-    return { extracted: true, note: getReply('slot_recorded', { label: slotDef.label || slotDef.key }) }
+    
+    // 【核心改造】显式配置模式下，不输出"已记录"提示，由画布配置的话术控制交互
+    return { extracted: true, note: '' }
   }
 
   // ========== 智能辅助 ==========
