@@ -561,28 +561,19 @@ class FAQEngine {
             }
             response = await this._buildRouteClarifyResponse(context.pendingRoute, /* repeat */ false)
           } else if (route === 'faq') {
-            // 用户问知识（费用/故障/操作…）→ FAQ 通道 + 任务挂起
-            console.log('[TASK] 路由→FAQ，任务挂起')
-            _t('任务挂起（FAQ 插话）', { taskCode: taskState.taskCode })
-            const faqResponse = await this._handleRecognize(text, context)
-            if (faqResponse.source === 'direct' || faqResponse.source === 'confirmed') {
-              this.taskEngine.suspend(sessionId, traceSteps)
-              response = {
-                ...faqResponse,
-                answer: faqResponse.answer + this._suspendedHint(taskState),
-                source: 'task_suspended_faq',
-              }
-            } else {
-              // FAQ 也没匹配到 → 回任务通道继续引导
-              response = taskResult
-                ? {
-                    intent_code: `task:${taskResult.taskState.taskCode}`,
-                    confidence: 1,
-                    source: 'task_progress',
-                    answer: taskResult.reply,
-                  }
-                : null
-            }
+            // 【重要】进入任务后不再触发FAQ匹配
+            // 原逻辑：挂起任务并走FAQ通道
+            // 新逻辑：不挂起，继续在任务内引导，避免被FAQ干扰
+            console.log('[TASK] 路由→FAQ，但已进入任务流程，不触发FAQ，继续任务引导')
+            _t('任务中忽略FAQ路由', { taskCode: taskState.taskCode }, 'warn')
+            response = taskResult
+              ? {
+                  intent_code: `task:${taskResult.taskState.taskCode}`,
+                  confidence: 1,
+                  source: 'task_progress',
+                  answer: taskResult.reply,
+                }
+              : null
           } else if (route === 'task_new') {
             // 用户想办另一件事 → 中断暂存当前任务，触发新任务
             console.log('[TASK] 路由→新任务，当前任务中断暂存')
