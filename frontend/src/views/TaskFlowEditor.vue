@@ -106,7 +106,6 @@
           <VueFlow
             v-model:nodes="nodes"
             v-model:edges="edges"
-            :node-types="nodeTypes"
             :default-edge-options="{
               type: 'bezier',
               animated: false,
@@ -121,6 +120,30 @@
             @delete="onDelete"
             ref="vueFlowRef"
           >
+            <template #node-start="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-collect="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-message="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-branch="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-api="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-confirm="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-subtask="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
+            <template #node-end="{ data, selected }">
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+            </template>
             <Background :gap="20" :color="'#e2e8f0'" />
             <Controls :show-interactive="false" />
             <MiniMap :node-color="getMiniMapColor" :mask-color="'rgba(0,0,0,0.05)'" />
@@ -186,18 +209,6 @@ const taskForm = ref({
   trigger_keywords: [], intent_examples: [],
   slots: [],
 })
-
-// ========== 自定义节点类型 ==========
-const nodeTypes = {
-  start: FlowNode,
-  collect: FlowNode,
-  message: FlowNode,
-  branch: FlowNode,
-  api: FlowNode,
-  confirm: FlowNode,
-  subtask: FlowNode,
-  end: FlowNode,
-}
 
 // ========== 列表操作 ==========
 function keywordText(row) {
@@ -374,6 +385,25 @@ function onNodeDblClick({ node }) {
   selectedNodeData.value = { ...node.data }
   selectedNodeType.value = node.type
   panelVisible.value = true
+}
+
+function onNodeEdit(nodeData) {
+  selectedNodeData.value = { ...nodeData }
+  selectedNodeType.value = nodeData._nodeType
+  panelVisible.value = true
+}
+
+function onNodeDelete(nodeData) {
+  // 找到对应的 Vue Flow 节点并删除
+  const node = nodes.value.find(n => n.data?.key === nodeData.key)
+  if (node) {
+    // 删除相关连线
+    edges.value = edges.value.filter(e => e.source !== node.id && e.target !== node.id)
+    // 删除节点
+    nodes.value = nodes.value.filter(n => n.id !== node.id)
+    // 关闭属性面板
+    panelVisible.value = false
+  }
 }
 
 function onEdgeClick({ edge }) {

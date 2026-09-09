@@ -1,5 +1,15 @@
 <template>
   <div class="flow-node" :class="[`flow-node--${nodeType}`, { 'flow-node--selected': selected }]" @dblclick="$emit('edit', data)">
+    <!-- 删除按钮（选中时显示） -->
+    <button
+      v-if="selected && nodeType !== 'start'"
+      class="flow-node__delete-btn"
+      @click.stop="$emit('delete', data)"
+      title="删除节点"
+    >
+      ✕
+    </button>
+
     <!-- 输入锚点（开始节点无输入） -->
     <Handle
       v-if="nodeType !== 'start'"
@@ -46,7 +56,7 @@ const props = defineProps({
   selected: { type: Boolean, default: false },
 })
 
-defineEmits(['edit'])
+defineEmits(['edit', 'delete'])
 
 const nodeType = computed(() => {
   return props.data._nodeType || 'message'
@@ -171,6 +181,33 @@ const branchCases = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 删除按钮 */
+.flow-node__delete-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.flow-node__delete-btn:hover {
+  background: #dc2626;
+  transform: scale(1.1);
 }
 
 .flow-node__icon {
