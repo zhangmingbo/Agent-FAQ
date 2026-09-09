@@ -86,19 +86,6 @@
               <el-input v-model="exampleInput" size="small" style="width:120px" placeholder="回车添加" @keyup.enter="addExample" />
             </div>
           </div>
-
-          <!-- 槽位列表 -->
-          <div class="palette-section">
-            <div class="palette-title">
-              槽位定义
-              <el-button size="small" text type="primary" @click="addSlot">+ 添加</el-button>
-            </div>
-            <div v-for="(slot, si) in taskForm.slots" :key="si" class="slot-mini">
-              <el-input v-model="slot.key" size="small" style="width:70px" placeholder="key" />
-              <el-input v-model="slot.label" size="small" style="width:70px" placeholder="名称" />
-              <el-button size="small" text type="danger" @click="taskForm.slots.splice(si, 1)">✕</el-button>
-            </div>
-          </div>
         </div>
 
         <!-- 画布区域 -->
@@ -242,10 +229,6 @@ function addExample() {
     taskForm.value.intent_examples.push(v)
     exampleInput.value = ''
   }
-}
-
-function addSlot() {
-  taskForm.value.slots.push({ key: '', label: '', required: true })
 }
 
 async function handleToggle(row) {
@@ -711,13 +694,6 @@ onMounted(() => { loadTasks() })
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-}
-
-.slot-mini {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 4px;
 }
 
 /* ===== 画布区域 ===== */

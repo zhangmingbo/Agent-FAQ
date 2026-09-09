@@ -1,24 +1,26 @@
 /**
- * 任务定义加载器（DSL v2）
+ * 任务定义加载器（DSL v3.0 - 纯解释器模式）
  *
+ * 设计理念 (参考 Coze/Dify/Botpress):
+ * - 画布即代码(Canvas as Code):所有逻辑在JSON DSL中定义
+ * - 极简节点类型:仅5种(start/message/collect/branch/end)
+ * - 无智能提取:用户输入直接赋值给变量,不做NER
+ * - 无语义理解:条件判断基于显式表达式 ${age} > 18
+ * 
  * 声明式任务定义模型（task 表）：
  *   code, name, description,
  *   trigger_keywords JSON,     // ['报修'] 或 [{keyword|regex}]
- *   slots JSON,                // v1 兼容：简单槽位（无 steps 时自动生成流程）
- *   steps JSON,                // v2 流程 DSL（collect/confirm/action/subtask/branch/message）
+ *   steps JSON,                // v3 流程 DSL（start/message/collect/branch/end）
+ *   intent_examples JSON,      // 意图例句（NLU 理解用，v3不再使用）
  *   completion_message, on_complete, status
  *
- * v2 步骤 DSL：
+ * v3 步骤 DSL (简化版):
  *   { key, type, next, ... }
- *   type=collect : { slot_key, label, required, prompt, extract:{method,rule,enum}, validate:{rule,reask} }
- *   type=confirm : { prompt? }  —— 收集完毕后确认
- *   type=action  : { action, params, done_message, on_fail:'retry'|'reask' }
- *   type=subtask : { task, on_return }
- *   type=branch  : { cases:[{when:{slot,op,value},next}], default_next }
- *   type=message : { text }
- *
- * v1 → v2 运行时迁移：无 steps 时由 slots 自动生成
- *   collect(slot) xN → confirm → complete action
+ *   type=start    : { next } —— 流程入口(可选)
+ *   type=message  : { text, next } —— 发送消息
+ *   type=collect  : { variable, prompt, validation?, next } —— 收集用户输入
+ *   type=branch   : { condition, true_next, false_next } —— 条件分支
+ *   type=end      : { doneMessage? } —— 流程结束
  */
 
 import pool from '../../db/pool.js'
@@ -264,8 +266,13 @@ class TaskDefs {
       if (keys.has(step.key)) errors.push(`步骤 key 重复: ${step.key}`)
       keys.add(step.key)
       if (step.type === 'collect') {
-        if (!step.variable_name) errors.push(`步骤 ${step.key}: 缺少 variable_name`)
-        collectKeys.add(step.variable_name)
+        // 【v3.0】collect节点直接使用variable字段,不再关联slot_key
+        if (!step.variable && !step.variable_name) errors.push(`步骤 ${step.key}: 缺少 variable 或 variable_name`)
+        // 兼容旧版variable_name字段
+        if (!step.variable && step.variable_name) {
+          step.variable = step.variable_name
+        }
+        collectKeys.add(step.variable || step.variable_name)
       }
       if (step.type === 'action' && !step.action) errors.push(`步骤 ${step.key}: 缺少 action`)
       if (step.type === 'subtask' && !step.task) errors.push(`步骤 ${step.key}: 缺少子任务 code`)
@@ -274,13 +281,9 @@ class TaskDefs {
         errors.push(`步骤 ${step.key}: next 指向不存在的步骤 ${step.next}`)
       }
     })
-    // collect 步骤的 variable_name 应在 slots 定义中（或自动补齐）
-    for (const key of collectKeys) {
-      if (!def.slots.some(s => s.key === key)) {
-        const step = steps.find(s => s.variable_name === key)
-        def.slots.push({ key, label: step?.label || key, required: step?.required !== false })
-      }
-    }
+    // 【v3.0核心改造】移除slots自动补齐逻辑
+    // v3引擎不再使用slots字段,变量直接在collect节点中声明
+    // 保留此注释以便后续维护者了解设计决策
 
     // 完成动作编排校验（on_complete 为 JSON 字符串，v3 P3）
     if (def.on_complete && typeof def.on_complete === 'string' && def.on_complete.trim().startsWith('{')) {
