@@ -114,9 +114,16 @@ const emit = defineEmits(['apply', 'close'])
 
 const localData = ref({})
 
+// 监听节点数据变化，实时更新面板内容
+watch(() => props.nodeData, (newData) => {
+  if (props.visible && newData && Object.keys(newData).length > 0) {
+    localData.value = JSON.parse(JSON.stringify(newData))
+  }
+}, { deep: true })
+
 watch(() => props.visible, (v) => {
-  if (v) {
-    localData.value = JSON.parse(JSON.stringify(props.nodeData || {}))
+  if (v && props.nodeData && Object.keys(props.nodeData).length > 0) {
+    localData.value = JSON.parse(JSON.stringify(props.nodeData))
   }
 })
 
@@ -153,17 +160,14 @@ function handleCancel() {
 
 <style scoped>
 .node-panel {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 320px;
+  width: 100%;
+  height: 100%;
   background: #fff;
-  border-left: 1px solid #e8e8e8;
+  border-radius: 8px;
   box-shadow: -2px 0 8px rgba(0,0,0,0.06);
-  z-index: 100;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .node-panel__header {

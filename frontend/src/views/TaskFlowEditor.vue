@@ -150,15 +150,17 @@
         </div>
 
         <!-- 右侧属性面板 -->
-        <NodePanel
-          :visible="panelVisible"
-          :node-type="selectedNodeType"
-          :node-data="selectedNodeData"
-          :slots="taskForm.slots"
-          :all-tasks="allTasks"
-          @apply="onNodeApply"
-          @close="panelVisible = false"
-        />
+        <div class="panel-wrapper" v-if="panelVisible">
+          <NodePanel
+            :visible="panelVisible"
+            :node-type="selectedNodeType"
+            :node-data="selectedNodeData"
+            :slots="taskForm.slots"
+            :all-tasks="allTasks"
+            @apply="onNodeApply"
+            @close="panelVisible = false"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -706,6 +708,16 @@ onMounted(() => { loadTasks() })
   margin: 8px;
   overflow: hidden;
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* 属性面板容器 */
+.panel-wrapper {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  bottom: 8px;
+  width: 320px;
+  z-index: 100;
 }
 
 /* Vue Flow 样式覆盖 */
