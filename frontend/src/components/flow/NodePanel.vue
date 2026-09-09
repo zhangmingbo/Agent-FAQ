@@ -48,10 +48,7 @@
           <div v-for="(c, i) in localData.cases" :key="i" class="branch-case">
             <el-input v-model="c.label" size="small" placeholder="条件标签" style="width:100px" />
             <el-select v-model="c.when.slot" size="small" placeholder="选择变量" style="width:120px" clearable>
-              <el-option label="user_name" value="user_name" />
-              <el-option label="phone_number" value="phone_number" />
-              <el-option label="age" value="age" />
-              <el-option label="is_vip" value="is_vip" />
+              <el-option v-for="s in availableVariables" :key="s.key" :label="s.label || s.key" :value="s.key" />
             </el-select>
             <el-select v-model="c.when.op" size="small" placeholder="运算符" style="width:80px">
               <el-option label="等于" value="eq" />
@@ -148,6 +145,11 @@ watch(() => props.visible, (v) => {
   if (v && props.nodeData && Object.keys(props.nodeData).length > 0) {
     localData.value = JSON.parse(JSON.stringify(props.nodeData))
   }
+})
+
+// 【核心改造】动态获取可用变量列表（从任务槽位定义中读取）
+const availableVariables = computed(() => {
+  return props.slots || []
 })
 
 // 自动保存：数据变化时立即应用
