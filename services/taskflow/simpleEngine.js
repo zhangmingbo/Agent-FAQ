@@ -61,15 +61,82 @@ class SimpleFlowEngine {
       if (collectStep.validation) {
         const validationResult = this._validateInput(trimmedValue, collectStep.validation)
         if (!validationResult.valid) {
+          // 【异常处理】记录重试次数
+          if (!state.retryCount) state.retryCount = {}
+          if (!state.retryCount[collectStep.key]) state.retryCount[collectStep.key] = 0
+          state.retryCount[collectStep.key]++
+          
+          const maxRetries = collectStep.error_handling?.no_match?.max_retries || 3
+          const retryPrompts = collectStep.error_handling?.no_match?.retry_prompts || []
+          const onExceeded = collectStep.error_handling?.no_match?.on_exceeded
+          
+          // 【可观测性】记录校验失败
+          state.executionLog.push({
+            event: 'validation_failed',
+            node: collectStep.key,
+            retryCount: state.retryCount[collectStep.key],
+            maxRetries,
+            timestamp: new Date().toISOString()
+          })
+          
+          // 检查是否超过最大重试次数
+          if (state.retryCount[collectStep.key] >= maxRetries) {
+            // 超过最大重试次数,执行降级策略
+            if (onExceeded) {
+              if (onExceeded.action === 'goto' && onExceeded.target) {
+                state.currentStepKey = onExceeded.target
+                state.pendingCollect = null
+                state.retryCount[collectStep.key] = 0
+                
+                return {
+                  reply: `已重试${maxRetries}次仍失败,转至其他流程`,
+                  isComplete: false,
+                  variables: { ...state.variables },
+                  retryExceeded: true,
+                  nextNode: onExceeded.target
+                }
+              } else if (onExceeded.action === 'handoff') {
+                return {
+                  reply: '多次输入失败,将为您转接人工服务',
+                  isComplete: true,
+                  variables: { ...state.variables },
+                  handoff: true,
+                  reason: `collect节点[${collectStep.key}]重试${maxRetries}次失败`
+                }
+              }
+            }
+            
+            // 默认行为:流程结束
+            return {
+              reply: `输入格式错误超过${maxRetries}次,流程结束`,
+              isComplete: true,
+              variables: { ...state.variables },
+              error: true
+            }
+          }
+          
+          // 未超过最大重试次数,返回重试提示
+          const retryPrompt = retryPrompts[state.retryCount[collectStep.key] - 1] || 
+                             retryPrompts[retryPrompts.length - 1] || 
+                             validationResult.errorMessage || 
+                             '输入格式不正确,请重新输入'
+          
           return {
-            reply: validationResult.errorMessage || '输入格式不正确,请重新输入',
+            reply: retryPrompt,
             isComplete: false,
             variables: { ...state.variables },
             waitingForInput: true,
             variable: collectStep.variable,
-            validationFailed: true
+            validationFailed: true,
+            retryCount: state.retryCount[collectStep.key],
+            maxRetries
           }
         }
+      }
+      
+      // 校验通过,重置重试计数
+      if (state.retryCount && state.retryCount[collectStep.key]) {
+        state.retryCount[collectStep.key] = 0
       }
       
       // 保存变量值
@@ -153,7 +220,10 @@ class SimpleFlowEngine {
       event: 'node_completed',
       node: step.key,
       type: step.type,
-      executionTimeMs: execTime,
+      status: result.error ? 'error' : (result.isComplete ? 'completed' : 'success'),
+      duration_ms: execTime,
+      executionTimeMs: execTime, // 兼容旧字段
+      error: result.error || null,
       timestamp: new Date().toISOString()
     })
 
@@ -228,14 +298,79 @@ class SimpleFlowEngine {
 
   /**
    * 执行 branch 节点:条件分支
-   * 【核心改造】简化为单一条件(true/false分支),参考 Dify 的 if-else
-   * 【旧版】cases数组支持多分支 → 【新版】condition + true_next + false_next
+   * 【核心改造】支持多条件(conditions数组),参考设计方案 v3.0
+   * 【格式】conditions: [{ expr, next }, ...], default_next
    */
   _executeBranch(step, state) {
-    // 【新版】单一条件分支
+    // 【新版】多条件分支(conditions数组)
+    if (step.conditions && step.conditions.length > 0) {
+      for (const condition of step.conditions) {
+        const conditionMet = this._evalCondition(condition.expr, state.variables)
+        
+        if (conditionMet) {
+          state.currentStepKey = condition.next
+          
+          // 【可观测性】记录分支选择
+          state.executionLog.push({
+            event: 'branch_taken',
+            node: step.key,
+            condition: condition.expr,
+            conditionMet: true,
+            nextNode: condition.next,
+            timestamp: new Date().toISOString()
+          })
+          
+          return {
+            reply: null,
+            isComplete: false,
+            variables: { ...state.variables },
+            branchTaken: condition.expr
+          }
+        }
+      }
+      
+      // 没有匹配的条件,使用default_next
+      const nextKey = step.default_next || null
+      if (nextKey) {
+        state.currentStepKey = nextKey
+        
+        state.executionLog.push({
+          event: 'branch_default_taken',
+          node: step.key,
+          nextNode: nextKey,
+          timestamp: new Date().toISOString()
+        })
+        
+        return {
+          reply: null,
+          isComplete: false,
+          variables: { ...state.variables },
+          branchTaken: 'default'
+        }
+      }
+      
+      // 既没有匹配条件也没有default,流程结束
+      return {
+        reply: '未找到匹配的流程分支',
+        isComplete: true,
+        variables: { ...state.variables },
+        error: true
+      }
+    }
+    
+    // 【兼容旧版】单一条件分支(condition + true_next + false_next)
     if (step.condition) {
       const conditionMet = this._evalCondition(step.condition, state.variables)
       const nextKey = conditionMet ? step.true_next : step.false_next
+      
+      if (!nextKey) {
+        return {
+          reply: '分支节点配置错误:缺少true_next或false_next',
+          isComplete: true,
+          variables: { ...state.variables },
+          error: true
+        }
+      }
       
       state.currentStepKey = nextKey
       
@@ -250,14 +385,14 @@ class SimpleFlowEngine {
       })
       
       return {
-        reply: null, // 分支节点不输出消息
+        reply: null,
         isComplete: false,
         variables: { ...state.variables },
         branchTaken: conditionMet ? 'true' : 'false'
       }
     }
     
-    // 【兼容旧版】cases数组方式(逐步废弃)
+    // 【兼容更旧版】cases数组方式(逐步废弃)
     if (step.cases && step.cases.length > 0) {
       for (const c of step.cases) {
         if (this._evalCondition(c.condition, state.variables)) {
@@ -281,9 +416,9 @@ class SimpleFlowEngine {
       }
     }
     
-    // 既没有condition也没有cases,配置错误
+    // 没有任何条件配置,报错
     return {
-      reply: '分支节点配置错误:缺少condition或cases',
+      reply: '分支节点配置错误:缺少conditions或condition',
       isComplete: true,
       variables: { ...state.variables },
       error: true
