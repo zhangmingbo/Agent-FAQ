@@ -210,7 +210,7 @@ class TaskFlowEngine {
     this.sessionTtl = minutes * 60 * 1000
   }
 
-  // ========== 兼容旧API(空实现,避免server.js报错) ==========
+  // ========== 兼容旧API(空实现,避免faq-engine.js报错) ==========
   
   setNlpEngine() {
     // v3 不需要 NLP 引擎,纯解释执行
@@ -220,7 +220,36 @@ class TaskFlowEngine {
   get nlu() {
     // 兼容 faq-engine.js 中的 taskEngine.nlu 访问
     return {
-      setFaqSamples: () => {} // 空实现
+      setFaqSamples: () => {},
+      route: async () => null // 返回null表示不匹配任何意图
+    }
+  }
+  
+  isSuspended(sessionId) {
+    // v3 不支持挂起/恢复功能
+    return false
+  }
+  
+  async suspend(sessionId, trace) {
+    // v3 不支持挂起功能
+    console.warn('[TaskFlow v3] suspend() 不被支持')
+    return false
+  }
+  
+  async resume(sessionId, trace) {
+    // v3 不支持恢复功能
+    console.warn('[TaskFlow v3] resume() 不被支持')
+    return false
+  }
+  
+  async startTask(sessionId, taskDef, trace, triggerText, userId) {
+    // v3 使用 simpleEngine.execute() 代替
+    // 这个方法是为了兼容 faq-engine.js 的调用
+    console.log('[TaskFlow v3] startTask 被调用,但v3使用execute()方法')
+    return {
+      taskId: taskDef.code,
+      status: 'running',
+      variables: {}
     }
   }
 }
