@@ -460,7 +460,7 @@ function onNodeApply(updatedData) {
       }
     }
   }
-  panelVisible.value = false
+  // 不关闭面板，保持编辑状态
 }
 
 // ========== 自动布局 ==========

@@ -1,5 +1,5 @@
 <template>
-  <div class="node-panel" v-if="visible">
+  <div class="node-panel" v-if="props.visible">
     <div class="node-panel__header">
       <span class="node-panel__title">{{ panelTitle }}</span>
       <div class="node-panel__header-actions">
@@ -113,10 +113,8 @@ const props = defineProps({
 const emit = defineEmits(['apply', 'close'])
 
 const localData = ref({})
-const visible = ref(false)
 
 watch(() => props.visible, (v) => {
-  visible.value = v
   if (v) {
     localData.value = JSON.parse(JSON.stringify(props.nodeData || {}))
   }
