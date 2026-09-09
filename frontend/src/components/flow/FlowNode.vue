@@ -49,7 +49,6 @@ const props = defineProps({
 defineEmits(['edit'])
 
 const nodeType = computed(() => {
-  // Vue Flow 通过 type prop 传入，这里从父组件的 nodeTypes 映射
   return props.data._nodeType || 'message'
 })
 
@@ -82,33 +81,47 @@ const branchCases = computed(() => {
 <style scoped>
 .flow-node {
   position: relative;
-  border-radius: 22px;
-  padding: 0 20px;
-  min-width: 100px;
-  height: 44px;
+  border-radius: 8px;
+  padding: 12px 20px;
+  min-width: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: box-shadow 0.2s, transform 0.15s;
+  transition: all 0.2s ease;
   user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  border: 2px solid transparent;
+}
+
+/* 默认阴影 */
+.flow-node {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .flow-node:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08);
 }
 
 .flow-node--selected {
-  box-shadow: 0 0 0 2px #1890ff, 0 4px 12px rgba(24, 144, 255, 0.3);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
 /* 橙色 = 用户分支/意图节点 */
 .flow-node--branch,
 .flow-node--confirm {
-  background: #fa8c16;
+  background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
   color: #fff;
-  font-weight: 500;
+  border-color: #ea580c;
+}
+
+.flow-node--branch:hover,
+.flow-node--confirm:hover {
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
 }
 
 /* 蓝色 = 系统动作节点 */
@@ -117,57 +130,118 @@ const branchCases = computed(() => {
 .flow-node--message,
 .flow-node--api,
 .flow-node--subtask {
-  background: #1890ff;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #fff;
-  font-weight: 500;
+  border-color: #2563eb;
+}
+
+.flow-node--start:hover,
+.flow-node--collect:hover,
+.flow-node--message:hover,
+.flow-node--api:hover,
+.flow-node--subtask:hover {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+}
+
+/* 开始节点 - 绿色 */
+.flow-node--start {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-color: #16a34a;
+}
+
+.flow-node--start:hover {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
 }
 
 /* 结束节点 - 红色 */
 .flow-node--end {
-  background: #f5222d;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: #fff;
-  font-weight: 500;
+  border-color: #dc2626;
+}
+
+.flow-node--end:hover {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
 }
 
 .flow-node__body {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .flow-node__icon {
-  font-size: 14px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
 .flow-node__label {
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 150px;
 }
 
-/* 连接锚点 */
+/* 连接锚点 - 官方风格 */
 .flow-handle {
-  width: 10px !important;
-  height: 10px !important;
+  width: 12px !important;
+  height: 12px !important;
   border: 2px solid #fff !important;
   border-radius: 50% !important;
-  background: #fff !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  background: #3b82f6 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.flow-handle:hover {
+  transform: scale(1.3);
+  background: #60a5fa !important;
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
 }
 
 .flow-handle--target {
-  left: -5px !important;
+  left: -6px !important;
 }
 
 .flow-handle--source {
-  right: -5px !important;
+  right: -6px !important;
 }
 
 .flow-handle--branch {
   position: absolute !important;
+}
+
+/* 分支节点的特殊锚点颜色 */
+.flow-node--branch .flow-handle,
+.flow-node--confirm .flow-handle {
+  background: #f97316 !important;
+}
+
+.flow-node--branch .flow-handle:hover,
+.flow-node--confirm .flow-handle:hover {
+  background: #fb923c !important;
+  box-shadow: 0 4px 8px rgba(249, 115, 22, 0.4);
+}
+
+/* 结束节点的锚点 */
+.flow-node--end .flow-handle {
+  background: #ef4444 !important;
+}
+
+.flow-node--end .flow-handle:hover {
+  background: #f87171 !important;
+  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.4);
+}
+
+/* 开始节点的锚点 */
+.flow-node--start .flow-handle {
+  background: #22c55e !important;
+}
+
+.flow-node--start .flow-handle:hover {
+  background: #4ade80 !important;
+  box-shadow: 0 4px 8px rgba(34, 197, 94, 0.4);
 }
 </style>

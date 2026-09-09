@@ -107,7 +107,12 @@
             v-model:nodes="nodes"
             v-model:edges="edges"
             :node-types="nodeTypes"
-            :default-edge-options="{ type: 'smoothstep', animated: false, style: { stroke: '#b0b0b0', strokeWidth: 2 } }"
+            :default-edge-options="{
+              type: 'bezier',
+              animated: false,
+              style: { stroke: '#94a3b8', strokeWidth: 2 },
+              markerEnd: { type: 'arrowclosed', color: '#94a3b8' }
+            }"
             fit-view-on-init
             @node-click="onNodeClick"
             @node-double-click="onNodeDblClick"
@@ -115,7 +120,7 @@
             @delete="onDelete"
             ref="vueFlowRef"
           >
-            <Background :gap="20" :color="'#f0f0f0'" />
+            <Background :gap="20" :color="'#e2e8f0'" />
             <Controls :show-interactive="false" />
             <MiniMap :node-color="getMiniMapColor" :mask-color="'rgba(0,0,0,0.05)'" />
           </VueFlow>
@@ -143,6 +148,12 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
+// Vue Flow 主题样式
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
+import '@vue-flow/minimap/dist/style.css'
 
 import { getTasks, getTaskDetail, saveTask, deleteTask, toggleTask } from '@/api/task'
 import { getNerTypes } from '@/api/config'
@@ -603,17 +614,26 @@ onMounted(() => { loadTasks() })
 .canvas-area {
   flex: 1;
   position: relative;
-  background: #f5f5f5;
+  background: #f8fafc;
+  border-radius: 8px;
+  margin: 8px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 /* Vue Flow 样式覆盖 */
 .canvas-area :deep(.vue-flow) {
-  background: #f5f5f5;
+  background: #f8fafc;
 }
 
 .canvas-area :deep(.vue-flow__edge-path) {
-  stroke: #b0b0b0;
+  stroke: #94a3b8;
   stroke-width: 2;
+}
+
+.canvas-area :deep(.vue-flow__edge:hover .vue-flow__edge-path) {
+  stroke: #3b82f6;
+  stroke-width: 3;
 }
 
 .canvas-area :deep(.vue-flow__edge.animated path) {
@@ -624,5 +644,28 @@ onMounted(() => { loadTasks() })
 @keyframes dashdraw {
   from { stroke-dashoffset: 10; }
   to { stroke-dashoffset: 0; }
+}
+
+/* 小地图样式 */
+.canvas-area :deep(.vue-flow__minimap) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 控制按钮样式 */
+.canvas-area :deep(.vue-flow__controls) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.canvas-area :deep(.vue-flow__controls-button) {
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.canvas-area :deep(.vue-flow__controls-button:hover) {
+  background: #f1f5f9;
 }
 </style>
