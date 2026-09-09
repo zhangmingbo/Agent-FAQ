@@ -1,13 +1,23 @@
 <template>
   <div class="flow-node" :class="[`flow-node--${nodeType}`, { 'flow-node--selected': selected }]" @dblclick="$emit('edit', data)">
-    <!-- 删除按钮（选中时显示） -->
+    <!-- 删除按钮（悬浮时显示，右上角） -->
     <button
-      v-if="selected && nodeType !== 'start'"
-      class="flow-node__delete-btn"
+      v-if="nodeType !== 'start'"
+      class="flow-node__action-btn flow-node__delete-btn"
       @click.stop="$emit('delete', data)"
       title="删除节点"
     >
       ✕
+    </button>
+
+    <!-- 复制按钮（悬浮时显示，右下角） -->
+    <button
+      v-if="nodeType !== 'start' && nodeType !== 'end'"
+      class="flow-node__action-btn flow-node__copy-btn"
+      @click.stop="$emit('copy', data)"
+      title="复制节点"
+    >
+      ⧉
     </button>
 
     <!-- 输入锚点（开始节点无输入） -->
@@ -56,7 +66,7 @@ const props = defineProps({
   selected: { type: Boolean, default: false },
 })
 
-defineEmits(['edit', 'delete'])
+defineEmits(['edit', 'delete', 'copy'])
 
 const nodeType = computed(() => {
   return props.data._nodeType || 'message'
@@ -183,31 +193,56 @@ const branchCases = computed(() => {
   text-overflow: ellipsis;
 }
 
-/* 删除按钮 */
-.flow-node__delete-btn {
+/* 操作按钮（删除/复制） */
+.flow-node__action-btn {
   position: absolute;
-  top: -8px;
-  right: -8px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: #ef4444;
   color: #fff;
   border: 2px solid #fff;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   transition: all 0.2s ease;
   z-index: 10;
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.flow-node:hover .flow-node__action-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.flow-node__action-btn:hover {
+  transform: scale(1.15) !important;
+}
+
+/* 删除按钮 - 右上角 */
+.flow-node__delete-btn {
+  top: -9px;
+  right: -9px;
+  background: #ef4444;
 }
 
 .flow-node__delete-btn:hover {
   background: #dc2626;
-  transform: scale(1.1);
+}
+
+/* 复制按钮 - 右下角 */
+.flow-node__copy-btn {
+  bottom: -9px;
+  right: -9px;
+  background: #3b82f6;
+}
+
+.flow-node__copy-btn:hover {
+  background: #2563eb;
 }
 
 .flow-node__icon {

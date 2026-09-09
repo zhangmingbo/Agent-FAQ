@@ -121,28 +121,28 @@
             ref="vueFlowRef"
           >
             <template #node-start="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-collect="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-message="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-branch="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-api="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-confirm="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-subtask="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <template #node-end="{ data, selected }">
-              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" />
+              <FlowNode :data="data" :selected="selected" @edit="onNodeEdit" @delete="onNodeDelete" @copy="onNodeCopy" />
             </template>
             <Background :gap="20" :color="'#e2e8f0'" />
             <Controls :show-interactive="false" />
@@ -375,6 +375,11 @@ function onConnect(connection) {
   const targetNode = nodes.value.find(n => n.id === connection.target)
   if (targetNode?.data?._nodeType === 'start') return
 
+  // 限制连线方向：只能从底部(source)连到顶部(target)
+  // source 的 handle 必须在 bottom，target 的 handle 必须在 top
+  if (connection.sourcePosition && connection.sourcePosition !== 'bottom') return
+  if (connection.targetPosition && connection.targetPosition !== 'top') return
+
   edges.value.push({
     id: `edge_${connection.source}_${connection.target}`,
     source: connection.source,
@@ -412,6 +417,30 @@ function onNodeDelete(nodeData) {
     // 关闭属性面板
     panelVisible.value = false
   }
+}
+
+function onNodeCopy(nodeData) {
+  // 复制节点：在原节点右下方创建副本
+  const sourceNode = nodes.value.find(n => n.data?.key === nodeData.key)
+  if (!sourceNode) return
+
+  const existingKeys = new Set(nodes.value.map(n => n.data?.key || ''))
+  const newKey = generateKey(sourceNode.type, existingKeys)
+
+  const newNode = {
+    id: `node_${newKey}`,
+    type: sourceNode.type,
+    position: {
+      x: sourceNode.position.x + 80,
+      y: sourceNode.position.y + 80,
+    },
+    data: {
+      ...JSON.parse(JSON.stringify(sourceNode.data)),
+      key: newKey,
+    },
+  }
+
+  nodes.value.push(newNode)
 }
 
 function onEdgeClick({ edge }) {

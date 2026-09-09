@@ -124,9 +124,16 @@ watch(() => props.visible, (v) => {
   }
 })
 
-watch(() => props.visible, (v) => {
-  visible.value = v
-})
+// 自动保存：数据变化时立即应用
+let saveTimer = null
+watch(() => localData.value, (newVal) => {
+  if (props.visible && newVal && Object.keys(newVal).length > 0) {
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      emit('apply', { ...newVal })
+    }, 300)
+  }
+}, { deep: true })
 
 const panelTitle = computed(() => {
   const titles = {
